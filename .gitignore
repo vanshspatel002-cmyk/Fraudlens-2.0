@@ -1,0 +1,56 @@
+# Frontend
+FraudLens-2.0-Frontend/node_modules/
+FraudLens-2.0-Frontend/dist/
+FraudLens-2.0-Frontend/.output/
+FraudLens-2.0-Frontend/.tanstack/
+FraudLens-2.0-Frontend/.wrangler/
+FraudLens-2.0-Frontend/.browser-check/
+
+# Backend
+FraudLens-2.0-Backend/venv/
+FraudLens-2.0-Backend/__pycache__/
+FraudLens-2.0-Backend/.pytest_cache/
+FraudLens-2.0-Backend/.wrangler/
+FraudLens-2.0-Backend/outputs/
+FraudLens-2.0-Backend/.cache/
+FraudLens-2.0-Backend/.tmp/
+FraudLens-2.0-Backend/temp/
+
+# Python cache
+**/__pycache__/
+**/*.py[cod]
+
+# Environment / secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+**/.dev.vars
+**/.dev.vars.*
+
+# Databases and backups
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite3
+**/*.bak
+
+FraudLens-2.0-Backend/backups/
+FraudLens-2.0-Backend/data/
+FraudLens-2.0-Backend/outputs/
+
+# Logs
+**/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Coverage
+**/.coverage
+**/htmlcov/
+**/coverage/
