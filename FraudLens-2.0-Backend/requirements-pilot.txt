@@ -1,0 +1,4 @@
+# Optional verification tooling, separate from production/research dependencies.
+pytest==9.1.1
+playwright==1.64.0
+pypdf==6.20.1

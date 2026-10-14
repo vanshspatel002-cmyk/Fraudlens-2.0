@@ -1,133 +1,166 @@
-# FraudLens local pilot handover
+# FraudLens 2.0 pilot handover — 14 October 2026
 
-This change continues the existing FastAPI/SQLite and React/TanStack project. It improves a single-instance, two-tab pilot. It is **not a completed multi-tenant SaaS release**, and it does not establish detector accuracy or guarantee Gemini availability.
+This continues the existing FastAPI/SQLite and React/TanStack implementation on `autonomous-pilot-hardening-20261014`. The inherited staged patch and audit dossier were preserved in local commit `09d06e8`. No rebuild, external deployment, paid service or push was performed. No applicable `AGENTS.md` was found. The original audit remains historical; this document records subsequent behavior.
 
-## Changes
+Read [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md), [CHECK_VERIFICATION_MATRIX.md](CHECK_VERIFICATION_MATRIX.md) and [AUTONOMOUS_PROGRESS.md](AUTONOMOUS_PROGRESS.md). This is a single-organization local pilot; multi-tenant SaaS and deployment detection accuracy are not established.
 
-- `FraudLens-2.0-Backend/src/api.py`: server-validated admin email/password exchange, eight-hour revocable sessions, authenticated action attribution, private/public narrative separation, server-side image validation, unique stored filenames, rollback on indexing failure, real perception before the live API check pipeline, visible processing failures, persisted job retrieval, repeat-job conflict handling, a finding-counts endpoint, latest-decision statistics, latest-run trace selection and lightweight readiness endpoint.
-- `FraudLens-2.0-Backend/src/runtime_store.py`: additive SQLite tables for hashed session tokens and job status. Startup marks interrupted queued/running jobs failed so reviewers can retry. It does not automatically resume or provide a distributed queue.
-- `FraudLens-2.0-Frontend/src/experience/shared.tsx`: session token handling in sessionStorage, server login/session/logout, correct desk-review labels, actual audit entries, retry mapping, thumbnail reuse and removal of duplicate sort parameters.
-- `Admin.tsx`, `AdminOverview.tsx`: queue refresh every ten seconds while visible, retry/refresh controls, fallback disclosures, heuristic confidence disclosure and accurate page-scoped metric labels.
-- `Intake.tsx`: accepted case confirmation survives failed background analysis. `Tracker.tsx`: distinguishes status-check time from a server update time. `Home.tsx`: product wording retains detection limitations.
-- `FraudLens-2.0-Backend/railway.json`: readiness uses `/ready` without spending model quota.
-- `FraudLens-2.0-Backend/test_pilot_workflow.py`: isolated API regressions. Vision gate and embeddings are mocked; these tests do not measure detection.
-- `FraudLens-2.0-Backend/test_api.py`: expectations updated for authenticated reviewer identity and public narrative privacy.
-- `FraudLens-2.0-Backend/scripts/pilot_preflight.py`: dependency/configuration check, optional CLIP warmup and optional live model probe.
+## Preservation and implementation
 
-Research policies, detector weights and thresholds have not been changed. The existing ablation must not be continued with changed experiment inputs without a versioned decision.
+Private preservation: `D:\projects\FraudLens-2.0-preservation\20261014T065436Z`, including consistent SQLite backups of all four databases (integrity `ok`), evidence, cached perception, models, config, research outputs, audit and binary working-tree patches. Credentials stayed outside Git. Original corpus counts and the latest research outputs were compared against preservation; results and the subsequent restore drill are in the progress document.
 
-## Local setup
+- Acceptance, indexing, applicant receipt, idempotency replay record, audit and durable job commit together. Validated JPEG/PNG/WebP files use unique names. Duplicate/invalid uploads and ingestion failures roll back; UUID4 submission keys replay identical submissions and reject changed payloads.
+- Admins request specific photographs. Supplementary uploads require a case-scoped private receipt and open request. Original evidence, human decisions and report history remain; new evidence triggers one controlled run. Active processing, stale requests and exact duplicates conflict.
+- SQLite jobs survive restarts, with one active job per case and one OS-locked worker per host. Recovery is bounded to three attempts. Queued/running/completed/failed/interrupted are distinct. Model failure preserves submissions and exposes an explicit human-review fallback; terminal work can be retried by a reviewer.
+- Findings, decisions, traces, evidence IDs and policy versions belong to a recorded run. Queued new runs do not show historical findings as current. Immutable report versions remain readable. Legacy research results disclose missing run association.
+- Individual PBKDF2 reviewer accounts have admin/reviewer/viewer roles. Eight-hour hashed-token sessions expire, revoke on logout/disable/rotation and authenticate reviewer attribution server-side. Private cases, images, reports, jobs and actions enforce access. Service credentials cannot record human decisions. Applicant receipts authorize only their own upload/job status.
+- Existing branding/layout remain. Evidence resolves at original resolution; refresh/retry, historical reports, print styles, loading/failure states, public statuses and role-aware controls were repaired. Image/category mappings, CORS/CSP and stale/misleading filters were fixed. Confidence is labeled heuristic rather than a calibrated probability.
+- `/ready` and `/health` never call Gemini. Authenticated `/v1/operations` exposes local worker/queue/failures and `tenant_isolation: false`. Structured logs include status/latency/server actor, without bodies or secrets.
 
-Use your existing Python 3.12 environment if it already has the pinned backend dependencies and model files. Do not overwrite your current database or `.env` with this source export. Back up your database while the app is stopped before first run; runtime tables are additive.
+Research policies, weights, thresholds and historical outputs remain frozen. Production corrections are separate in `src/agent/production_policy.py`: v1 integrates already registered nonzero scenario checks and corrects reliability/attribution; v2 converts zero-weight findings to inconclusive while retaining experimental observations and avoids inventing an undamaged underwriting declaration; current v3 labels the preserved billing threshold as a research benchmark whose current legal applicability is unverified. Previous v1/v2 reports remain historical. Latest ablation: 58/99 agent cases after 22 exclusions from 121 selected records; the existing integrity verifier checked 58/58 stored decisions without problems on a copy. These are research coverage figures, not deployment accuracy.
 
-In the backend directory:
+New human actions record the reviewed run, decision, processing status and evidence IDs in the audit and reports; prior-run actions remain labeled as history. Production OCR caches text/confidence observations by image hash and engine version/configuration, recomputes identity comparisons for each case, and releases cache writer locks before more inference. It never caches a case verdict. Invalidate `production_plate_ocr` cache entries on a copy if OCR weights/configuration change outside the versioned default engine. Research execution does not enable this production cache. Duplicate-pool metrics use SQL counts rather than decoding the entire corpus.
 
-```text
-python -m pip install -r requirements.txt
-python scripts/pilot_preflight.py
+## Windows PowerShell setup
+
+Verified environment: Python 3.12.8, FastAPI 0.141.1, google-genai 2.18.1 and Torch 2.13.0+cpu. The package engine requires Node `>=22.16.0 <23`. Use Node 22 for reproducible setup. This shell resolves Node 24.21.0/npm 11.19.0, outside the declared engine; actual frontend verification has that limitation. Preserve the lockfile/pinned dependencies. A clean environment installation was not rehearsed; the installed Python environment passed `pip check`.
+
+Do not overwrite existing `.env`, databases, evidence or evaluation outputs. If dependencies are missing:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+if (-not (Test-Path .\venv\Scripts\python.exe)) { py -3.12 -m venv venv }
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m pip install -r requirements-pilot.txt
+.\venv\Scripts\python.exe -m pip check
 ```
 
-The pinned requirements include CPU Torch packages; a Mac may need platform-specific Torch installation. The full pinned ML environment has not been installed or validated in this review environment. If installation fails, preserve the exact error rather than replacing every version.
+The CPU Torch index is already in `requirements.txt`. Optional pytest/Playwright/PDF tools are pinned separately. Chrome automation uses the installed Chrome with `channel='chrome'`; no browser download is required here. Preserve exact errors if dependencies are unavailable.
 
-Configure backend `.env` using `.env.example`. Required local values include:
+In the frontend, after selecting Node 22:
 
-```text
-ADMIN_EMAIL=your-reviewer-email
-ADMIN_PASSWORD_SHA256=your-password-hash
-GEMINI_API_KEY=your-key
-GEMINI_MODEL=the-model-you-have-verified-access-to
-LLM_PROVIDER=gemini
-CORS_ORIGINS=http://localhost:5173
-FRAUDLENS_DB=fraudlens.db
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Frontend
+node --version
+npm.cmd ci
+npm.cmd run typecheck
+npm.cmd run build
 ```
 
-Do not paste secrets into chat or commit them. Generate the password hash with the existing frontend `npm run admin:password` helper. Login now requires the matching configured email as well as the password.
+Run build and dev sequentially: they share generated TanStack files, and a concurrent build disrupted a rehearsal. Nitro is now enabled only for production build because its inherited dev integration broke Vite's environment runner. The inherited Nitro/Vite peer-version warning remains; dependencies were not migrated.
 
-Optional preflight steps, from the backend directory:
+## Isolated database and reviewer provisioning
 
-```text
-python scripts/pilot_preflight.py --warm-models
-python scripts/pilot_preflight.py --live
+This session uses private `outputs/pilot_validation/demo.db` and separate uploads/thumbnails. Preserve it and its stopped live ledger. To create another isolated demonstration later, use a new directory and consistent backup:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+$pilotRoot = (Get-Location).Path
+$pilotDir = Join-Path $pilotRoot ('outputs\pilot-demo-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+New-Item -ItemType Directory -Path $pilotDir | Out-Null
+$env:FRAUDLENS_DB = Join-Path $pilotDir 'demo.db'
+@'
+import os, sqlite3
+from pathlib import Path
+source=sqlite3.connect(Path('fraudlens.db').resolve().as_uri()+'?mode=ro', uri=True)
+target=sqlite3.connect(os.environ['FRAUDLENS_DB'])
+try:
+    source.backup(target)
+    assert target.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+finally:
+    source.close(); target.close()
+'@ | .\venv\Scripts\python.exe -X utf8 -
+.\venv\Scripts\python.exe scripts/manage_reviewer.py --db $env:FRAUDLENS_DB --email reviewer@example.test --role admin
 ```
 
-Warmup can download model files. `--live` makes a real provider call and retries may consume more quota; it does not verify image analysis. Do not run it repeatedly during a presentation.
+The account command privately prompts for a password (12 characters minimum). It also rotates existing credentials and revokes sessions. Use `--role reviewer` for review/retry, `--role viewer` for private read-only access, or `--disable` to revoke an account. Configured bootstrap email/password-hash access remains available; rotating either invalidates its sessions. Passwords must stay out of arguments, Git and screenshots.
 
-Start one backend process, without reload during the presentation:
+## Startup: backend terminal
 
-```text
-python -m uvicorn src.api:app --host 127.0.0.1 --port 8000
+Exact commands for the preserved session demonstration follow. Port 8000 was occupied by an existing service and was left alone. For a newly prepared directory, substitute that directory for `$pilotDir`. Existing Gemini credentials load privately from `.env`.
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+$pilotRoot = (Get-Location).Path
+$pilotDir = Join-Path $pilotRoot 'outputs\pilot_validation'
+$env:FRAUDLENS_DB = Join-Path $pilotDir 'demo.db'
+$env:FRAUDLENS_UPLOAD_DIR = Join-Path $pilotDir 'uploads'
+$env:FRAUDLENS_THUMB_DIR = Join-Path $pilotDir 'thumbnails'
+$env:FRAUDLENS_LIVE_LEDGER = Join-Path $pilotRoot 'outputs\pilot_validation\live_calls.json'
+$env:FRAUDLENS_LIVE_LIMIT = '15'
+$env:GEMINI_QUOTA_BUDGET = Join-Path $pilotDir 'quota_budget.json'
+$env:GEMINI_QUOTA_CONSUMER = 'pilot'
+$env:FRAUDLENS_WORKER_ENABLED = '1'
+$env:FRAUDLENS_WARM_MODELS = '1'
+$env:HF_HUB_OFFLINE = '1'
+$env:TRANSFORMERS_OFFLINE = '1'
+$env:CORS_ORIGINS = 'http://127.0.0.1:5173,http://localhost:5173'
+.\venv\Scripts\python.exe -X utf8 scripts/pilot_preflight.py
+.\venv\Scripts\python.exe -X utf8 -m uvicorn src.api:app --host 127.0.0.1 --port 8001
 ```
 
-In a second terminal, from the frontend directory, use Node 22.16 or later within major version 22:
+Wait for **Application startup complete**. In-process CLIP warmup avoids a cold load inside applicant acceptance: the first cold submission under contention took roughly 563 seconds. Offline flags assume existing model caches; missing weights fail startup rather than fabricate a gate result. `pilot_preflight.py --warm-models` warms a separate process, not the server. Do not run `--live` during this stopped session.
 
-```text
-npm ci
-npm run dev
+Another terminal:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8001/ready
+Invoke-RestMethod http://127.0.0.1:8001/health
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Frontend
+$env:VITE_API_BASE_URL = 'http://127.0.0.1:8001'
+npm.cmd run dev
 ```
 
-Set `VITE_API_BASE_URL=http://localhost:8000` in frontend `.env`. Open both Chrome tabs at `http://localhost:5173`. Keep the terminal processes running.
+Use `http://127.0.0.1:5173` consistently. Applicant/reviewer session storage is tab-local. Save the private receipt from acceptance; it expires after 30 days and permits requested evidence uploads. Public tracking requires case ID plus registration/policy, but that challenge does not verify applicant identity. Only status, public human explanation and requested photographs are exposed.
 
-## Two-tab rehearsal
+## Meaningful verification
 
-1. Check `http://localhost:8000/ready`. A ready response establishes database availability, not model availability.
-2. Tab A: submit a claims application with a genuine, consented vehicle photo and realistic declaration. Save the returned case ID immediately.
-3. Tab B: log in at `/admin`. The queue refreshes every ten seconds; open the new case and use Refresh case to retrieve updated processing status.
-4. Inspect original stored findings, their attribution and limitations, the recorded trace, and the report. A fallback or failed job must be shown as such. Retry only after resolving the cause.
-5. Record a human action. Enter a public message deliberately: it is the message the applicant sees. Internal reasons and model narratives are not returned by the public tracker.
-6. Tab A: open `/track` with the case ID and original registration/policy number. Check the recorded human outcome.
-7. Repeat for underwriting with the six views required by the existing form. This can consume substantially more vision quota than one claims photograph.
-8. Use Print report for browser print/PDF. This is not a server-generated signed PDF report.
+Use a fresh PowerShell terminal for offline testing, disable live tests and use the correct custom runners. Do not collect every legacy file with pytest.
 
-The API uses real perception and adjudication providers. It does not inject successful results or synthetic decisions into live submissions. Reusing a previously analyzed image may reuse its stored perception, which is existing content-hash caching, not a new model call.
-
-## Gemini free-tier constraints
-
-Stop competing research/perception batch jobs before rehearsal. Do not repeatedly resubmit or retry a case to force a desired verdict. Provider limits, delays and failures remain possible. The API retains evidence and makes failures visible; it cannot guarantee completion time or make quota available. Prepare an already completed **real** case as a disclosed backup, not as a fabricated result for a new submission.
-
-## Remaining work and acceptance gates
-
-- Live Gemini vision, adjudication, image gate, quota behavior and full browser rehearsal on the target laptop remain unverified here. No credentials or real corpus were supplied.
-- Historical corpus and scenario-database evaluation requires your sanitized databases, image corpus and output artifacts. Blank local databases cannot demonstrate historical rings, repeat claims, external corpus matches or garage patterns without actual supporting records.
-- AI-generated images and edited-image detection remain unproven for the uncovered archetypes. Zero-weight/retired checks remain as documented; they are not relabeled reliable.
-- Request-more-evidence records and communicates a request; an authenticated applicant evidence-resubmission workflow remains to be implemented.
-- Authentication is still one configured reviewer identity, now with expiring tokens. Per-user accounts, roles, tenant isolation, invitations and billing are not implemented. The legacy bearer-password interface remains for existing scripts.
-- Job state is durable but execution still uses in-process background tasks. Single process only. Multi-worker durable execution, shared rate limits and interrupted-work recovery require further work.
-- The current public tracker verifies a case ID plus registration/policy number, not a full applicant account.
-- Reports retain model-generated prose and heuristic scores. Citations and recorded inputs support review; they do not guarantee every model statement is correct.
-- Multi-tenant security review, backup/restore drills, production monitoring and independent detection validation remain release gates.
-
-## Offline regression commands
-
-From the backend directory:
-
-```text
-python -m pip install pytest
-python -m pytest test_pilot_workflow.py -q
-python test_models.py
-python test_api.py
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+$env:FRAUDLENS_TEST_LIVE = '0'
+$env:FRAUDLENS_WARM_MODELS = '0'
+$env:FRAUDLENS_WORKER_ENABLED = '0'
+$env:HF_HUB_OFFLINE = '1'
+$env:TRANSFORMERS_OFFLINE = '1'
+.\venv\Scripts\python.exe -X utf8 test_models.py
+.\venv\Scripts\python.exe -X utf8 test_baseline.py
+.\venv\Scripts\python.exe -X utf8 test_agent.py
+.\venv\Scripts\python.exe -X utf8 test_llm.py
+.\venv\Scripts\python.exe -X utf8 test_perception.py
+.\venv\Scripts\python.exe -X utf8 test_ingest.py
+.\venv\Scripts\python.exe -X utf8 test_checks.py
+.\venv\Scripts\python.exe -X utf8 test_api.py
+.\venv\Scripts\python.exe -X utf8 scripts/verify_integration.py
+.\venv\Scripts\python.exe -X utf8 -m pytest -q test_pilot_workflow.py test_durable_pilot.py
 ```
 
-The legacy API runner additionally requires the corpus images and CLIP dependencies. The original agent runner expects `fraudlens.db`. Do not interpret missing-resource failures as model-accuracy measurements. Frontend validation: `npm run build` from its directory.
+`scripts/verify_offline_suite.py` runs those commands sequentially, isolates quota storage, preserves combined logs and records true exit codes/counts in `outputs/pilot_validation/offline_release/results.json`. It refuses to overwrite previous release logs. Run heavy tests, build and browser rehearsal sequentially on this 8 GB host. The check inventory script likewise preserves completed evaluation copies.
 
-## Verification in this workspace
+Focused transaction/auth/run tests disclose mocked model/embedding replies. Ingest/API/integration runners also exercise real local CLIP and storage; integration adjudication is stubbed. None proves live Gemini reliability. Actual pass/fail/skip counts, build and browser results are recorded in the progress document.
 
-- Frontend TypeScript check and full Vite production build: passed on Node 22.23.3. The existing Nitro/Vite compatibility warning remains; no dependency upgrade was made.
-- `python -m pytest test_pilot_workflow.py -q`: 11 passed.
-- `python test_models.py`: 81 passed.
-- Legacy API runner after intentional expectation updates: 21 passed, 4 failed because corpus photographs/CLIP dependencies were unavailable.
-- Agent engine runner with two isolated in-memory fixture cases instead of the missing corpus DB: 15 checks passed; the SDK-schema test skipped because google-genai was absent (the legacy runner incorrectly includes that skip in its printed 16-pass total). This exercises mocked provider responses, not live Gemini.
-- Python API import and changed-file compilation: passed. `git diff --check`: passed.
-- The backend tests used available FastAPI 0.143.0 and Starlette 1.8.0, not the project's complete pinned production environment. Re-run on the target laptop's pinned environment.
-- Live providers, all-archetype performance, actual browser interaction and multi-user/tenant isolation: not verified.
+## Actual Gemini result
 
-## Applying this source package
+**2 actual provider requests out of 15**, both vision HTTP 503 failures. The persistent stop latch prevents further live attempts after repeated failures or quota exhaustion, including restart/day reset. No successful new Gemini vision or agent adjudication was observed. Legitimate cached perception was reused; failed vision remained missing. The browser exercised incomplete analysis and disclosed fallback behavior.
 
-The download contains source, not your database, `.env`, image corpus, virtual environment or `node_modules`. Extract into a separate folder or apply the accompanying patch on a clean checkout of baseline commit `f30cd20f0d021e1dd670e49deb33a20dd96ed19f`. Keep a backup of local work first. Restore/configure your local resources deliberately; do not overwrite them with empty files.
+SDK automatic retries are disabled; explicit attempts reserve the persistent session budget before network access. Retry configuration was checked against [Google's SDK implementation](https://github.com/googleapis/python-genai/blob/main/google/genai/_api_client.py). Clients/images are closed. Every pilot process must share the ledger; historical entrypoints have an opt-in cap. Do not reset/rename/delete this session's ledger or switch models/keys to bypass the stop.
 
-```text
-git switch -c pilot-workflow
-git apply --check /path/to/FraudLens_Pilot_Changes.patch
-git apply /path/to/FraudLens_Pilot_Changes.patch
+## Backup and restore
+
+Stop evidence writers before filesystem copying. Stop the pilot with Ctrl+C; next startup recovers interrupted jobs under the exclusive worker lock. SQLite snapshots are consistent with WAL, but concurrent uploads prevent a guaranteed database/filesystem boundary. Backups are private: they contain config, applicant receipts and evidence.
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+$pilotBackup = 'D:\projects\FraudLens-2.0-preservation\backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+.\venv\Scripts\python.exe -X utf8 scripts/pilot_backup.py backup . $pilotBackup
+$pilotRestore = $pilotBackup + '-restored'
+.\venv\Scripts\python.exe -X utf8 scripts/pilot_backup.py restore $pilotBackup $pilotRestore
 ```
 
-Stop if the check reports a conflict; it indicates local differences that must be reviewed. These changes have not been pushed to GitHub or deployed.
+The script rejects existing destinations, consistently backs up root/nested SQLite databases, copies evidence/outputs/models/backend config plus `.bak` / `.db.old` archives, and verifies manifest hashes/database integrity during restore. Initial preservation separately includes frontend config/audit/source patches. Preserve frontend `.env` privately too. Restored databases retain stored evidence paths: inspect/rebase paths on a copy before relocation/promotion. The drill verifies artifact integrity, not relocated deployment or a recovery-time objective.
+
+## Outstanding production requirements
+
+One `local` organization and its roles are implemented. Cases/evidence are not tenant-keyed; complete tenant isolation and cross-tenant tests are absent. Multi-organization SaaS requires isolation across all queries/routes/storage/reports/exports/jobs. Also outstanding: verified applicant identity/receipt recovery, MFA/account recovery, hosting/secrets/TLS, distributed execution if needed, storage lifecycle/encryption/privacy, tamper-resistant audit, central monitoring/alerts, load/security review and independent detector/adjudication validation.
+
+Supported evidence is photographs. Invoice/PDF extraction, identity/ownership validation and verification that underwriting slots contain real views of the same vehicle remain unimplemented. Live successful vision/adjudication remains blocked by the observed provider failures. Billing and external deployment were outside this local demonstration.
