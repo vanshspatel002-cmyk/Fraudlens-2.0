@@ -4,18 +4,18 @@ export const reconEvidence: EvidenceCard[] = [
     "Case Memory (Internal Duplicate)",
     "History",
     "Searches every image ever submitted, to either agent, for a match.",
-    "The strongest signal in the system — but reuse is a lead, not proof of intent.",
+    "Verify matched evidence and legitimate reuse before attributing intent.",
   ],
   [
     "Threshold Gaming",
     "Economic",
-    "Flags a garage whose claims cluster just under ₹50,000, the line where a surveyor becomes mandatory.",
+    "Examines garage billing clustered below the preserved ₹50,000 research benchmark.",
     "Attributed to the garage. Never an accusation against the claimant sitting in front of it.",
   ],
   [
     "External Corpus Search",
     "History",
-    "Checks whether the image originates outside this claim entirely.",
+    "Searches the stored external image index for similarity matches.",
     "Coverage is only as wide as the index behind it.",
   ],
   [
@@ -71,13 +71,13 @@ export const sentinelEvidence: EvidenceCard[] = [
   [
     "View Completeness",
     "Identity",
-    "Requires all four corners, the odometer, and the plate before an inspection counts as complete.",
-    "A missing angle doesn't fail the case — it triggers a specific request for what's absent.",
+    "Six upload slots collect declared inspection views; actual view coverage requires review.",
+    "Experimental check: zero weight and excluded from production routing. Same-vehicle views are not automatically verified.",
   ],
   [
     "Case Memory (Internal Duplicate)",
     "History",
-    "Checks this inspection's photos against everything ever submitted — including future claims on the same vehicle.",
+    "Compares this inspection's photos with other submitted inspections and claims.",
     "The same engine Recon runs. Underwriting and claims share one memory.",
   ],
   [

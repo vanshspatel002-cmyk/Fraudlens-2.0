@@ -1,7 +1,8 @@
+import HistoricalReport from './HistoricalReport';
 import EvidenceViewer from "./EvidenceViewer";
 import AdminOverview from "./AdminOverview";
 import "./admin-workspace.css";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Logo,
   Icon,
@@ -12,6 +13,8 @@ import {
   recommendations,
   categories,
   useConfig,
+  apiImageUrl,
+  historicalReport,
 } from "./shared";
 const adminChecks = checks
   .map((c) => {
@@ -75,6 +78,8 @@ type Finding = {
   confidence: number;
   explanation: string;
   attributed_to?: string;
+  check_limitation?: string;
+  check_status?: string;
   evidence?: unknown;
 };
 type CaseDetail = Row & {
@@ -87,12 +92,18 @@ type CaseDetail = Row & {
   citedFindings: string[];
   processing?: { status?: string; stage?: string; detail?: string };
   analysisFallback?: boolean;
+  humanReviewedRun?: string;
   narrative?: string;
   outcome?: string;
   reason?: string;
   admin?: string;
   updated_at?: string;
-  version?: string;
+  version?: number;
+  runId?: string;
+  policyVersion?: string;
+  limitations: string[];
+  reportHistory: {snapshot_id: string; run_id?: string; created_at: number}[];
+  evidenceRequest?: {artifacts: string[]};
 };
 const money = (n: number) =>
   new Intl.NumberFormat("en-IN", {
@@ -101,6 +112,13 @@ const money = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n);
 export default function Admin() {
+  const queueRequest = useRef(0);
+  const detailRequest = useRef(0);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+  const [historicalReportText, setHistoricalReport] = useState('');
+  const [userRole,setUserRole]=useState('viewer');
+
   const config = useConfig();
   const [user, setUser] = useState<string | null>(null),
     [tab, setTab] = useState("Overview"),
@@ -119,28 +137,56 @@ export default function Admin() {
     [hasMore, setHasMore] = useState(false);
   useEffect(() => {
     api("session")
-      .then((j) => setUser((j as { user: string }).user))
+      .then((j) => {setUser((j as {user:string}).user);setUserRole((j as {role:string}).role);})
       .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    const expired = () => {
+      queueRequest.current++; detailRequest.current++;
+      setUser(null); setUserRole('viewer'); setRows([]); setDetail(null);
+      setLightbox(null); setHistoricalReport(''); setLoading(false);
+      setError('Your reviewer session expired or was revoked. Sign in again.');
+    };
+    window.addEventListener('fraudlens-session-expired', expired);
+    return () => window.removeEventListener('fraudlens-session-expired', expired);
   }, []);
   useEffect(() => {
     if (!user) return;
     load();
     const timer = window.setInterval(() => { if (!document.hidden) load(false); }, 10000);
-    return () => window.clearInterval(timer);
+    return () => { window.clearInterval(timer); queueRequest.current++; };
   }, [user, page, search, filters, sort]);
   useEffect(() => {
     setPage(1);
   }, [search, filters, sort]);
+  useEffect(() => {
+    if (!detail?.id || !user) return;
+    const id = detail.id;
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      const request = ++detailRequest.current;
+      api('case?id=' + encodeURIComponent(id)).then(value => {
+        if (request !== detailRequest.current) return;
+        setDetail(previous => previous?.id === id ? value as CaseDetail : previous);
+      }).catch(err => { if (request === detailRequest.current) setError((err as Error).message); });
+    }, 10000);
+    return () => { window.clearInterval(timer); detailRequest.current++; };
+  }, [detail?.id, user]);
   async function load(showLoading = true) {
+    const request = ++queueRequest.current;
     if (showLoading) setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), page_size: "10" });
       if (search) params.set("search", search);
       if (filters.kind) params.set("agent_type", filters.kind);
-      if (filters.status) params.set("status", filters.status);
+      if (filters.status) params.set("status", ({
+        'Awaiting review': 'open,evidence_received',
+        'Additional evidence requested': 'awaiting_evidence',
+        'Decided': 'closed_approved,closed_rejected',
+      } as Record<string, string>)[filters.status] || filters.status);
       if (filters.garage) params.set("garage_id", filters.garage);
-      if (filters.from) params.set("date_from", new Date(filters.from).toISOString());
-      if (filters.to) params.set("date_to", new Date(filters.to).toISOString());
+      if (filters.from) params.set("date_from", new Date(filters.from + 'T00:00:00+05:30').toISOString());
+      if (filters.to) params.set("date_to", new Date(filters.to + 'T23:59:59.999+05:30').toISOString());
       if (filters.min) params.set("amount_min", filters.min);
       if (filters.max) params.set("amount_max", filters.max);
       if (filters.risk)
@@ -149,11 +195,18 @@ export default function Admin() {
           filters.risk === "Low"
             ? "clear"
             : filters.risk === "Medium"
-              ? "desk_review"
+              ? "desk_review,request_evidence"
               : filters.risk === "High"
                 ? "escalate_siu"
-                : "",
+                : "unrated",
         );
+      const recommendationBand = filters.recommendation === 'Desk Review' ? 'desk_review'
+        : filters.recommendation === 'Escalate to SIU' ? 'escalate_siu' : '';
+      if (recommendationBand) {
+        const selectedBand = params.get('risk_band');
+        params.set('risk_band', !selectedBand || selectedBand.split(',').includes(recommendationBand)
+          ? recommendationBand : 'conflicting_filters');
+      }
       if (filters.recommendation)
         params.set(
           "recommendation",
@@ -170,13 +223,14 @@ export default function Admin() {
         total?: number;
         has_more?: boolean;
       };
+      if (request !== queueRequest.current) return;
       setRows(j.cases);
       setTotal(j.total || j.cases.length);
       setHasMore(!!j.has_more);
     } catch (e) {
-      setError((e as Error).message);
+      if (request === queueRequest.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (request === queueRequest.current) setLoading(false);
     }
   }
   async function login(e: FormEvent<HTMLFormElement>) {
@@ -188,8 +242,8 @@ export default function Admin() {
       const j = (await post("login", {
         email: f.get("email"),
         password: f.get("password"),
-      })) as { user: string };
-      setUser(j.user);
+      })) as { user: string; role:string };
+      setUser(j.user);setUserRole(j.role);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -197,16 +251,19 @@ export default function Admin() {
     }
   }
   async function open(id: string) {
+    const request = ++detailRequest.current;
     setError("");
     setLoading(true);
     try {
-      setDetail((await api("case?id=" + encodeURIComponent(id))) as CaseDetail);
+      const value = (await api("case?id=" + encodeURIComponent(id))) as CaseDetail;
+      if (request !== detailRequest.current) return;
+      setDetail(value);
       setDetailTab(tab === "Reports" ? "Report" : "Evidence");
       setHumanAction("Approve");
     } catch (e) {
-      setError((e as Error).message);
+      if (request === detailRequest.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (request === detailRequest.current) setLoading(false);
     }
   }
   async function retryAnalysis() {
@@ -222,7 +279,7 @@ export default function Admin() {
   const filtered = rows;
   const metrics = [
     ["Matching cases", total],
-    ["Awaiting review", rows.filter((r) => r.status === "open").length],
+    ['Awaiting review on this page', rows.filter(r => ['open','evidence_received'].includes(r.status)).length],
     [
       "Clear recommendations on this page",
       rows.length
@@ -231,7 +288,7 @@ export default function Admin() {
           ) + "%"
         : "Not measured",
     ],
-    ["High risk", rows.filter((r) => r.risk === "High").length],
+    ['High risk on this page', rows.filter(r => r.risk === 'High').length],
   ];
   async function action(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -250,6 +307,7 @@ export default function Admin() {
         action: f.get("action"),
         reason: f.get("reason"),
         publicNarrative: f.get("publicNarrative"),
+        requestedArtifacts: String(f.get('requestedArtifacts') || '').split('\n').map(s => s.trim()).filter(Boolean),
       });
       await open(detail.id);
       await load();
@@ -261,9 +319,10 @@ export default function Admin() {
   }
   return (
     <div className="admin">
+      {historicalReportText && <HistoricalReport text={historicalReportText} close={() => setHistoricalReport('')} />}
       <header className="admin-header">
         <Logo />
-        <span className="workspace-label">REVIEW WORKSPACE</span>
+        <span className="workspace-label">REVIEW WORKSPACE {user && ` / ${userRole}`}</span>
         <div>
           <a href="/">View website ↗</a>
           {user && (
@@ -271,7 +330,10 @@ export default function Admin() {
               onClick={async () => {
                 try {
                   await post("logout", {});
+                  queueRequest.current++; detailRequest.current++;
                   setUser(null);
+                  setUserRole('viewer'); setLoading(false);
+                  setLightbox(null); setHistoricalReport('');
                   setRows([]);
                   setDetail(null);
                 } catch (e) {
@@ -300,6 +362,7 @@ export default function Admin() {
               key={t}
               className={tab === t && !detail ? "selected" : ""}
               onClick={() => {
+                detailRequest.current++;
                 setTab(t);
                 setDetail(null);
                 setSearch("");
@@ -384,7 +447,7 @@ export default function Admin() {
                     </div>
                   )}
                 </div>
-                <form onSubmit={login}>
+                <form method="post" onSubmit={login}>
                   <label className="field">
                     <span>Admin email</span>
                     <input name="email" type="email" autoComplete="username" required />
@@ -398,7 +461,7 @@ export default function Admin() {
                       required
                     />
                   </label>
-                  <button className="admin-signin" disabled={loading}>
+                  <button className="admin-signin" disabled={!hydrated || loading}>
                     {loading ? "Signing in…" : "Sign in"}
                     <Icon name="arrow" size={17} />
                   </button>
@@ -425,7 +488,7 @@ export default function Admin() {
                 <Empty
                   icon="lock"
                   title="Your case queue is protected"
-                  text="Sign in to view assigned cases and record an accountable human decision."
+                  text="Sign in to view organization cases and record an accountable human decision."
                 />
               </div>
             </>
@@ -517,7 +580,10 @@ export default function Admin() {
                       <h2>Vehicle photographs</h2>
                       <div className="image-gallery">
                         {detail.images.map((im) => (
-                          <button key={im.id} onClick={() => setLightbox(im)}>
+                          <button key={im.id} onClick={async () => {
+                            const src = await apiImageUrl(im.id, true);
+                            if (src) setLightbox({...im, src}); else setError('Original evidence could not be loaded.');
+                          }}>
                             <img src={im.src} alt={im.label} />
                             <span>{im.label}</span>
                           </button>
@@ -542,9 +608,10 @@ export default function Admin() {
                                 </div>
                                 <p>{f.explanation}</p>
                                 <small>
-                                  {Math.round(f.confidence * 100)}% confidence · attributed_to:{" "}
+                                  {Math.round(f.confidence * 100)}% heuristic confidence · attributed_to:{" "}
                                   {f.attributed_to} · {f.id}
                                 </small>
+                                {f.check_limitation && <p>{f.check_limitation}</p>}
                                 {f.evidence ? (
                                   <pre>{JSON.stringify(f.evidence, null, 2)}</pre>
                                 ) : null}
@@ -561,6 +628,7 @@ export default function Admin() {
                     <section className="recommendation-panel">
                       <span>THE AGENT'S ASSESSMENT</span>
                       <h2>{detail.recommendation || "Awaiting analysis"}</h2>
+                      <small>Processing run: {detail.runId || 'Legacy unscoped result'}<br />Policy: {detail.policyVersion || 'Not recorded'}</small>
                       <p>
                         {detail.narrative ||
                           "A human review is required. No analysis narrative has been recorded."}
@@ -580,8 +648,20 @@ export default function Admin() {
                       )}
                       {detail.analysisFallback && <p role="status">Automated adjudication did not complete. This is a fallback for human review, not a model assessment.</p>}
                       {detail.processing && <p role="status">Analysis: {detail.processing.status} · {detail.processing.stage}<br />{detail.processing.detail}</p>}
-                      <button type="button" disabled={loading || ["queued", "running"].includes(detail.processing?.status || "")} onClick={retryAnalysis}>Retry analysis</button>
+                      <button type="button" disabled={userRole==='viewer' || loading || ['queued','running'].includes(detail.processing?.status || '')} onClick={retryAnalysis}>Retry analysis</button>
                       <button type="button" disabled={loading} onClick={() => open(detail.id)}>Refresh case</button>
+                      {detail.limitations?.length > 0 && <details open={detailTab==='Report'}><summary>Check and processing limitations</summary><ul>{detail.limitations.map(item => <li key={item}>{item}</li>)}</ul></details>}
+                      {detail.evidenceRequest && <p>Reviewer requested: {detail.evidenceRequest.artifacts.join('; ')}</p>}
+                      {detailTab === 'Report' && detail.reportHistory?.length > 0 && <label className="field report-history-selector"><span>Report history</span>
+                        <select defaultValue="" onChange={async e => {
+                          if (!e.target.value) return;
+                          try {
+                            const report = await historicalReport(detail.id, e.target.value);
+                            const json = JSON.stringify(report, null, 2);
+                            setHistoricalReport(json);
+                          } catch (err) {setError((err as Error).message);}
+                        }}><option value="">Select a saved report</option>{detail.reportHistory.map(item => <option key={item.snapshot_id} value={item.snapshot_id}>{new Date(item.created_at * 1000).toLocaleString()} - {item.run_id || 'legacy'}</option>)}</select>
+                      </label>}
                       <small>This is a recommendation, not a final decision. Confidence values are heuristic scores, not calibrated probabilities of fraud.</small>
                     </section>
                     <section className="action-panel">
@@ -599,6 +679,7 @@ export default function Admin() {
                           <small>
                             {detail.admin} · {detail.updated_at}
                           </small>
+                          {detail.humanReviewedRun && <span><br />Human reviewed processing run: {detail.humanReviewedRun}</span>}
                         </p>
                       )}
                       <form onSubmit={action}>
@@ -625,6 +706,10 @@ export default function Admin() {
                           />
                           <small>Required for Reject and Request More Evidence.</small>
                         </label>
+                        {humanAction === 'Request More Evidence' && <label className="field">
+                          <span>Specific photographs required (one per line)</span>
+                          <textarea name="requestedArtifacts" required maxLength={3000} rows={3} placeholder="Original rear-left view showing the damaged panel" />
+                        </label>}
                         <label className="field">
                           <span>Public explanation *</span>
                           <textarea name="publicNarrative" required maxLength={1500} rows={3} />
@@ -633,7 +718,7 @@ export default function Admin() {
                             investigation details.
                           </small>
                         </label>
-                        <button className="record-action" disabled={loading}>
+                        <button className="record-action" disabled={loading || userRole==='viewer'}>
                           {loading ? "Recording…" : "Record human decision"}
                         </button>
                       </form>
@@ -687,7 +772,7 @@ export default function Admin() {
                       ["Awaiting review", "Additional evidence requested", "Decided"],
                     ],
                     ["recommendation", "Recommendation", recommendations],
-                    ["garage", "Garage", [...new Set(rows.map((r) => r.garage).filter(Boolean))]],
+                    ["garage", "Garage on this page", [...new Set([...rows.map((r) => r.garage), filters.garage].filter(Boolean))]],
                   ].map(([key, label, opts]) => (
                     <label key={String(key)} className="field">
                       <span>{String(label)}</span>
@@ -706,8 +791,8 @@ export default function Admin() {
                     </label>
                   ))}
                   {[
-                    ["from", "From date", "date"],
-                    ["to", "To date", "date"],
+                    ["from", "Declaration date from (IST)", "date"],
+                    ["to", "Declaration date to (IST)", "date"],
                     ["min", "Minimum amount", "number"],
                     ["max", "Maximum amount", "number"],
                   ].map(([key, label, type]) => (
@@ -766,7 +851,7 @@ export default function Admin() {
                             )}
                           </td>
                           <td>
-                            <button className="case-open" onClick={() => open(r.id)}>
+                            <button className="case-open" aria-label={r.id} title={r.id} onClick={() => open(r.id)}>
                               {r.id.slice(0, 15)}…
                             </button>
                             <small>{r.name}</small>
@@ -890,18 +975,21 @@ export default function Admin() {
 }
 function Garage({ rows }: { rows: Row[] }) {
   const [garage, setGarage] = useState("");
-  const all = rows.filter((r) => r.kind === "claims"),
+  const all = rows.filter((r) => r.kind === "claims" && r.garage && r.garage !== 'UNASSIGNED'),
     selected = all.filter((r) => r.garage === garage),
     band = (r: Row) => r.amount >= 40000 && r.amount < 50000,
     percent = (rs: Row[]) =>
       rs.length ? ((100 * rs.filter(band).length) / rs.length).toFixed(1) + "%" : "No data";
+  useEffect(() => {
+    if (garage && !rows.some(r => r.kind === 'claims' && r.garage === garage)) setGarage('');
+  }, [rows, garage]);
   return (
     <section className="case-panel">
-      <h2>Garage-level claim patterns</h2>
+      <h2>Garage claim patterns on this page</h2>
       <p>
         Threshold Gaming describes a garage's distribution, never an accusation against an
         individual claimant. This view uses a transparent ₹40,000 to ₹49,999 exploratory band; it
-        does not establish misconduct.
+        does not establish misconduct. Values use identified garages in the current queue page.
       </p>
       <label className="field">
         <span>Garage</span>
@@ -916,21 +1004,21 @@ function Garage({ rows }: { rows: Row[] }) {
         <Empty
           icon="car"
           title="Choose a garage"
-          text="Distributions become available as real claims are received."
+          text="Select an identified garage from the current queue page."
         />
       ) : (
         <>
           <div className="metric-grid">
             <article>
-              <span>Garage claims</span>
+              <span>Garage claims on this page</span>
               <strong>{selected.length}</strong>
             </article>
             <article>
-              <span>Garage sub-threshold band</span>
+              <span>Garage band on this page</span>
               <strong>{percent(selected)}</strong>
             </article>
             <article>
-              <span>Population band baseline</span>
+              <span>Named-garage band on this page</span>
               <strong>{percent(all)}</strong>
             </article>
           </div>

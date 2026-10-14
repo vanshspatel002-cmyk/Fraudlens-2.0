@@ -964,3 +964,29 @@
     background: white !important;
   }
 }
+.report-history-dialog {
+  width: min(900px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 2rem;
+  background: white;
+  color: #18232e;
+  border: 1px solid #ccd4dc;
+}
+.report-history-dialog::backdrop { background: #14233399; }
+.report-history-dialog dt { font-weight: 600; }
+.report-history-dialog dd { margin: 0 0 0.8rem; overflow-wrap: anywhere; }
+.report-history-dialog article { border-top: 1px solid #ccd4dc; padding: 0.6rem 0; break-inside: avoid; }
+.report-history-controls { display: flex; gap: 1rem; margin-bottom: 1rem; }
+@media print {
+  .report-history-dialog { position: absolute; inset: 0; width: 100%; max-height: none; overflow: visible; border: 0; }
+  .report-history-controls { display: none; }
+  body:has(.report-history-dialog) .admin-header,
+  body:has(.report-history-dialog) .admin-layout { display: none !important; }
+  .print-report { display: block !important; }
+  .print-report pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .print-report .finding-group, .print-report .case-panel { break-inside: auto; }
+  .print-report .record-action, .print-report form, .print-report button { display: none !important; }
+}
+
+@media print { .report-history-selector { display:none !important; } }

@@ -1,18 +1,28 @@
 import { useState, useEffect, type FormEvent } from "react";
-import { Shell, Icon, post } from "./shared";
+import { Shell, Icon, post, applicantToken, submitAdditionalEvidence } from "./shared";
 type TrackResult = {
   status: string;
+  processingStatus?: string;
+  evidenceRequest?: {request_id: string; artifacts: string[]; status: string};
   publicNarrative?: string;
   outcome?: string;
+  latestAction?: string;
   updatedAt: string;
 };
 export default function Tracker() {
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const [id, setId] = useState(""),
     [result, setResult] = useState<TrackResult | null>(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [identifier, setIdentifier] = useState(''),
+    [receipt, setReceipt] = useState(''),
+    [evidenceFiles, setEvidenceFiles] = useState<File[]>([]),
+    [success, setSuccess] = useState('');
   useEffect(() => {
-    setId(new URLSearchParams(window.location.search).get("case") || "");
+    const caseId = new URLSearchParams(window.location.search).get('case') || '';
+    setId(caseId); setReceipt(applicantToken(caseId));
   }, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -25,6 +35,7 @@ export default function Tracker() {
     setBusy(true);
     const f = new FormData(e.currentTarget);
     const identifier = String(f.get("identifier") || "").trim();
+    setIdentifier(identifier); setSuccess('');
     if (!identifier) {
       setError("Enter the registration or policy number used in the application.");
       setBusy(false);
@@ -32,11 +43,25 @@ export default function Tracker() {
     }
     try {
       setResult((await post("track", { id, identifier })) as TrackResult);
+      setReceipt(old => old || applicantToken(id));
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+  async function addEvidence(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setError(''); setSuccess('');
+    if (!result?.evidenceRequest || !receipt.trim() || !evidenceFiles.length) {
+      setError('Enter the private access receipt and select the requested photographs.'); return;
+    }
+    setBusy(true);
+    try {
+      await submitAdditionalEvidence(id, result.evidenceRequest.request_id, evidenceFiles, receipt.trim());
+      setEvidenceFiles([]); setSuccess('Additional evidence accepted. Original evidence and previous decisions are preserved. Analysis is queued.');
+      setResult((await post('track', {id, identifier})) as TrackResult);
+    } catch (err) { setError((err as Error).message); }
+    finally { setBusy(false); }
   }
   return (
     <Shell>
@@ -44,7 +69,7 @@ export default function Tracker() {
         <Icon name="search" size={34} />
         <h1>Track your case.</h1>
         <p>Your status, clearly explained.</p>
-        <form onSubmit={submit}>
+        <form method="post" onSubmit={submit}>
           <label className="field">
             <span>Case ID</span>
             <input
@@ -64,7 +89,7 @@ export default function Tracker() {
               placeholder="The number used in your application"
             />
           </label>
-          <button className="track-submit" disabled={busy}>
+          <button className="track-submit" disabled={!hydrated || busy}>
             {busy ? "Checking…" : "Check status"}
             <Icon name="arrow" size={18} />
           </button>
@@ -84,16 +109,30 @@ export default function Tracker() {
         {result && (
           <section className="tracker-result" aria-live="polite">
             <span>CASE STATUS</span>
-            <h2>{result.status}</h2>
+            <h2>{result.status.replaceAll('_', ' ')}</h2>
+            {result.processingStatus && <p>Analysis: {result.processingStatus}</p>}
             <p>
               {result.publicNarrative ||
                 "Your case is awaiting review. No final decision has been recorded."}
             </p>
-            {result.outcome && (
+            {result.latestAction && (
               <p>
-                <strong>Final outcome:</strong> {result.outcome}
+                <strong>Latest reviewer action:</strong> {result.latestAction}
               </p>
             )}
+            {result.evidenceRequest && <form onSubmit={addEvidence}>
+              <h3>Requested photographs</h3>
+              <ul>{result.evidenceRequest.artifacts.map(item => <li key={item}>{item}</li>)}</ul>
+              <label className="field"><span>Private evidence access receipt</span>
+                <input aria-label="Private evidence access receipt" value={receipt} onChange={e => setReceipt(e.target.value)} required autoComplete="off" />
+              </label>
+              <label className="field"><span>Additional photographs (JPEG, PNG or WebP; up to 5 MB each)</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" multiple required
+                  onChange={e => setEvidenceFiles(Array.from(e.target.files || []))} />
+              </label>
+              <button disabled={busy} type="submit">{busy ? 'Uploading...' : 'Submit requested evidence'}</button>
+            </form>}
+            {success && <p role="status">{success}</p>}
             <small>Status checked: {new Date(result.updatedAt).toLocaleString()}</small>
           </section>
         )}

@@ -386,6 +386,12 @@ async function request(path: string, options: RequestInit = {}): Promise<ApiReco
         .filter(Boolean)
         .join("; ")
     : "";
+  if (r.status === 401 && path !== '/v1/auth/login' && headers.has('Authorization')) {
+    sessionStorage.removeItem('fraudlens_admin_token');
+    sessionStorage.removeItem('fraudlens_admin_email');
+    imageUrls.forEach(url => URL.revokeObjectURL(url)); imageUrls.clear();
+    window.dispatchEvent(new Event('fraudlens-session-expired'));
+  }
   if (!r.ok)
     throw new Error(
       [stringValue(message || error), detailText].filter(Boolean).join(" ") ||
@@ -402,7 +408,7 @@ const band = (b?: string) =>
         ? "High"
         : "Unrated";
 const recommendation = (r?: string, riskBand?: string) =>
-  riskBand === "desk_review" ? "Desk review" : r === "approve"
+  riskBand === "desk_review" ? "Desk Review" : r === "approve"
     ? "Clear"
     : r === "request_evidence"
       ? "Request Additional Evidence"
@@ -413,15 +419,19 @@ const publicCase = (j: ApiRecord) => ({
   id: stringValue(j.case_id),
   kind: stringValue(j.agent_type) || "claims",
   status: stringValue(j.status),
-  outcome: j.final_admin_action || null,
+  outcome: ['approve','reject'].includes(String(j.final_admin_action)) ? j.final_admin_action : null,
+  latestAction: j.final_admin_action || null,
   publicNarrative: stringValue(j.narrative),
   updatedAt: new Date().toISOString(),
+  processingStatus: stringValue(j.processing_status),
+  evidenceRequest: j.evidence_request,
 });
 function mapFormData(input: FormData) {
   const out = new FormData();
   const claims = input.get("kind") !== "underwriting";
   out.set("agent_type", claims ? "claims" : "underwriting");
   out.set("claim_type", claims ? "motor_claim" : "underwriting_inspection");
+  out.set('declaration_notes', [input.get('condition') ? 'Declared vehicle condition: '+String(input.get('condition')) : '', String(input.get('description') || '')].filter(Boolean).join('\n'));
   out.set("person_name", String(input.get("name") || ""));
   out.set("person_contact", [input.get("email"), input.get("phone")].filter(Boolean).join(" / "));
   out.set("person_address", String(input.get("address") || ""));
@@ -438,7 +448,7 @@ function mapFormData(input: FormData) {
   out.set("policy_type", String(input.get("policyType") || input.get("applicationType") || ""));
   out.set("previous_policy_number", String(input.get("previousPolicy") || ""));
   out.set("policy_ncb_percent", String(input.get("ncb") || ""));
-  out.set("declared_location", String(input.get("location") || input.get("condition") || ""));
+  out.set("declared_location", String(input.get("location") || ""));
   out.set("claim_amount", String(input.get("amount") || ""));
   out.set("garage_id", String(input.get("garage") || ""));
   out.set("settlement_preference", String(input.get("settlement") || ""));
@@ -481,6 +491,7 @@ async function caseDetail(id: string) {
   const adminAction = (report.admin_action as ApiRecord | undefined) || {};
   return {
     ...d,
+    images,
     id: stringValue(d.case_id),
     kind: stringValue(d.agent_type),
     name: stringValue(d.person_name || d.claimant_id),
@@ -497,11 +508,17 @@ async function caseDetail(id: string) {
     updated_at: stringValue(adminAction.timestamp),
     requestedEvidence: (decision.requested_artifacts as string[] | undefined) || [],
     citedFindings: (decision.supporting_finding_ids as string[] | undefined) || [],
-    declaration: d,
+    declaration: (report.declaration as ApiRecord) || {},
+    runId: stringValue(report.run_id),
+    policyVersion: stringValue(report.policy_version),
+    limitations: (report.limitations as string[]) || [],
+    reportHistory: d.report_history || [],
+    version: d.review_revision,
+    evidenceRequest: d.evidence_request,
     findings: findings.map((f) => ({
       id: stringValue(f.finding_id),
       check: stringValue(f.check_id),
-      category: stringValue(f.category),
+      category: stringValue(f.category).replace(/^./,letter => letter.toUpperCase()),
       verdict: stringValue(f.verdict),
       confidence: Number(f.confidence || 0),
       explanation: stringValue(f.explanation),
@@ -523,6 +540,8 @@ async function caseDetail(id: string) {
     })),
     processing: d.processing,
     analysisFallback: !!decision.provider_unavailable,
+    humanReviewedRun: (report.admin_action as ApiRecord | undefined)?.reviewed_run_id
+      ? String((report.admin_action as ApiRecord).reviewed_run_id) : undefined,
     audit: ((d.audit as ApiRecord[]) || []).map((entry) => ({
       ...entry, detail: JSON.stringify(entry.detail),
     })),
@@ -554,7 +573,7 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
     });
     sessionStorage.setItem("fraudlens_admin_email", stringValue(j.user));
     sessionStorage.setItem("fraudlens_admin_token", stringValue(j.token));
-    return { user: j.user };
+    return { user: j.user, role:j.role };
   }
   if (path.startsWith("queue")) {
     const params = new URLSearchParams(path.split("?")[1] || "");
@@ -585,11 +604,16 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
   if (path.startsWith("case?id="))
     return caseDetail(new URLSearchParams(path.slice(path.indexOf("?"))).get("id") || "");
   if (path === "submit" && options?.body instanceof FormData) {
-    const j = await request("/v1/cases", { method: "POST", body: mapFormData(options.body) });
-    return { id: j.case_id, case_id: j.case_id, job_id: j.job_id, status: j.status };
+    const j = await request('/v1/cases', { method: 'POST', body: mapFormData(options.body),
+      headers: {'Idempotency-Key': String(options.body.get('submissionKey') || crypto.randomUUID())} });
+    if (j.applicant_token) sessionStorage.setItem('fraudlens_applicant_' + j.case_id, String(j.applicant_token));
+    if (j.job_id) sessionStorage.setItem('fraudlens_job_' + j.job_id, String(j.case_id));
+    return { id: j.case_id, case_id: j.case_id, job_id: j.job_id, status: j.status, applicant_token: j.applicant_token };
   }
   if (path.startsWith("job?id=")) {
-    return request("/v1/jobs/" + encodeURIComponent(path.slice("job?id=".length)));
+    const jobId = path.slice('job?id='.length);
+    const caseId = sessionStorage.getItem('fraudlens_job_' + jobId) || '';
+    return request('/v1/jobs/' + encodeURIComponent(jobId), {headers: {'X-Applicant-Token': applicantToken(caseId)}});
   }
   if (path.startsWith("track") && options?.body) {
     const b = JSON.parse(String(options.body));
@@ -616,6 +640,8 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
         reason: b.reason,
         admin_id: adminEmail() || "admin",
         public_message: b.publicNarrative || null,
+        requested_artifacts: b.requestedArtifacts || [],
+        expected_revision: b.version,
       }),
     });
   }
@@ -625,16 +651,37 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
   return request("/v1/" + path, options);
 }
 const imageUrls = new Map<string, string>();
-export async function apiImageUrl(id: string) {
-  const cached = imageUrls.get(id);
-  if (cached) return cached;
-  const r = await fetch(API_BASE + "/v1/images/" + encodeURIComponent(id) + "?thumb=1", {
-    headers: authHeaders(),
+export const applicantToken = (id: string) => sessionStorage.getItem('fraudlens_applicant_' + id) || '';
+export async function submitAdditionalEvidence(id: string, requestId: string, files: File[], token: string) {
+  const body = new FormData(); body.set('request_id', requestId);
+  files.forEach(file => body.append('images', file));
+  const result = await request('/v1/cases/' + encodeURIComponent(id) + '/evidence', {
+    method: 'POST', body, headers: {'X-Applicant-Token': token},
   });
-  if (!r.ok) return "";
-  const url = URL.createObjectURL(await r.blob());
-  imageUrls.set(id, url);
-  return url;
+  sessionStorage.setItem('fraudlens_applicant_' + id, token);
+  return result;
+}
+export async function historicalReport(id: string, snapshot: string) {
+  return request('/v1/cases/' + encodeURIComponent(id) + '/report?snapshot_id=' + encodeURIComponent(snapshot));
+}
+const imageRequests = new Map<string,Promise<string>>();
+export async function apiImageUrl(id: string, full = false) {
+  const key = id + (full ? ':full' : ':thumb');
+  const cached = imageUrls.get(key);
+  if (cached) return cached;
+  if (imageRequests.has(key)) return imageRequests.get(key)!;
+  const token = adminToken();
+  if (!token) return '';
+  const pending = (async () => {
+    const r = await fetch(API_BASE + '/v1/images/' + encodeURIComponent(id) + (full ? '' : '?thumb=1'), {headers: authHeaders()});
+    if (!r.ok) return '';
+    const blob = await r.blob();
+    if (adminToken() !== token) return '';
+    const url = URL.createObjectURL(blob); imageUrls.set(key,url); return url;
+  })();
+  imageRequests.set(key,pending);
+  try { return await pending; }
+  finally { if (imageRequests.get(key) === pending) imageRequests.delete(key); }
 }
 export const post = (path: string, body: unknown) =>
   api(path, {

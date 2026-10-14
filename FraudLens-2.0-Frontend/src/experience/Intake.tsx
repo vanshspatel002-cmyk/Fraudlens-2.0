@@ -11,6 +11,7 @@ const angles = [
 type SubmitResult = {
   id: string;
   job_id?: string;
+  applicant_token?: string;
   status?: string;
 };
 type JobResult = {
@@ -68,6 +69,8 @@ function Field({
   );
 }
 export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const claims = kind === "claims",
     config = useConfig();
   const [files, setFiles] = useState<Record<string, File>>({}),
@@ -75,7 +78,8 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [jobStatus, setJobStatus] = useState(""),
-    [result, setResult] = useState<SubmitResult | null>(null);
+    [result, setResult] = useState<SubmitResult | null>(null),
+    [submissionKey] = useState(() => typeof crypto !== 'undefined' ? crypto.randomUUID() : '');
   useEffect(() => {
     const urls = Object.fromEntries(
       Object.entries(files).map(([k, f]) => [k, URL.createObjectURL(f)]),
@@ -125,14 +129,14 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
       const job = (await api("job?id=" + encodeURIComponent(jobId))) as JobResult;
       const pct = Math.round(Number(job.progress || 0) * 100);
       setJobStatus(
-        job.status === "done"
+        ['done', 'completed'].includes(job.status || '')
           ? job.provider_unavailable ? "Automated analysis could not complete. A reviewer will assess your evidence." : "Analysis complete. Awaiting a human decision."
           : job.status === "failed"
             ? job.detail || "The background analysis failed."
             : `${job.stage || job.status || "queued"}${pct ? ` - ${pct}%` : ""}`,
       );
-      if (job.status === "done") return;
-      if (job.status === "failed") return;
+      if (['done', 'completed'].includes(job.status || '')) return;
+      if (['failed','interrupted'].includes(job.status || '')) return;
       await new Promise((resolve) => setTimeout(resolve, delays[i]));
     }
   }
@@ -160,6 +164,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
       return;
     }
     const data = new FormData(e.currentTarget);
+    data.set('submissionKey', submissionKey);
     data.set("kind", kind);
     data.set(
       "registration",
@@ -219,6 +224,10 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
               <p>Save this case ID:</p>
               <code>{result.id}</code>
               <p role="status">{jobStatus}</p>
+              <details><summary>Save your private evidence access receipt</summary>
+                <p>This receipt lets you upload requested photographs for 30 days. Keep it private. It is saved in this tab's session.</p>
+                <textarea aria-label="Applicant access receipt" readOnly value={result.applicant_token || ''} rows={3} />
+              </details>
               {error && <p role="alert">Your case is saved. Status could not be refreshed: {error}</p>}
               <p>
                 Your vehicle photographs have been accepted. The evidence will be reviewed and an
@@ -228,7 +237,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
               <a href={"/track?case=" + encodeURIComponent(result.id)}>Track this case →</a>
             </section>
           ) : (
-            <form className="intake-form" onSubmit={submit}>
+            <form className="intake-form" method="post" onSubmit={submit}>
               {config && !config.intake && (
                 <div className="notice">
                   Applications are not open yet. You can review the form; no case will be accepted
@@ -341,7 +350,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
               <fieldset>
                 <legend>05 / Vehicle photographs</legend>
                 <p className="help">
-                  Every image must be validated as a genuine vehicle photograph before acceptance.
+                  Images are decoded and indexed. A local classifier requires at least one likely vehicle view; it cannot establish authenticity.
                   Missing EXIF metadata is neutral.
                 </p>
                 <div className="upload-grid">
@@ -390,7 +399,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
                   {jobStatus}
                 </p>
               )}
-              <button className="submit-case" type="submit" disabled={busy}>
+              <button className="submit-case" type="submit" disabled={!hydrated || busy}>
                 {busy
                   ? "Validating and submitting…"
                   : "Submit " + (claims ? "claim" : "application")}

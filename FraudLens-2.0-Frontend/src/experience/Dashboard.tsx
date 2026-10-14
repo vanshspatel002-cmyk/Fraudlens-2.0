@@ -20,7 +20,7 @@ export default function Dashboard() {
     [error, setError] = useState(""),
     [query, setQuery] = useState("");
   const current = cases.find((c) => c.id === selected);
-  const attention = cases.filter((c) => c.status === "Additional evidence requested");
+  const attention = cases.filter((c) => c.status === 'awaiting_evidence');
   const visible = cases.filter(
     (c) =>
       (tab !== "My claims" || c.kind === "claims") &&
@@ -83,7 +83,7 @@ export default function Dashboard() {
                 <th>Case ID</th>
                 <th>Application</th>
                 <th>Status</th>
-                <th>Last updated</th>
+                <th>Status checked</th>
                 <th />
               </tr>
             </thead>
@@ -106,12 +106,12 @@ export default function Dashboard() {
                         "ud-status " +
                         (c.outcome
                           ? "complete"
-                          : c.status === "Additional evidence requested"
+                          : c.status === 'awaiting_evidence'
                             ? "attention"
                             : "")
                       }
                     >
-                      {c.status}
+                      {c.status.replaceAll('_',' ')}
                     </span>
                   </td>
                   <td>{date(c.updatedAt)}</td>
@@ -226,7 +226,7 @@ export default function Dashboard() {
                   </p>
                 </div>
               </div>
-              <form onSubmit={link}>
+              <form method="post" onSubmit={link}>
                 <label className="field">
                   <span>Case ID</span>
                   <input
@@ -275,10 +275,10 @@ export default function Dashboard() {
                       : "Agent Sentinel · Underwriting"}
                   </span>
                   <h2>{current.id}</h2>
-                  <p>Last updated {date(current.updatedAt)}</p>
+                  <p>Status checked {date(current.updatedAt)}</p>
                 </div>
                 <span className={"ud-status " + (current.outcome ? "complete" : "")}>
-                  {current.status}
+                  {current.status.replaceAll('_',' ')}
                 </span>
               </section>
               <div className="ud-detail-grid">
@@ -304,12 +304,12 @@ export default function Dashboard() {
                       <i>{current.outcome ? <Icon name="check" size={15} /> : "2"}</i>
                       <div>
                         <h3>
-                          {current.status === "Additional evidence requested"
+                          {current.status === 'awaiting_evidence'
                             ? "More evidence requested"
                             : "Human review"}
                         </h3>
                         <p>
-                          {current.status === "Additional evidence requested"
+                          {current.status === 'awaiting_evidence'
                             ? "Read the reviewer’s update below for the next step."
                             : current.outcome
                               ? "A human reviewer has recorded a decision."
@@ -335,7 +335,7 @@ export default function Dashboard() {
                 <section className="ud-panel">
                   <span className="ud-kicker">LATEST PUBLIC UPDATE</span>
                   <h2>
-                    {current.status === "Additional evidence requested"
+                    {current.status === 'awaiting_evidence'
                       ? "Your next step"
                       : "A note on your case"}
                   </h2>
@@ -343,7 +343,7 @@ export default function Dashboard() {
                     {current.publicNarrative ||
                       "No public explanation has been recorded yet. Your case status is shown above."}
                   </p>
-                  {current.status === "Additional evidence requested" && (
+                  {current.status === 'awaiting_evidence' && (
                     <p className="ud-hint">
                       Use your insurer’s established submission channel to provide the requested
                       evidence, quoting this case ID. This dashboard does not accept additional
@@ -432,14 +432,14 @@ export default function Dashboard() {
                   .map((c) => (
                     <article className="ud-update" key={c.id}>
                       <Icon
-                        name={c.status === "Additional evidence requested" ? "file" : "clock"}
+                        name={c.status === 'awaiting_evidence' ? "file" : "clock"}
                         size={20}
                       />
                       <div>
                         <span className={"ud-tag " + c.kind}>
                           {c.kind === "claims" ? "Claims" : "Underwriting"}
                         </span>
-                        <h3>{c.status}</h3>
+                        <h3>{c.status.replaceAll('_',' ')}</h3>
                         <p>{c.publicNarrative || "No public explanation has been recorded yet."}</p>
                         <small>
                           {c.id} · {date(c.updatedAt)}
@@ -496,11 +496,11 @@ export default function Dashboard() {
                         "clock",
                         "In review",
                         cases.filter(
-                          (c) => !c.outcome && c.status !== "Additional evidence requested",
+                          (c) => !c.outcome && c.status !== 'awaiting_evidence',
                         ).length,
                         "Awaiting a decision",
                       ],
-                      ["eye", "Action needed", attention.length, "Additional evidence requested"],
+                      ["eye", "Action needed", attention.length, 'awaiting_evidence'],
                       [
                         "check",
                         "Decided",
@@ -529,7 +529,7 @@ export default function Dashboard() {
                           <p>
                             {kind === "claims"
                               ? "Let Agent Recon help review the evidence."
-                              : "Build a reliable baseline with Agent Sentinel."}
+                              : "Document the vehicle condition with Agent Sentinel."}
                           </p>
                           <span className="ud-agent-cta">
                             {kind === "claims" ? "Apply for Claims" : "Apply for Underwriting"}{" "}

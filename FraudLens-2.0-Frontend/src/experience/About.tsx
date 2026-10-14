@@ -114,9 +114,9 @@ export default function About() {
       <section className="india wrap">
         <h2>Built around the Indian insurance context.</h2>
         <p>
-          The research focuses on photo-led cases, including the ₹50,000 mandatory-surveyor
-          threshold scenario and garage-level Threshold Gaming. It is designed around the
-          documentation and auditability goals of the Insurance Fraud Monitoring Framework.
+          The research focuses on photo-led cases, including a preserved ₹50,000 billing
+          benchmark and garage-level Threshold Gaming. It explores documentation and
+          auditability needs; regulatory applicability remains unverified.
         </p>
         <p>
           This is a research context, not a claim of regulatory certification. Applicable survey

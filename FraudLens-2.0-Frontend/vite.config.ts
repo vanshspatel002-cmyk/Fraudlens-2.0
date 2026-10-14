@@ -6,7 +6,7 @@ import svgr from "vite-plugin-svgr";
 import { createRunnableDevEnvironment, defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   preview: {
     allowedHosts: true,
   },
@@ -39,9 +39,9 @@ export default defineConfig({
       server: { entry: "server" },
       vite: { installDevServerMiddleware: true },
     }),
-    nitro(),
+    ...(command === 'build' ? [nitro()] : []),
     react(),
     tailwindcss(),
     tsconfigPaths(),
   ],
-});
+}));

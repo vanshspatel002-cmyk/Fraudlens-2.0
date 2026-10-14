@@ -36,7 +36,7 @@ export default function AdminOverview({
       })
       .catch(() => setCountState("error"));
   }, [rows]);
-  const pending = rows.filter((r) => r.status === "open");
+  const pending = rows.filter(r => ['open','evidence_received'].includes(r.status));
   const clear = rows.filter((r) => r.recommendation === "Clear").length;
   const days = Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
