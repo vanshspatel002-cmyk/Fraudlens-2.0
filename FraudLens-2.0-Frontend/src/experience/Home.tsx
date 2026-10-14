@@ -194,8 +194,8 @@ export default function Home() {
           </div>
         </div>
         <small>
-          Research prototype for academic evaluation. Performance metrics will be published after
-          measurement.
+          Automated findings support human review. Detection depends on evidence quality and
+          available checks; inconclusive results require further review.
         </small>
       </section>
       <section className="finding-section wrap">

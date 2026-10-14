@@ -185,6 +185,7 @@ def build_fixture() -> tuple[Path, TestClient]:
     conn.close()
 
     api.DB_PATH = str(db_path)
+    os.environ["ADMIN_EMAIL"] = "reviewer@example.com"
     os.environ["ADMIN_PASSWORD_SHA256"] = hashlib.sha256(b"test-admin").hexdigest()
     api._ARCHETYPES = {"case-claims-1": "EXTERNAL_SOURCING", "case-uw-1": "CLEAN"}
     api._JOBS.clear()
@@ -492,7 +493,7 @@ def test_action_updates_status_and_writes_an_audit_event():
     finally:
         conn.close()
     assert events and events[-1].details["action"] == "request_more_evidence", events
-    assert events[-1].details["admin_id"] == "adjuster-7"
+    assert events[-1].details["admin_id"] == "reviewer@example.com"
     assert actions and actions[-1].action.value == "request_more_evidence"
     print("  admin action updates status and leaves an audit trail")
 
@@ -536,7 +537,7 @@ def test_report_includes_declaration_findings_agent_and_admin_action():
     assert body["agent_recommendation"]["recommendation"] == "escalate", body["agent_recommendation"]
     assert body["agent_narrative"] == "Escalated: image sourced externally."
     assert body["admin_action"]["action"] == "approve", body["admin_action"]
-    assert body["admin_action"]["admin_id"] == "admin-2"
+    assert body["admin_action"]["admin_id"] == "reviewer@example.com"
     print("  report carries declaration, grouped findings, agent narrative, admin action")
 
 
@@ -550,7 +551,7 @@ def test_public_track_is_narrow_and_verified():
     body = r.json()
     assert set(body) == {"case_id", "status", "final_admin_action", "narrative"}, body
     assert body["final_admin_action"] == "approve", body
-    assert body["narrative"] == "Escalated: image sourced externally."
+    assert body["narrative"] == "Your application has been approved by a reviewer."
     assert "findings" not in body and "trace" not in body and "evidence" not in body
 
     by_policy = client().get("/v1/track", params={

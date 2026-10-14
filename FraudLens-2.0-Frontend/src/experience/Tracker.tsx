@@ -94,7 +94,7 @@ export default function Tracker() {
                 <strong>Final outcome:</strong> {result.outcome}
               </p>
             )}
-            <small>Last updated: {new Date(result.updatedAt).toLocaleString()}</small>
+            <small>Status checked: {new Date(result.updatedAt).toLocaleString()}</small>
           </section>
         )}
         <p>

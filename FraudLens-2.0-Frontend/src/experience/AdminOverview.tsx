@@ -36,7 +36,7 @@ export default function AdminOverview({
       })
       .catch(() => setCountState("error"));
   }, [rows]);
-  const pending = rows.filter((r) => r.status === "Awaiting review");
+  const pending = rows.filter((r) => r.status === "open");
   const clear = rows.filter((r) => r.recommendation === "Clear").length;
   const days = Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
@@ -74,19 +74,19 @@ export default function AdminOverview({
       </section>
       <div className="ops-metrics">
         {[
-          ["file", "Total cases", String(rows.length), "Across both agents"],
-          ["clock", "Awaiting review", String(pending.length), "Ready for a human decision"],
+          ["file", "Cases on this page", String(rows.length), "Use the queue to browse all cases"],
+          ["clock", "Awaiting review", String(pending.length), "Open cases on this page"],
           [
             "check",
             "Clear recommendations",
             rows.length ? ((clear / rows.length) * 100).toFixed(1) + "%" : "—",
-            "Straight-Through Processing*",
+            "On this page; human decision required",
           ],
           [
             "shield",
             "Escalated to SIU",
             String(rows.filter((r) => r.recommendation === "Escalate to SIU").length),
-            "Special Investigation Unit",
+            "On this page",
           ],
         ].map(([icon, label, value, caption]) => (
           <article key={label}>
@@ -194,7 +194,7 @@ export default function AdminOverview({
               </span>
               <h3>Agent {kind === "claims" ? "Recon" : "Sentinel"}</h3>
               <p>
-                {rows.filter((r) => r.kind === kind && r.status === "Awaiting review").length}{" "}
+                {rows.filter((r) => r.kind === kind && r.status === "open").length}{" "}
                 awaiting review · {rows.filter((r) => r.kind === kind).length} total cases
               </p>
             </div>

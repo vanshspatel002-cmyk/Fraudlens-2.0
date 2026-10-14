@@ -1,0 +1,57 @@
+"""Check a local pilot without printing secrets. --live spends a real model call."""
+import argparse
+import importlib.util
+import os
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src import api, db
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--live', action='store_true', help='Make one real Gemini/provider chat probe; retries may consume additional quota')
+    parser.add_argument('--warm-models', action='store_true', help='Load/download the CLIP model before presenting')
+    args = parser.parse_args()
+    errors = []
+    for name in ['fastapi', 'multipart', 'PIL', 'imagehash', 'torch', 'open_clip', 'google.genai']:
+        try:
+            found = importlib.util.find_spec(name) is not None
+        except ModuleNotFoundError:
+            found = False
+        print(f'{name}: {"installed" if found else "MISSING"}')
+        if not found: errors.append(name)
+    for name in ['ADMIN_EMAIL', 'ADMIN_PASSWORD_SHA256', 'GEMINI_API_KEY']:
+        configured = bool(os.environ.get(name))
+        print(f'{name}: {"configured" if configured else "MISSING"}')
+        if not configured: errors.append(name)
+    Path(api.DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    conn = db.connect(api.DB_PATH)
+    try:
+        db.init_db(conn)
+        print('Database: ready')
+        print('Existing cases:', conn.execute('SELECT COUNT(*) FROM cases').fetchone()[0])
+    finally: conn.close()
+    if args.warm_models:
+        try:
+            from src.ingest import _default_embedder
+            _default_embedder._ensure_loaded()
+            print('CLIP: loaded')
+        except Exception as exc:
+            print('CLIP load failed:', type(exc).__name__)
+            errors.append('CLIP')
+    if args.live:
+        try:
+            from src.llm import get_provider
+            result = get_provider().chat([{'role': 'user', 'content': 'Reply with ready.'}])
+            if not result.text.strip(): raise ValueError('Empty provider reply')
+            print('Live model: response received (not a vision or accuracy test)')
+        except Exception as exc:
+            print('Live model failed:', type(exc).__name__)
+            errors.append('live model')
+    print('BLOCKED: resolve missing items before rehearsal.' if errors else 'Preflight passed. Run the two-tab rehearsal next.')
+    return 1 if errors else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

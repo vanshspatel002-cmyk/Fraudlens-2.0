@@ -18,6 +18,7 @@ type JobResult = {
   progress?: number;
   stage?: string;
   detail?: string;
+  provider_unavailable?: boolean;
 };
 const registrationPattern = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
 const maxUploadBytes = 5 * 1024 * 1024;
@@ -125,13 +126,13 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
       const pct = Math.round(Number(job.progress || 0) * 100);
       setJobStatus(
         job.status === "done"
-          ? "Analysis queued successfully."
+          ? job.provider_unavailable ? "Automated analysis could not complete. A reviewer will assess your evidence." : "Analysis complete. Awaiting a human decision."
           : job.status === "failed"
             ? job.detail || "The background analysis failed."
             : `${job.stage || job.status || "queued"}${pct ? ` - ${pct}%` : ""}`,
       );
       if (job.status === "done") return;
-      if (job.status === "failed") throw new Error(job.detail || "The background analysis failed.");
+      if (job.status === "failed") return;
       await new Promise((resolve) => setTimeout(resolve, delays[i]));
     }
   }
@@ -171,6 +172,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
     try {
       setJobStatus("Uploading and validating vehicle photographs...");
       const submitted = (await api("submit", { method: "POST", body: data })) as SubmitResult;
+      setResult(submitted);
       setJobStatus("Case accepted. Waiting for background analysis...");
       if (submitted.job_id) await waitForJob(submitted.job_id);
       setResult(submitted);
@@ -216,6 +218,8 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
               <h2>Your case has been received.</h2>
               <p>Save this case ID:</p>
               <code>{result.id}</code>
+              <p role="status">{jobStatus}</p>
+              {error && <p role="alert">Your case is saved. Status could not be refreshed: {error}</p>}
               <p>
                 Your vehicle photographs have been accepted. The evidence will be reviewed and an
                 adjuster will record the final decision. A request for additional photographs will

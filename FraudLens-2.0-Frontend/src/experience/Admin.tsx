@@ -85,6 +85,8 @@ type CaseDetail = Row & {
   declaration: Record<string, unknown>;
   requestedEvidence: string[];
   citedFindings: string[];
+  processing?: { status?: string; stage?: string; detail?: string };
+  analysisFallback?: boolean;
   narrative?: string;
   outcome?: string;
   reason?: string;
@@ -121,13 +123,16 @@ export default function Admin() {
       .catch(() => undefined);
   }, []);
   useEffect(() => {
-    if (user) load();
+    if (!user) return;
+    load();
+    const timer = window.setInterval(() => { if (!document.hidden) load(false); }, 10000);
+    return () => window.clearInterval(timer);
   }, [user, page, search, filters, sort]);
   useEffect(() => {
     setPage(1);
   }, [search, filters, sort]);
-  async function load() {
-    setLoading(true);
+  async function load(showLoading = true) {
+    if (showLoading) setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), page_size: "10" });
       if (search) params.set("search", search);
@@ -204,12 +209,22 @@ export default function Admin() {
       setLoading(false);
     }
   }
+  async function retryAnalysis() {
+    if (!detail) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api("reprocess?id=" + detail.id);
+      await open(detail.id);
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }
   const filtered = rows;
   const metrics = [
-    ["Total cases", rows.length],
-    ["Awaiting review", rows.filter((r) => r.status === "Awaiting review").length],
+    ["Matching cases", total],
+    ["Awaiting review", rows.filter((r) => r.status === "open").length],
     [
-      "Straight-Through Processing",
+      "Clear recommendations on this page",
       rows.length
         ? ((100 * rows.filter((r) => r.recommendation === "Clear").length) / rows.length).toFixed(
             1,
@@ -563,7 +578,11 @@ export default function Admin() {
                       {detail.citedFindings?.length > 0 && (
                         <p>Cited findings: {detail.citedFindings.join(", ")}</p>
                       )}
-                      <small>This is a recommendation, not a final decision.</small>
+                      {detail.analysisFallback && <p role="status">Automated adjudication did not complete. This is a fallback for human review, not a model assessment.</p>}
+                      {detail.processing && <p role="status">Analysis: {detail.processing.status} · {detail.processing.stage}<br />{detail.processing.detail}</p>}
+                      <button type="button" disabled={loading || ["queued", "running"].includes(detail.processing?.status || "")} onClick={retryAnalysis}>Retry analysis</button>
+                      <button type="button" disabled={loading} onClick={() => open(detail.id)}>Refresh case</button>
+                      <small>This is a recommendation, not a final decision. Confidence values are heuristic scores, not calibrated probabilities of fraud.</small>
                     </section>
                     <section className="action-panel">
                       <span>YOUR DECISION</span>

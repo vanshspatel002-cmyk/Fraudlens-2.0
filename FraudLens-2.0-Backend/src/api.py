@@ -38,6 +38,8 @@ import logging
 import mimetypes
 import os
 import shutil
+import secrets
+from contextlib import asynccontextmanager
 import sqlite3
 import sys
 import tempfile
@@ -57,7 +59,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from src import db
+from src import db, runtime_store
 from src.agent.policy import CLAIMS_POLICY, UNDERWRITING_POLICY
 from src.models import AdminAction, AdminActionRecord, AuditEvent, Case, CheckCategory, Recommendation, RiskBand
 
@@ -99,7 +101,23 @@ access_log = logging.getLogger("fraudlens.access")
 # structural fact the whole threshold-gaming archetype turns on.
 SURVEY_THRESHOLD_INR = 50_000.0
 
+@asynccontextmanager
+async def lifespan(_app):
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    conn = db.connect(DB_PATH)
+    try:
+        db.init_db(conn)
+        runtime_store.init(conn)
+        # A single API process owns BackgroundTasks. Never leave interrupted
+        # work looking live after a restart; reviewers can explicitly retry it.
+        runtime_store.interrupt_jobs(conn)
+    finally:
+        conn.close()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="FraudLens API",
     version="2.1",
     description=(
@@ -138,6 +156,8 @@ def _client_ip(request: Request) -> str:
 
 
 def _rate_limit_key(request: Request) -> tuple[Optional[str], int]:
+    if request.method == "POST" and request.url.path == "/v1/auth/login":
+        return "login", 5
     if request.method == "POST" and request.url.path == "/v1/cases":
         return "submit", RATE_LIMIT_SUBMIT_MAX
     if request.method == "GET" and request.url.path == "/v1/track":
@@ -299,12 +319,63 @@ def require_admin(
         request.state.admin_actor = "service"
         return "service"
 
+    with runtime_store.connection(DB_PATH) as conn:
+        actor = runtime_store.session_actor(conn, credential, expected_hash)
+    if actor:
+        request.state.admin_actor = actor
+        return actor
+
     supplied_hash = hashlib.sha256(credential.encode("utf-8")).hexdigest()
     if expected_hash and hmac.compare_digest(supplied_hash, expected_hash):
         actor = os.environ.get("ADMIN_EMAIL", "admin")
         request.state.admin_actor = actor
         return actor
     raise ApiError(401, "UNAUTHORISED", "Admin credentials are invalid.")
+
+class LoginIn(BaseModel):
+    email: str = Field(min_length=1, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class SessionOut(BaseModel):
+    user: str
+    token: Optional[str] = None
+    expires_at: Optional[float] = None
+
+
+class LogoutOut(BaseModel):
+    ok: bool
+
+
+@app.post("/v1/auth/login", response_model=SessionOut, tags=["auth"])
+def login(payload: LoginIn) -> SessionOut:
+    actor = os.environ.get("ADMIN_EMAIL", "").strip()
+    expected = os.environ.get("ADMIN_PASSWORD_SHA256", "").strip().lower()
+    if not actor or not expected:
+        raise ApiError(503, "ADMIN_AUTH_NOT_CONFIGURED", "Admin access has not been configured.")
+    supplied = hashlib.sha256(payload.password.encode()).hexdigest()
+    if not (hmac.compare_digest(payload.email.strip().lower(), actor.lower())
+            and hmac.compare_digest(supplied, expected)):
+        raise ApiError(401, "UNAUTHORISED", "Email or password is incorrect.")
+    token = secrets.token_urlsafe(48)
+    expires = time.time() + 8 * 3600
+    with runtime_store.connection(DB_PATH) as conn:
+        runtime_store.create_session(conn, token, actor, expected, expires)
+    return SessionOut(user=actor, token=token, expires_at=expires)
+
+
+@app.get("/v1/auth/session", response_model=SessionOut, tags=["auth"])
+def session(_admin: str = Depends(require_admin)) -> SessionOut:
+    return SessionOut(user=_admin)
+
+
+@app.post("/v1/auth/logout", response_model=LogoutOut, tags=["auth"])
+def logout(authorization: Optional[str] = Header(default=None)) -> LogoutOut:
+    token = (authorization or "").removeprefix("Bearer ")
+    with runtime_store.connection(DB_PATH) as conn:
+        runtime_store.delete_session(conn, token)
+    return LogoutOut(ok=True)
+
 
 def archetypes() -> dict[str, str]:
     global _ARCHETYPES
@@ -369,6 +440,7 @@ def concerns_by_check(conn: sqlite3.Connection) -> dict[str, int]:
 def get_conn() -> Iterator[sqlite3.Connection]:
     conn = db.connect(DB_PATH)
     db.init_db(conn)
+    runtime_store.init(conn)
     try:
         yield conn
     finally:
@@ -448,8 +520,7 @@ class DecisionOut(BaseModel):
     latency_ms: int = 0
     provider_unavailable: bool = Field(
         default=False,
-        description="True when no model call completed, so this band is the documented "
-                    "fallback rather than the agent's judgement.")
+        description="True when adjudication did not converge, including provider or parsing failures.")
     created_at: Optional[datetime] = None
 
 
@@ -519,6 +590,8 @@ class CaseDetail(CaseSummary):
         description="Concerns by whose conduct they describe, so a screen can say "
                     "'2 concerns about this garage, 0 about this claimant'.")
     total_concerns: int = 0
+    audit: list[dict[str, Any]] = Field(default_factory=list)
+    processing: Optional[dict[str, Any]] = None
 
 
 class CaseListOut(BaseModel):
@@ -698,6 +771,7 @@ class HealthOut(BaseModel):
 
 
 class ActionIn(BaseModel):
+    public_message: Optional[str] = Field(default=None, max_length=3000)
     action: AdminAction
     reason: Optional[str] = None
     admin_id: str = "admin"
@@ -801,9 +875,15 @@ def _finding_out(f: Any, case: Optional[Case], concerns: dict[str, int]) -> Find
     )
 
 
-def _decision_out(d: Any) -> DecisionOut:
+def _decision_out(d: Any, conn: Optional[sqlite3.Connection] = None) -> DecisionOut:
     llm_calls = getattr(d, "llm_calls_count", 0) or 0
     policy = str(getattr(d, "policy_version", "") or "")
+    fallback = llm_calls == 0 and policy.startswith("agent")
+    if conn is not None:
+        for event in reversed(db.get_audit_events_for_case(conn, d.case_id)):
+            if event.event_type == "case_adjudicated" and event.details.get("policy_version") == policy:
+                fallback = event.details.get("converged") is False
+                break
     return DecisionOut(
         decision_id=d.decision_id, case_id=d.case_id,
         recommendation=d.recommendation.value if hasattr(d.recommendation, "value")
@@ -818,7 +898,7 @@ def _decision_out(d: Any) -> DecisionOut:
         iterations_count=getattr(d, "iterations_count", 0) or 0,
         llm_calls_count=llm_calls,
         latency_ms=getattr(d, "latency_ms", 0) or 0,
-        provider_unavailable=(llm_calls == 0 and policy.startswith("agent")),
+        provider_unavailable=fallback,
         created_at=getattr(d, "created_at", None),
     )
 
@@ -1056,11 +1136,16 @@ def get_case_detail(case_id: str,
         **base.model_dump(),
         latitude=case.latitude, longitude=case.longitude,
         images=images, finding_groups=groups, findings_by_category=grouped,
-        decision=_decision_out(best) if best else None,
-        decisions=[_decision_out(d) for d in decisions],
+        decision=_decision_out(best, conn) if best else None,
+        decisions=[_decision_out(d, conn) for d in decisions],
         concern_counts_by_category={g.category: g.concern_count for g in groups},
         attributed_counts=dict(attributed),
         total_concerns=sum(attributed.values()),
+        audit=[{"created_at": e.created_at, "event": e.event_type,
+                "actor": e.details.get("admin_id", "system"), "detail": e.details}
+               for e in db.get_audit_events_for_case(conn, case_id)
+               if e.event_type == "admin_action"],
+        processing=runtime_store.latest_job(conn, case_id),
     )
 
 
@@ -1123,7 +1208,7 @@ def get_case_report(case_id: str,
         for category, findings in grouped.items()
     ]
     best = _best_decision(db.get_decisions_for_case(conn, case_id))
-    decision = _decision_out(best) if best else None
+    decision = _decision_out(best, conn) if best else None
     return CaseReportOut(
         case_id=case_id,
         declaration=_report_declaration(case),
@@ -1158,9 +1243,9 @@ def get_trace(case_id: str,
     converged = None
     excluded = 0
 
-    for event in db.get_audit_events_for_case(conn, case_id):
-        if event.event_type != "case_adjudicated":
-            continue
+    events = [event for event in db.get_audit_events_for_case(conn, case_id)
+              if event.event_type == "case_adjudicated"]
+    for event in events[-1:]:
         details = event.details or {}
         policy_version = details.get("policy_version", policy_version)
         converged = details.get("converged", converged)
@@ -1212,13 +1297,24 @@ def track_case(
     if not (reg_ok or policy_ok):
         raise ApiError(404, "CASE_NOT_FOUND", "No matching case was found.")
 
-    best = _best_decision(db.get_decisions_for_case(conn, case_id))
     admin_action = db.get_latest_admin_action(conn, case_id)
+    narrative = "Your case has been received and is awaiting review."
+    if admin_action:
+        narrative = {
+            "approve": "Your application has been approved by a reviewer.",
+            "reject": "A reviewer has declined your application. Contact the review team for details.",
+            "request_more_evidence": "The reviewer needs additional evidence. Please contact the review team.",
+        }[admin_action.action.value]
+        events = [e for e in db.get_audit_events_for_case(conn, case_id) if e.event_type == "admin_action"]
+        if events:
+            public_message = events[-1].details.get("public_message")
+            if public_message:
+                narrative = public_message
     return TrackOut(
         case_id=case_id,
         status=case.status,
         final_admin_action=admin_action.action.value if admin_action else None,
-        narrative=best.summary if best else None,
+        narrative=narrative,
     )
 
 
@@ -1424,6 +1520,22 @@ def get_garage(garage_id: str,
         linked_case_ids=case_ids[:200], concern_count=concern_count)
 
 
+class FindingCount(BaseModel):
+    name: str
+    verdict: str
+    count: int
+
+
+class FindingCountsOut(BaseModel):
+    counts: list[FindingCount]
+
+
+@app.get("/v1/finding-counts", response_model=FindingCountsOut, tags=["stats"])
+def finding_counts(_admin: str = Depends(require_admin), conn: sqlite3.Connection = Depends(get_conn)):
+    return FindingCountsOut(counts=[FindingCount(name=r[0], verdict=r[1], count=r[2])
+        for r in conn.execute("SELECT check_id, verdict, COUNT(*) FROM findings GROUP BY check_id, verdict")])
+
+
 @app.get("/v1/stats", response_model=StatsOut, tags=["dashboard"])
 def get_stats(_admin: str = Depends(require_admin),
               conn: sqlite3.Connection = Depends(get_conn)) -> StatsOut:
@@ -1433,8 +1545,10 @@ def get_stats(_admin: str = Depends(require_admin),
         return {str(k): int(v) for k, v in conn.execute(sql) if k is not None}
 
     total_cases = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
-    by_band = counts("SELECT risk_band, COUNT(DISTINCT case_id) FROM agent_decisions "
-                     "GROUP BY risk_band")
+    latest_decisions = """SELECT d.* FROM agent_decisions d WHERE d.rowid = (
+        SELECT latest.rowid FROM agent_decisions latest WHERE latest.case_id = d.case_id
+        ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1)"""
+    by_band = counts(f"SELECT risk_band, COUNT(*) FROM ({latest_decisions}) GROUP BY risk_band")
     decided = conn.execute("SELECT COUNT(DISTINCT case_id) FROM agent_decisions").fetchone()[0]
     concerns = concerns_by_check(conn)
 
@@ -1472,8 +1586,7 @@ def get_stats(_admin: str = Depends(require_admin),
         by_agent_type=counts("SELECT agent_type, COUNT(*) FROM cases GROUP BY agent_type"),
         by_status=counts("SELECT status, COUNT(*) FROM cases GROUP BY status"),
         by_risk_band=by_band,
-        by_recommendation=counts("SELECT recommendation, COUNT(DISTINCT case_id) "
-                                 "FROM agent_decisions GROUP BY recommendation"),
+        by_recommendation=counts(f"SELECT recommendation, COUNT(*) FROM ({latest_decisions}) GROUP BY recommendation"),
         decided_cases=decided, undecided_cases=max(0, total_cases - decided),
         total_findings=conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0],
         concern_findings=sum(concerns.values()),
@@ -1563,6 +1676,20 @@ def _provider_health(provider_configured: bool) -> tuple[Optional[bool], str, Op
     return reachable, status, checked_at
 
 
+class ReadyOut(BaseModel):
+    status: str
+
+
+@app.get("/ready", response_model=ReadyOut, tags=["config"])
+def ready() -> ReadyOut:
+    try:
+        with runtime_store.connection(DB_PATH) as conn:
+            conn.execute("SELECT 1 FROM cases LIMIT 1")
+    except sqlite3.Error as exc:
+        raise ApiError(503, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
+    return ReadyOut(status="ok")
+
+
 @app.get("/health", response_model=HealthOut, tags=["config"])
 @app.get("/v1/health", response_model=HealthOut, tags=["config"])
 def health() -> HealthOut:
@@ -1618,7 +1745,11 @@ def health() -> HealthOut:
 # ---------------------------------------------------------------------------
 
 def _set_job(job_id: str, **fields: Any) -> None:
-    _JOBS[job_id] = {**_JOBS.get(job_id, {"job_id": job_id}), **fields}
+    with runtime_store.connection(DB_PATH) as conn:
+        job = runtime_store.get_job(conn, job_id) or {"job_id": job_id}
+        job.update(fields)
+        runtime_store.save_job(conn, job)
+    _JOBS[job_id] = job
 
 
 def _run_pipeline(job_id: str, case_id: str) -> None:
@@ -1635,18 +1766,42 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
         from src.orchestrator import process_case
         conn = db.connect(DB_PATH)
         try:
-            decision = process_case(conn, case_id)
-            unavailable = (getattr(decision, "llm_calls_count", 0) or 0) == 0
+            from src.llm import get_provider
+            from src.perception import perceive_image
+            provider = get_provider()
+            images = db.get_images_for_case(conn, case_id)
+            if not images:
+                raise ValueError("No indexed evidence is available for analysis")
+            perception_errors = 0
+            for index, image in enumerate(images):
+                _set_job(job_id, stage="perception", progress=0.1 + 0.4 * index / len(images))
+                try:
+                    perceive_image(conn, image, provider)
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    perception_errors += 1
+                    access_log.exception("Perception failed for image %s", image.image_id)
+            _set_job(job_id, stage="checks_and_adjudication", progress=0.6)
+            decision = process_case(conn, case_id, provider=provider)
+            unavailable = _decision_out(decision, conn).provider_unavailable
+            if perception_errors:
+                db.log_audit_event(conn, AuditEvent(event_type="perception_incomplete", case_id=case_id,
+                    details={"failed_images": perception_errors, "total_images": len(images)}))
+                conn.commit()
         finally:
             conn.close()
         _set_job(job_id, status="done", stage="complete", progress=1.0,
                  provider_unavailable=unavailable,
-                 detail=("The model was unreachable, so this decision is the documented "
+                 detail=("Automated adjudication did not converge. This decision is the documented "
                          "fallback rather than the agent's judgement."
-                         if unavailable else None))
+                         if unavailable else
+                         f"Vision analysis was unavailable for {perception_errors} image(s). Review check limitations."
+                         if perception_errors else None))
     except Exception as e:  # noqa: BLE001
+        access_log.exception("Analysis failed for case %s", case_id)
         _set_job(job_id, status="failed", stage="failed", progress=1.0,
-                 detail=f"{type(e).__name__}: {e}")
+                 detail="Automated analysis could not complete. Your evidence is saved. A reviewer can retry analysis.")
 
 
 def _build_case(case_id: str, agent_type: str, claim_type: Optional[str],
@@ -1739,6 +1894,8 @@ def submit_case(
                        "agent_type must be 'claims' or 'underwriting'.",
                        [ErrorDetail(field="agent_type", reason=f"got {agent_type!r}")])
 
+    if len(images or []) > 12:
+        raise ApiError(422, "TOO_MANY_IMAGES", "Upload at most 12 photographs.")
     with tempfile.TemporaryDirectory(prefix="fraudlens_upload_gate_") as tmp:
         tmp_dir = Path(tmp)
         staged: list[tuple[Path, str]] = []
@@ -1749,7 +1906,18 @@ def submit_case(
             target = tmp_dir / f"{uuid.uuid4().hex}_{safe_name}"
             # Sync read: this endpoint is deliberately not async, so the
             # request's sqlite connection stays on one thread.
-            target.write_bytes(upload.file.read())
+            content = upload.file.read(5 * 1024 * 1024 + 1)
+            if not content or len(content) > 5 * 1024 * 1024:
+                raise ApiError(422, "INVALID_IMAGE_SIZE", "Each photograph must be nonempty and at most 5 MB.")
+            target.write_bytes(content)
+            try:
+                from PIL import Image as PILImage
+                with PILImage.open(target) as picture:
+                    if picture.format not in {"JPEG", "PNG", "WEBP"} or picture.width * picture.height > 25_000_000:
+                        raise ValueError("unsupported image format or dimensions")
+                    picture.verify()
+            except Exception as exc:
+                raise ApiError(422, "INVALID_IMAGE", "Upload valid JPEG, PNG or WebP photographs up to 25 megapixels.") from exc
             staged.append((target, safe_name))
 
         if not staged:
@@ -1828,26 +1996,28 @@ def submit_case(
                      "margin_floor": vehicle_gate.VEHICLE_MARGIN_FLOOR,
                      "scores": [score.to_dict() for score in scores]},
         ))
-        conn.commit()
 
         upload_dir = UPLOAD_DIR / case_id
         upload_dir.mkdir(parents=True, exist_ok=True)
         paths = []
         for source, original_name in staged:
-            target = upload_dir / original_name
+            target = upload_dir / f"{uuid.uuid4().hex}_{original_name}"
             shutil.copyfile(source, target)
             paths.append(str(target))
 
         saved = 0
-        if paths:
-            try:
-                from src import ingest
-                for path in paths:
-                    ingest.ingest_image(conn, case_id, path)
-                    saved += 1
-                conn.commit()
-            except Exception:  # noqa: BLE001 - an ingest failure must not lose the accepted case
-                pass
+        try:
+            from src import ingest
+            for path in paths:
+                ingest.ingest_image(conn, case_id, path)
+                saved += 1
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            access_log.exception("Evidence ingestion failed for %s", case_id)
+            raise ApiError(503, "EVIDENCE_INGEST_FAILED",
+                           "Evidence could not be indexed. No case was accepted; please retry.") from exc
 
     _set_job(job_id, status="queued", stage="queued", progress=0.0, case_id=case_id)
     background.add_task(_run_pipeline, job_id, case_id)
@@ -1862,6 +2032,9 @@ def reprocess_case(case_id: str, background: BackgroundTasks,
                    conn: sqlite3.Connection = Depends(get_conn)) -> SubmitCaseOut:
     if db.get_case(conn, case_id) is None:
         raise ApiError(404, "CASE_NOT_FOUND", f"No case with id {case_id!r}.")
+    active = runtime_store.latest_job(conn, case_id)
+    if active and active.get("status") in {"queued", "running"}:
+        raise ApiError(409, "ANALYSIS_RUNNING", "Analysis is already queued or running.")
     job_id = uuid.uuid4().hex
     _set_job(job_id, status="queued", stage="queued", progress=0.0, case_id=case_id)
     background.add_task(_run_pipeline, job_id, case_id)
@@ -1874,7 +2047,8 @@ def reprocess_case(case_id: str, background: BackgroundTasks,
 @app.get("/v1/jobs/{job_id}", response_model=JobOut, tags=["cases"],
          responses={404: {"model": ErrorResponse}})
 def get_job(job_id: str) -> JobOut:
-    job = _JOBS.get(job_id)
+    with runtime_store.connection(DB_PATH) as conn:
+        job = runtime_store.get_job(conn, job_id)
     if job is None:
         raise ApiError(404, "JOB_NOT_FOUND", f"No job with id {job_id!r}.")
     return JobOut(**{k: v for k, v in job.items() if k in JobOut.model_fields})
@@ -1895,9 +2069,9 @@ def record_action(case_id: str, payload: ActionIn,
     if case is None:
         raise ApiError(404, "CASE_NOT_FOUND", f"No case with id {case_id!r}.")
 
-    if payload.action == AdminAction.REJECT and not (payload.reason or "").strip():
+    if payload.action in (AdminAction.REJECT, AdminAction.REQUEST_MORE_EVIDENCE) and not (payload.reason or "").strip():
         raise ApiError(422, "VALIDATION_FAILED",
-                       "A reason is required when rejecting a case.",
+                       "A reason is required for rejection or an evidence request.",
                        [ErrorDetail(field="reason", reason="required for REJECT")])
 
     status = {
@@ -1908,7 +2082,7 @@ def record_action(case_id: str, payload: ActionIn,
     now = datetime.now(timezone.utc)
     record = AdminActionRecord(
         case_id=case_id,
-        admin_id=payload.admin_id,
+        admin_id=_admin,
         action=payload.action,
         reason=payload.reason,
         timestamp=now,
@@ -1918,9 +2092,10 @@ def record_action(case_id: str, payload: ActionIn,
     db.log_audit_event(conn, AuditEvent(
         event_type="admin_action", case_id=case_id,
         details={"action": payload.action.value, "reason": payload.reason,
-                 "admin_id": payload.admin_id,
+                 "admin_id": _admin,
                  "requested_artifacts": payload.requested_artifacts,
+                 "public_message": payload.public_message,
                  "previous_status": case.status}))
     conn.commit()
     return ActionOut(case_id=case_id, action=payload.action.value, status=status,
-                     reason=payload.reason, admin_id=payload.admin_id, recorded_at=now)
+                     reason=payload.reason, admin_id=_admin, recorded_at=now)

@@ -1,0 +1,1342 @@
+diff --git a/FraudLens-2.0-Backend/railway.json b/FraudLens-2.0-Backend/railway.json
+index 02de0f2..82c9550 100644
+--- a/FraudLens-2.0-Backend/railway.json
++++ b/FraudLens-2.0-Backend/railway.json
+@@ -2,7 +2,7 @@
+   "$schema": "https://railway.com/railway.schema.json",
+   "deploy": {
+     "startCommand": "uvicorn src.api:app --host 0.0.0.0 --port $PORT",
+-    "healthcheckPath": "/health",
++    "healthcheckPath": "/ready",
+     "healthcheckTimeout": 300,
+     "restartPolicyType": "ON_FAILURE",
+     "restartPolicyMaxRetries": 3
+diff --git a/FraudLens-2.0-Backend/scripts/pilot_preflight.py b/FraudLens-2.0-Backend/scripts/pilot_preflight.py
+new file mode 100644
+index 0000000..0fed36f
+--- /dev/null
++++ b/FraudLens-2.0-Backend/scripts/pilot_preflight.py
+@@ -0,0 +1,57 @@
++"""Check a local pilot without printing secrets. --live spends a real model call."""
++import argparse
++import importlib.util
++import os
++from pathlib import Path
++import sys
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++from src import api, db
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument('--live', action='store_true', help='Make one real Gemini/provider chat probe; retries may consume additional quota')
++    parser.add_argument('--warm-models', action='store_true', help='Load/download the CLIP model before presenting')
++    args = parser.parse_args()
++    errors = []
++    for name in ['fastapi', 'multipart', 'PIL', 'imagehash', 'torch', 'open_clip', 'google.genai']:
++        try:
++            found = importlib.util.find_spec(name) is not None
++        except ModuleNotFoundError:
++            found = False
++        print(f'{name}: {"installed" if found else "MISSING"}')
++        if not found: errors.append(name)
++    for name in ['ADMIN_EMAIL', 'ADMIN_PASSWORD_SHA256', 'GEMINI_API_KEY']:
++        configured = bool(os.environ.get(name))
++        print(f'{name}: {"configured" if configured else "MISSING"}')
++        if not configured: errors.append(name)
++    Path(api.DB_PATH).parent.mkdir(parents=True, exist_ok=True)
++    conn = db.connect(api.DB_PATH)
++    try:
++        db.init_db(conn)
++        print('Database: ready')
++        print('Existing cases:', conn.execute('SELECT COUNT(*) FROM cases').fetchone()[0])
++    finally: conn.close()
++    if args.warm_models:
++        try:
++            from src.ingest import _default_embedder
++            _default_embedder._ensure_loaded()
++            print('CLIP: loaded')
++        except Exception as exc:
++            print('CLIP load failed:', type(exc).__name__)
++            errors.append('CLIP')
++    if args.live:
++        try:
++            from src.llm import get_provider
++            result = get_provider().chat([{'role': 'user', 'content': 'Reply with ready.'}])
++            if not result.text.strip(): raise ValueError('Empty provider reply')
++            print('Live model: response received (not a vision or accuracy test)')
++        except Exception as exc:
++            print('Live model failed:', type(exc).__name__)
++            errors.append('live model')
++    print('BLOCKED: resolve missing items before rehearsal.' if errors else 'Preflight passed. Run the two-tab rehearsal next.')
++    return 1 if errors else 0
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())
+diff --git a/FraudLens-2.0-Backend/src/api.py b/FraudLens-2.0-Backend/src/api.py
+index e964357..af03154 100644
+--- a/FraudLens-2.0-Backend/src/api.py
++++ b/FraudLens-2.0-Backend/src/api.py
+@@ -38,6 +38,8 @@ import logging
+ import mimetypes
+ import os
+ import shutil
++import secrets
++from contextlib import asynccontextmanager
+ import sqlite3
+ import sys
+ import tempfile
+@@ -57,7 +59,7 @@ from fastapi.middleware.cors import CORSMiddleware
+ from fastapi.responses import FileResponse, JSONResponse
+ from pydantic import BaseModel, Field
+ 
+-from src import db
++from src import db, runtime_store
+ from src.agent.policy import CLAIMS_POLICY, UNDERWRITING_POLICY
+ from src.models import AdminAction, AdminActionRecord, AuditEvent, Case, CheckCategory, Recommendation, RiskBand
+ 
+@@ -99,7 +101,23 @@ access_log = logging.getLogger("fraudlens.access")
+ # structural fact the whole threshold-gaming archetype turns on.
+ SURVEY_THRESHOLD_INR = 50_000.0
+ 
++@asynccontextmanager
++async def lifespan(_app):
++    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
++    conn = db.connect(DB_PATH)
++    try:
++        db.init_db(conn)
++        runtime_store.init(conn)
++        # A single API process owns BackgroundTasks. Never leave interrupted
++        # work looking live after a restart; reviewers can explicitly retry it.
++        runtime_store.interrupt_jobs(conn)
++    finally:
++        conn.close()
++    yield
++
++
+ app = FastAPI(
++    lifespan=lifespan,
+     title="FraudLens API",
+     version="2.1",
+     description=(
+@@ -138,6 +156,8 @@ def _client_ip(request: Request) -> str:
+ 
+ 
+ def _rate_limit_key(request: Request) -> tuple[Optional[str], int]:
++    if request.method == "POST" and request.url.path == "/v1/auth/login":
++        return "login", 5
+     if request.method == "POST" and request.url.path == "/v1/cases":
+         return "submit", RATE_LIMIT_SUBMIT_MAX
+     if request.method == "GET" and request.url.path == "/v1/track":
+@@ -299,6 +319,12 @@ def require_admin(
+         request.state.admin_actor = "service"
+         return "service"
+ 
++    with runtime_store.connection(DB_PATH) as conn:
++        actor = runtime_store.session_actor(conn, credential, expected_hash)
++    if actor:
++        request.state.admin_actor = actor
++        return actor
++
+     supplied_hash = hashlib.sha256(credential.encode("utf-8")).hexdigest()
+     if expected_hash and hmac.compare_digest(supplied_hash, expected_hash):
+         actor = os.environ.get("ADMIN_EMAIL", "admin")
+@@ -306,6 +332,51 @@ def require_admin(
+         return actor
+     raise ApiError(401, "UNAUTHORISED", "Admin credentials are invalid.")
+ 
++class LoginIn(BaseModel):
++    email: str = Field(min_length=1, max_length=254)
++    password: str = Field(min_length=1, max_length=1024)
++
++
++class SessionOut(BaseModel):
++    user: str
++    token: Optional[str] = None
++    expires_at: Optional[float] = None
++
++
++class LogoutOut(BaseModel):
++    ok: bool
++
++
++@app.post("/v1/auth/login", response_model=SessionOut, tags=["auth"])
++def login(payload: LoginIn) -> SessionOut:
++    actor = os.environ.get("ADMIN_EMAIL", "").strip()
++    expected = os.environ.get("ADMIN_PASSWORD_SHA256", "").strip().lower()
++    if not actor or not expected:
++        raise ApiError(503, "ADMIN_AUTH_NOT_CONFIGURED", "Admin access has not been configured.")
++    supplied = hashlib.sha256(payload.password.encode()).hexdigest()
++    if not (hmac.compare_digest(payload.email.strip().lower(), actor.lower())
++            and hmac.compare_digest(supplied, expected)):
++        raise ApiError(401, "UNAUTHORISED", "Email or password is incorrect.")
++    token = secrets.token_urlsafe(48)
++    expires = time.time() + 8 * 3600
++    with runtime_store.connection(DB_PATH) as conn:
++        runtime_store.create_session(conn, token, actor, expected, expires)
++    return SessionOut(user=actor, token=token, expires_at=expires)
++
++
++@app.get("/v1/auth/session", response_model=SessionOut, tags=["auth"])
++def session(_admin: str = Depends(require_admin)) -> SessionOut:
++    return SessionOut(user=_admin)
++
++
++@app.post("/v1/auth/logout", response_model=LogoutOut, tags=["auth"])
++def logout(authorization: Optional[str] = Header(default=None)) -> LogoutOut:
++    token = (authorization or "").removeprefix("Bearer ")
++    with runtime_store.connection(DB_PATH) as conn:
++        runtime_store.delete_session(conn, token)
++    return LogoutOut(ok=True)
++
++
+ def archetypes() -> dict[str, str]:
+     global _ARCHETYPES
+     if _ARCHETYPES is None:
+@@ -369,6 +440,7 @@ def concerns_by_check(conn: sqlite3.Connection) -> dict[str, int]:
+ def get_conn() -> Iterator[sqlite3.Connection]:
+     conn = db.connect(DB_PATH)
+     db.init_db(conn)
++    runtime_store.init(conn)
+     try:
+         yield conn
+     finally:
+@@ -448,8 +520,7 @@ class DecisionOut(BaseModel):
+     latency_ms: int = 0
+     provider_unavailable: bool = Field(
+         default=False,
+-        description="True when no model call completed, so this band is the documented "
+-                    "fallback rather than the agent's judgement.")
++        description="True when adjudication did not converge, including provider or parsing failures.")
+     created_at: Optional[datetime] = None
+ 
+ 
+@@ -519,6 +590,8 @@ class CaseDetail(CaseSummary):
+         description="Concerns by whose conduct they describe, so a screen can say "
+                     "'2 concerns about this garage, 0 about this claimant'.")
+     total_concerns: int = 0
++    audit: list[dict[str, Any]] = Field(default_factory=list)
++    processing: Optional[dict[str, Any]] = None
+ 
+ 
+ class CaseListOut(BaseModel):
+@@ -698,6 +771,7 @@ class HealthOut(BaseModel):
+ 
+ 
+ class ActionIn(BaseModel):
++    public_message: Optional[str] = Field(default=None, max_length=3000)
+     action: AdminAction
+     reason: Optional[str] = None
+     admin_id: str = "admin"
+@@ -801,9 +875,15 @@ def _finding_out(f: Any, case: Optional[Case], concerns: dict[str, int]) -> Find
+     )
+ 
+ 
+-def _decision_out(d: Any) -> DecisionOut:
++def _decision_out(d: Any, conn: Optional[sqlite3.Connection] = None) -> DecisionOut:
+     llm_calls = getattr(d, "llm_calls_count", 0) or 0
+     policy = str(getattr(d, "policy_version", "") or "")
++    fallback = llm_calls == 0 and policy.startswith("agent")
++    if conn is not None:
++        for event in reversed(db.get_audit_events_for_case(conn, d.case_id)):
++            if event.event_type == "case_adjudicated" and event.details.get("policy_version") == policy:
++                fallback = event.details.get("converged") is False
++                break
+     return DecisionOut(
+         decision_id=d.decision_id, case_id=d.case_id,
+         recommendation=d.recommendation.value if hasattr(d.recommendation, "value")
+@@ -818,7 +898,7 @@ def _decision_out(d: Any) -> DecisionOut:
+         iterations_count=getattr(d, "iterations_count", 0) or 0,
+         llm_calls_count=llm_calls,
+         latency_ms=getattr(d, "latency_ms", 0) or 0,
+-        provider_unavailable=(llm_calls == 0 and policy.startswith("agent")),
++        provider_unavailable=fallback,
+         created_at=getattr(d, "created_at", None),
+     )
+ 
+@@ -1056,11 +1136,16 @@ def get_case_detail(case_id: str,
+         **base.model_dump(),
+         latitude=case.latitude, longitude=case.longitude,
+         images=images, finding_groups=groups, findings_by_category=grouped,
+-        decision=_decision_out(best) if best else None,
+-        decisions=[_decision_out(d) for d in decisions],
++        decision=_decision_out(best, conn) if best else None,
++        decisions=[_decision_out(d, conn) for d in decisions],
+         concern_counts_by_category={g.category: g.concern_count for g in groups},
+         attributed_counts=dict(attributed),
+         total_concerns=sum(attributed.values()),
++        audit=[{"created_at": e.created_at, "event": e.event_type,
++                "actor": e.details.get("admin_id", "system"), "detail": e.details}
++               for e in db.get_audit_events_for_case(conn, case_id)
++               if e.event_type == "admin_action"],
++        processing=runtime_store.latest_job(conn, case_id),
+     )
+ 
+ 
+@@ -1123,7 +1208,7 @@ def get_case_report(case_id: str,
+         for category, findings in grouped.items()
+     ]
+     best = _best_decision(db.get_decisions_for_case(conn, case_id))
+-    decision = _decision_out(best) if best else None
++    decision = _decision_out(best, conn) if best else None
+     return CaseReportOut(
+         case_id=case_id,
+         declaration=_report_declaration(case),
+@@ -1158,9 +1243,9 @@ def get_trace(case_id: str,
+     converged = None
+     excluded = 0
+ 
+-    for event in db.get_audit_events_for_case(conn, case_id):
+-        if event.event_type != "case_adjudicated":
+-            continue
++    events = [event for event in db.get_audit_events_for_case(conn, case_id)
++              if event.event_type == "case_adjudicated"]
++    for event in events[-1:]:
+         details = event.details or {}
+         policy_version = details.get("policy_version", policy_version)
+         converged = details.get("converged", converged)
+@@ -1212,13 +1297,24 @@ def track_case(
+     if not (reg_ok or policy_ok):
+         raise ApiError(404, "CASE_NOT_FOUND", "No matching case was found.")
+ 
+-    best = _best_decision(db.get_decisions_for_case(conn, case_id))
+     admin_action = db.get_latest_admin_action(conn, case_id)
++    narrative = "Your case has been received and is awaiting review."
++    if admin_action:
++        narrative = {
++            "approve": "Your application has been approved by a reviewer.",
++            "reject": "A reviewer has declined your application. Contact the review team for details.",
++            "request_more_evidence": "The reviewer needs additional evidence. Please contact the review team.",
++        }[admin_action.action.value]
++        events = [e for e in db.get_audit_events_for_case(conn, case_id) if e.event_type == "admin_action"]
++        if events:
++            public_message = events[-1].details.get("public_message")
++            if public_message:
++                narrative = public_message
+     return TrackOut(
+         case_id=case_id,
+         status=case.status,
+         final_admin_action=admin_action.action.value if admin_action else None,
+-        narrative=best.summary if best else None,
++        narrative=narrative,
+     )
+ 
+ 
+@@ -1424,6 +1520,22 @@ def get_garage(garage_id: str,
+         linked_case_ids=case_ids[:200], concern_count=concern_count)
+ 
+ 
++class FindingCount(BaseModel):
++    name: str
++    verdict: str
++    count: int
++
++
++class FindingCountsOut(BaseModel):
++    counts: list[FindingCount]
++
++
++@app.get("/v1/finding-counts", response_model=FindingCountsOut, tags=["stats"])
++def finding_counts(_admin: str = Depends(require_admin), conn: sqlite3.Connection = Depends(get_conn)):
++    return FindingCountsOut(counts=[FindingCount(name=r[0], verdict=r[1], count=r[2])
++        for r in conn.execute("SELECT check_id, verdict, COUNT(*) FROM findings GROUP BY check_id, verdict")])
++
++
+ @app.get("/v1/stats", response_model=StatsOut, tags=["dashboard"])
+ def get_stats(_admin: str = Depends(require_admin),
+               conn: sqlite3.Connection = Depends(get_conn)) -> StatsOut:
+@@ -1433,8 +1545,10 @@ def get_stats(_admin: str = Depends(require_admin),
+         return {str(k): int(v) for k, v in conn.execute(sql) if k is not None}
+ 
+     total_cases = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
+-    by_band = counts("SELECT risk_band, COUNT(DISTINCT case_id) FROM agent_decisions "
+-                     "GROUP BY risk_band")
++    latest_decisions = """SELECT d.* FROM agent_decisions d WHERE d.rowid = (
++        SELECT latest.rowid FROM agent_decisions latest WHERE latest.case_id = d.case_id
++        ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1)"""
++    by_band = counts(f"SELECT risk_band, COUNT(*) FROM ({latest_decisions}) GROUP BY risk_band")
+     decided = conn.execute("SELECT COUNT(DISTINCT case_id) FROM agent_decisions").fetchone()[0]
+     concerns = concerns_by_check(conn)
+ 
+@@ -1472,8 +1586,7 @@ def get_stats(_admin: str = Depends(require_admin),
+         by_agent_type=counts("SELECT agent_type, COUNT(*) FROM cases GROUP BY agent_type"),
+         by_status=counts("SELECT status, COUNT(*) FROM cases GROUP BY status"),
+         by_risk_band=by_band,
+-        by_recommendation=counts("SELECT recommendation, COUNT(DISTINCT case_id) "
+-                                 "FROM agent_decisions GROUP BY recommendation"),
++        by_recommendation=counts(f"SELECT recommendation, COUNT(*) FROM ({latest_decisions}) GROUP BY recommendation"),
+         decided_cases=decided, undecided_cases=max(0, total_cases - decided),
+         total_findings=conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0],
+         concern_findings=sum(concerns.values()),
+@@ -1563,6 +1676,20 @@ def _provider_health(provider_configured: bool) -> tuple[Optional[bool], str, Op
+     return reachable, status, checked_at
+ 
+ 
++class ReadyOut(BaseModel):
++    status: str
++
++
++@app.get("/ready", response_model=ReadyOut, tags=["config"])
++def ready() -> ReadyOut:
++    try:
++        with runtime_store.connection(DB_PATH) as conn:
++            conn.execute("SELECT 1 FROM cases LIMIT 1")
++    except sqlite3.Error as exc:
++        raise ApiError(503, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
++    return ReadyOut(status="ok")
++
++
+ @app.get("/health", response_model=HealthOut, tags=["config"])
+ @app.get("/v1/health", response_model=HealthOut, tags=["config"])
+ def health() -> HealthOut:
+@@ -1618,7 +1745,11 @@ def health() -> HealthOut:
+ # ---------------------------------------------------------------------------
+ 
+ def _set_job(job_id: str, **fields: Any) -> None:
+-    _JOBS[job_id] = {**_JOBS.get(job_id, {"job_id": job_id}), **fields}
++    with runtime_store.connection(DB_PATH) as conn:
++        job = runtime_store.get_job(conn, job_id) or {"job_id": job_id}
++        job.update(fields)
++        runtime_store.save_job(conn, job)
++    _JOBS[job_id] = job
+ 
+ 
+ def _run_pipeline(job_id: str, case_id: str) -> None:
+@@ -1635,18 +1766,42 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
+         from src.orchestrator import process_case
+         conn = db.connect(DB_PATH)
+         try:
+-            decision = process_case(conn, case_id)
+-            unavailable = (getattr(decision, "llm_calls_count", 0) or 0) == 0
++            from src.llm import get_provider
++            from src.perception import perceive_image
++            provider = get_provider()
++            images = db.get_images_for_case(conn, case_id)
++            if not images:
++                raise ValueError("No indexed evidence is available for analysis")
++            perception_errors = 0
++            for index, image in enumerate(images):
++                _set_job(job_id, stage="perception", progress=0.1 + 0.4 * index / len(images))
++                try:
++                    perceive_image(conn, image, provider)
++                    conn.commit()
++                except Exception:
++                    conn.rollback()
++                    perception_errors += 1
++                    access_log.exception("Perception failed for image %s", image.image_id)
++            _set_job(job_id, stage="checks_and_adjudication", progress=0.6)
++            decision = process_case(conn, case_id, provider=provider)
++            unavailable = _decision_out(decision, conn).provider_unavailable
++            if perception_errors:
++                db.log_audit_event(conn, AuditEvent(event_type="perception_incomplete", case_id=case_id,
++                    details={"failed_images": perception_errors, "total_images": len(images)}))
++                conn.commit()
+         finally:
+             conn.close()
+         _set_job(job_id, status="done", stage="complete", progress=1.0,
+                  provider_unavailable=unavailable,
+-                 detail=("The model was unreachable, so this decision is the documented "
++                 detail=("Automated adjudication did not converge. This decision is the documented "
+                          "fallback rather than the agent's judgement."
+-                         if unavailable else None))
++                         if unavailable else
++                         f"Vision analysis was unavailable for {perception_errors} image(s). Review check limitations."
++                         if perception_errors else None))
+     except Exception as e:  # noqa: BLE001
++        access_log.exception("Analysis failed for case %s", case_id)
+         _set_job(job_id, status="failed", stage="failed", progress=1.0,
+-                 detail=f"{type(e).__name__}: {e}")
++                 detail="Automated analysis could not complete. Your evidence is saved. A reviewer can retry analysis.")
+ 
+ 
+ def _build_case(case_id: str, agent_type: str, claim_type: Optional[str],
+@@ -1739,6 +1894,8 @@ def submit_case(
+                        "agent_type must be 'claims' or 'underwriting'.",
+                        [ErrorDetail(field="agent_type", reason=f"got {agent_type!r}")])
+ 
++    if len(images or []) > 12:
++        raise ApiError(422, "TOO_MANY_IMAGES", "Upload at most 12 photographs.")
+     with tempfile.TemporaryDirectory(prefix="fraudlens_upload_gate_") as tmp:
+         tmp_dir = Path(tmp)
+         staged: list[tuple[Path, str]] = []
+@@ -1749,7 +1906,18 @@ def submit_case(
+             target = tmp_dir / f"{uuid.uuid4().hex}_{safe_name}"
+             # Sync read: this endpoint is deliberately not async, so the
+             # request's sqlite connection stays on one thread.
+-            target.write_bytes(upload.file.read())
++            content = upload.file.read(5 * 1024 * 1024 + 1)
++            if not content or len(content) > 5 * 1024 * 1024:
++                raise ApiError(422, "INVALID_IMAGE_SIZE", "Each photograph must be nonempty and at most 5 MB.")
++            target.write_bytes(content)
++            try:
++                from PIL import Image as PILImage
++                with PILImage.open(target) as picture:
++                    if picture.format not in {"JPEG", "PNG", "WEBP"} or picture.width * picture.height > 25_000_000:
++                        raise ValueError("unsupported image format or dimensions")
++                    picture.verify()
++            except Exception as exc:
++                raise ApiError(422, "INVALID_IMAGE", "Upload valid JPEG, PNG or WebP photographs up to 25 megapixels.") from exc
+             staged.append((target, safe_name))
+ 
+         if not staged:
+@@ -1828,26 +1996,28 @@ def submit_case(
+                      "margin_floor": vehicle_gate.VEHICLE_MARGIN_FLOOR,
+                      "scores": [score.to_dict() for score in scores]},
+         ))
+-        conn.commit()
+ 
+         upload_dir = UPLOAD_DIR / case_id
+         upload_dir.mkdir(parents=True, exist_ok=True)
+         paths = []
+         for source, original_name in staged:
+-            target = upload_dir / original_name
++            target = upload_dir / f"{uuid.uuid4().hex}_{original_name}"
+             shutil.copyfile(source, target)
+             paths.append(str(target))
+ 
+         saved = 0
+-        if paths:
+-            try:
+-                from src import ingest
+-                for path in paths:
+-                    ingest.ingest_image(conn, case_id, path)
+-                    saved += 1
+-                conn.commit()
+-            except Exception:  # noqa: BLE001 - an ingest failure must not lose the accepted case
+-                pass
++        try:
++            from src import ingest
++            for path in paths:
++                ingest.ingest_image(conn, case_id, path)
++                saved += 1
++            conn.commit()
++        except Exception as exc:
++            conn.rollback()
++            shutil.rmtree(upload_dir, ignore_errors=True)
++            access_log.exception("Evidence ingestion failed for %s", case_id)
++            raise ApiError(503, "EVIDENCE_INGEST_FAILED",
++                           "Evidence could not be indexed. No case was accepted; please retry.") from exc
+ 
+     _set_job(job_id, status="queued", stage="queued", progress=0.0, case_id=case_id)
+     background.add_task(_run_pipeline, job_id, case_id)
+@@ -1862,6 +2032,9 @@ def reprocess_case(case_id: str, background: BackgroundTasks,
+                    conn: sqlite3.Connection = Depends(get_conn)) -> SubmitCaseOut:
+     if db.get_case(conn, case_id) is None:
+         raise ApiError(404, "CASE_NOT_FOUND", f"No case with id {case_id!r}.")
++    active = runtime_store.latest_job(conn, case_id)
++    if active and active.get("status") in {"queued", "running"}:
++        raise ApiError(409, "ANALYSIS_RUNNING", "Analysis is already queued or running.")
+     job_id = uuid.uuid4().hex
+     _set_job(job_id, status="queued", stage="queued", progress=0.0, case_id=case_id)
+     background.add_task(_run_pipeline, job_id, case_id)
+@@ -1874,7 +2047,8 @@ def reprocess_case(case_id: str, background: BackgroundTasks,
+ @app.get("/v1/jobs/{job_id}", response_model=JobOut, tags=["cases"],
+          responses={404: {"model": ErrorResponse}})
+ def get_job(job_id: str) -> JobOut:
+-    job = _JOBS.get(job_id)
++    with runtime_store.connection(DB_PATH) as conn:
++        job = runtime_store.get_job(conn, job_id)
+     if job is None:
+         raise ApiError(404, "JOB_NOT_FOUND", f"No job with id {job_id!r}.")
+     return JobOut(**{k: v for k, v in job.items() if k in JobOut.model_fields})
+@@ -1895,9 +2069,9 @@ def record_action(case_id: str, payload: ActionIn,
+     if case is None:
+         raise ApiError(404, "CASE_NOT_FOUND", f"No case with id {case_id!r}.")
+ 
+-    if payload.action == AdminAction.REJECT and not (payload.reason or "").strip():
++    if payload.action in (AdminAction.REJECT, AdminAction.REQUEST_MORE_EVIDENCE) and not (payload.reason or "").strip():
+         raise ApiError(422, "VALIDATION_FAILED",
+-                       "A reason is required when rejecting a case.",
++                       "A reason is required for rejection or an evidence request.",
+                        [ErrorDetail(field="reason", reason="required for REJECT")])
+ 
+     status = {
+@@ -1908,7 +2082,7 @@ def record_action(case_id: str, payload: ActionIn,
+     now = datetime.now(timezone.utc)
+     record = AdminActionRecord(
+         case_id=case_id,
+-        admin_id=payload.admin_id,
++        admin_id=_admin,
+         action=payload.action,
+         reason=payload.reason,
+         timestamp=now,
+@@ -1918,9 +2092,10 @@ def record_action(case_id: str, payload: ActionIn,
+     db.log_audit_event(conn, AuditEvent(
+         event_type="admin_action", case_id=case_id,
+         details={"action": payload.action.value, "reason": payload.reason,
+-                 "admin_id": payload.admin_id,
++                 "admin_id": _admin,
+                  "requested_artifacts": payload.requested_artifacts,
++                 "public_message": payload.public_message,
+                  "previous_status": case.status}))
+     conn.commit()
+     return ActionOut(case_id=case_id, action=payload.action.value, status=status,
+-                     reason=payload.reason, admin_id=payload.admin_id, recorded_at=now)
++                     reason=payload.reason, admin_id=_admin, recorded_at=now)
+diff --git a/FraudLens-2.0-Backend/src/runtime_store.py b/FraudLens-2.0-Backend/src/runtime_store.py
+new file mode 100644
+index 0000000..d1708f8
+--- /dev/null
++++ b/FraudLens-2.0-Backend/src/runtime_store.py
+@@ -0,0 +1,81 @@
++"""Persistent sessions and job status for the single-instance SQLite pilot.
++
++This is durable status storage, not a distributed task queue. Sessions contain
++only token hashes. Credential rotation invalidates existing sessions.
++"""
++from contextlib import contextmanager
++import hashlib
++import json
++import time
++from . import db
++
++
++def init(conn):
++    conn.executescript('''
++        CREATE TABLE IF NOT EXISTS admin_sessions (
++            token_hash TEXT PRIMARY KEY, actor TEXT NOT NULL,
++            credential_hash TEXT NOT NULL, expires_at REAL NOT NULL
++        );
++        CREATE TABLE IF NOT EXISTS api_jobs (
++            job_id TEXT PRIMARY KEY, case_id TEXT NOT NULL,
++            updated_at REAL NOT NULL, payload TEXT NOT NULL
++        );
++        CREATE INDEX IF NOT EXISTS idx_api_jobs_case ON api_jobs(case_id, updated_at);
++    ''')
++
++
++@contextmanager
++def connection(path):
++    conn = db.connect(path)
++    try:
++        init(conn)
++        yield conn
++        conn.commit()
++    finally:
++        conn.close()
++
++
++def digest(token):
++    return hashlib.sha256(token.encode()).hexdigest()
++
++
++def create_session(conn, token, actor, credential_hash, expires_at):
++    conn.execute('DELETE FROM admin_sessions WHERE expires_at <= ?', (time.time(),))
++    conn.execute('INSERT INTO admin_sessions VALUES (?, ?, ?, ?)',
++                 (digest(token), actor, credential_hash, expires_at))
++
++
++def session_actor(conn, token, credential_hash):
++    row = conn.execute('SELECT actor FROM admin_sessions WHERE token_hash = ? AND credential_hash = ? AND expires_at > ?',
++                       (digest(token), credential_hash, time.time())).fetchone()
++    return row[0] if row else None
++
++
++def delete_session(conn, token):
++    conn.execute('DELETE FROM admin_sessions WHERE token_hash = ?', (digest(token),))
++
++
++def save_job(conn, job):
++    conn.execute('INSERT OR REPLACE INTO api_jobs VALUES (?, ?, ?, ?)',
++                 (job['job_id'], job['case_id'], time.time(), json.dumps(job)))
++
++
++def get_job(conn, job_id):
++    row = conn.execute('SELECT payload FROM api_jobs WHERE job_id = ?', (job_id,)).fetchone()
++    return json.loads(row[0]) if row else None
++
++
++def latest_job(conn, case_id):
++    row = conn.execute('SELECT payload FROM api_jobs WHERE case_id = ? ORDER BY updated_at DESC LIMIT 1',
++                       (case_id,)).fetchone()
++    return json.loads(row[0]) if row else None
++
++
++def interrupt_jobs(conn):
++    for row in conn.execute('SELECT payload FROM api_jobs').fetchall():
++        job = json.loads(row[0])
++        if job.get('status') in {'queued', 'running'}:
++            job.update(status='failed', stage='interrupted',
++                       detail='Processing was interrupted by a service restart. A reviewer can retry analysis.')
++            save_job(conn, job)
++    conn.commit()
+diff --git a/FraudLens-2.0-Backend/test_api.py b/FraudLens-2.0-Backend/test_api.py
+index c607834..282d801 100644
+--- a/FraudLens-2.0-Backend/test_api.py
++++ b/FraudLens-2.0-Backend/test_api.py
+@@ -185,6 +185,7 @@ def build_fixture() -> tuple[Path, TestClient]:
+     conn.close()
+ 
+     api.DB_PATH = str(db_path)
++    os.environ["ADMIN_EMAIL"] = "reviewer@example.com"
+     os.environ["ADMIN_PASSWORD_SHA256"] = hashlib.sha256(b"test-admin").hexdigest()
+     api._ARCHETYPES = {"case-claims-1": "EXTERNAL_SOURCING", "case-uw-1": "CLEAN"}
+     api._JOBS.clear()
+@@ -492,7 +493,7 @@ def test_action_updates_status_and_writes_an_audit_event():
+     finally:
+         conn.close()
+     assert events and events[-1].details["action"] == "request_more_evidence", events
+-    assert events[-1].details["admin_id"] == "adjuster-7"
++    assert events[-1].details["admin_id"] == "reviewer@example.com"
+     assert actions and actions[-1].action.value == "request_more_evidence"
+     print("  admin action updates status and leaves an audit trail")
+ 
+@@ -536,7 +537,7 @@ def test_report_includes_declaration_findings_agent_and_admin_action():
+     assert body["agent_recommendation"]["recommendation"] == "escalate", body["agent_recommendation"]
+     assert body["agent_narrative"] == "Escalated: image sourced externally."
+     assert body["admin_action"]["action"] == "approve", body["admin_action"]
+-    assert body["admin_action"]["admin_id"] == "admin-2"
++    assert body["admin_action"]["admin_id"] == "reviewer@example.com"
+     print("  report carries declaration, grouped findings, agent narrative, admin action")
+ 
+ 
+@@ -550,7 +551,7 @@ def test_public_track_is_narrow_and_verified():
+     body = r.json()
+     assert set(body) == {"case_id", "status", "final_admin_action", "narrative"}, body
+     assert body["final_admin_action"] == "approve", body
+-    assert body["narrative"] == "Escalated: image sourced externally."
++    assert body["narrative"] == "Your application has been approved by a reviewer."
+     assert "findings" not in body and "trace" not in body and "evidence" not in body
+ 
+     by_policy = client().get("/v1/track", params={
+diff --git a/FraudLens-2.0-Backend/test_pilot_workflow.py b/FraudLens-2.0-Backend/test_pilot_workflow.py
+new file mode 100644
+index 0000000..d168b23
+--- /dev/null
++++ b/FraudLens-2.0-Backend/test_pilot_workflow.py
+@@ -0,0 +1,153 @@
++"""Offline workflow regressions. Vision is mocked; detector accuracy is not tested."""
++import hashlib
++import io
++import time
++from pathlib import Path
++from types import SimpleNamespace
++import pytest
++from fastapi.testclient import TestClient
++from PIL import Image as PILImage
++from src import api, db, ingest, runtime_store, vehicle_gate
++
++@pytest.fixture
++def client(tmp_path, monkeypatch):
++    monkeypatch.setattr(api, 'DB_PATH', str(tmp_path / 'pilot.db'))
++    monkeypatch.setattr(api, 'UPLOAD_DIR', tmp_path / 'uploads')
++    monkeypatch.setenv('ADMIN_EMAIL', 'reviewer@example.com')
++    monkeypatch.setenv('ADMIN_PASSWORD_SHA256', hashlib.sha256(b'correct-password').hexdigest())
++    monkeypatch.delenv('EVIDENCE_SERVICE_TOKEN', raising=False)
++    monkeypatch.setattr(api, 'RATE_LIMIT_SUBMIT_MAX', 100)
++    api._RATE_LIMITS.clear()
++    api._JOBS.clear()
++    monkeypatch.setattr(api, '_run_pipeline', lambda *args: None)
++    score = SimpleNamespace(accepted=True, to_dict=lambda: {'accepted': True})
++    monkeypatch.setattr(vehicle_gate, 'classify_uploads', lambda paths, names: [score for p in paths])
++    monkeypatch.setattr(ingest, '_default_embedder', SimpleNamespace(embed=lambda path: [1.0, 0.0]))
++    with TestClient(api.app) as c:
++        yield c
++
++def photo(color='red'):
++    buf = io.BytesIO()
++    PILImage.new('RGB', (32, 32), color).save(buf, format='PNG')
++    return buf.getvalue()
++
++def submit(client, kind='claims', files=None):
++    return client.post('/v1/cases', data={'agent_type': kind, 'vehicle_registration': 'MH12AB1234',
++        'policy_number': 'POL-123', 'person_name': 'Test applicant'},
++        files=files or [('images', ('photo.png', photo(), 'image/png'))])
++
++def auth(client):
++    response = client.post('/v1/auth/login', json={'email': 'reviewer@example.com', 'password': 'correct-password'})
++    assert response.status_code == 200, response.text
++    return {'Authorization': 'Bearer ' + response.json()['token']}
++
++def test_login_email_expiry_revocation(client):
++    assert client.post('/v1/auth/login', json={'email': 'other@example.com', 'password': 'correct-password'}).status_code == 401
++    headers = auth(client)
++    assert client.get('/v1/auth/session', headers=headers).json()['user'] == 'reviewer@example.com'
++    assert client.post('/v1/auth/logout', headers=headers).status_code == 200
++    assert client.get('/v1/auth/session', headers=headers).status_code == 401
++    headers = auth(client)
++    with runtime_store.connection(api.DB_PATH) as conn:
++        conn.execute('UPDATE admin_sessions SET expires_at = ?', (time.time() - 1,))
++    assert client.get('/v1/auth/session', headers=headers).status_code == 401
++
++def test_password_rotation(client, monkeypatch):
++    headers = auth(client)
++    monkeypatch.setenv('ADMIN_PASSWORD_SHA256', hashlib.sha256(b'new-password').hexdigest())
++    assert client.get('/v1/auth/session', headers=headers).status_code == 401
++
++@pytest.mark.parametrize('kind', ['claims', 'underwriting'])
++def test_applicant_admin_workflow(client, kind):
++    response = submit(client, kind)
++    assert response.status_code == 201, response.text
++    case_id = response.json()['case_id']
++    assert response.json()['images_received'] == 1
++    assert client.get('/v1/cases').status_code == 401
++    headers = auth(client)
++    assert client.get('/v1/cases', headers=headers).json()['items'][0]['case_id'] == case_id
++    action = client.post(f'/v1/cases/{case_id}/action', headers=headers, json={
++        'action': 'approve', 'admin_id': 'forged', 'reason': 'Internal assessment',
++        'public_message': 'Your application is approved.'})
++    assert action.status_code == 200, action.text
++    assert action.json()['admin_id'] == 'reviewer@example.com'
++    tracked = client.get('/v1/track', params={'case_id': case_id, 'registration_number': 'MH12AB1234'}).json()
++    assert tracked['status'] == 'closed_approved'
++    assert tracked['narrative'] == 'Your application is approved.'
++    assert 'Internal assessment' not in str(tracked)
++    detail = client.get(f'/v1/cases/{case_id}', headers=headers).json()
++    assert detail['audit'][0]['actor'] == 'reviewer@example.com'
++    assert client.get(f'/v1/cases/{case_id}/report', headers=headers).json()['admin_action']['admin_id'] == 'reviewer@example.com'
++
++def test_duplicate_filenames(client):
++    r = submit(client, files=[('images', ('same.png', photo('red'), 'image/png')),
++                             ('images', ('same.png', photo('blue'), 'image/png'))])
++    assert r.status_code == 201, r.text
++    conn = db.connect(api.DB_PATH)
++    try:
++        images = db.get_images_for_case(conn, r.json()['case_id'])
++        assert len(images) == 2
++        assert len({i.path for i in images}) == 2
++        assert len({Path(i.path).read_bytes() for i in images}) == 2
++    finally: conn.close()
++
++def test_ingestion_rollback(client, monkeypatch):
++    def fail(*args): raise RuntimeError('embedding unavailable')
++    monkeypatch.setattr(ingest, 'ingest_image', fail)
++    r = submit(client)
++    assert r.status_code == 503
++    assert r.json()['code'] == 'EVIDENCE_INGEST_FAILED'
++    conn = db.connect(api.DB_PATH)
++    try: assert conn.execute('SELECT count(*) FROM cases').fetchone()[0] == 0
++    finally: conn.close()
++    assert not list(api.UPLOAD_DIR.glob('*'))
++
++def test_invalid_uploads(client):
++    for content in [b'not an image', b'x' * (5 * 1024 * 1024 + 1)]:
++        assert submit(client, files=[('images', ('bad.png', content, 'image/png'))]).status_code == 422
++
++def test_job_persistence_restart(client):
++    r = submit(client).json()
++    api._JOBS.clear()
++    assert client.get('/v1/jobs/' + r['job_id']).json()['status'] == 'queued'
++    with runtime_store.connection(api.DB_PATH) as conn: runtime_store.interrupt_jobs(conn)
++    assert client.get('/v1/jobs/' + r['job_id']).json()['stage'] == 'interrupted'
++
++def test_reprocess_conflict(client):
++    r = submit(client).json()
++    assert client.post('/v1/cases/' + r['case_id'] + '/reprocess', headers=auth(client)).status_code == 409
++
++def test_private_narrative_and_fallback_disclosure(client):
++    from src.models import AgentDecision, Recommendation, RiskBand
++    from src.orchestrator import adjudication_event
++    r = submit(client).json()
++    conn = db.connect(api.DB_PATH)
++    try:
++        d = AgentDecision(case_id=r['case_id'], recommendation=Recommendation.ESCALATE,
++            risk_band=RiskBand.DESK_REVIEW, confidence=0.3, summary='Private garage investigation',
++            supporting_finding_ids=[], requested_artifacts=['original photo'], policy_version='agent-test', llm_calls_count=2)
++        db.insert_agent_decision(conn, d)
++        db.log_audit_event(conn, adjudication_event(r['case_id'], 'agent', 'agent-test', d, False, []))
++        conn.commit()
++    finally: conn.close()
++    tracked = client.get('/v1/track', params={'case_id': r['case_id'], 'policy_number': 'POL-123'})
++    assert 'Private garage' not in tracked.text
++    assert client.get('/v1/cases/' + r['case_id'], headers=auth(client)).json()['decision']['provider_unavailable'] is True
++
++def test_statistics_count_latest_decision_only(client):
++    from datetime import datetime, timedelta, timezone
++    from src.models import AgentDecision, Recommendation, RiskBand
++    case_id = submit(client).json()['case_id']
++    conn = db.connect(api.DB_PATH)
++    try:
++        for i, (band, recommendation) in enumerate([(RiskBand.ESCALATE_SIU, Recommendation.ESCALATE), (RiskBand.CLEAR, Recommendation.APPROVE)]):
++            db.insert_agent_decision(conn, AgentDecision(case_id=case_id, recommendation=recommendation,
++                risk_band=band, confidence=0.7, summary='Recorded test assessment',
++                supporting_finding_ids=[], requested_artifacts=[], policy_version='agent-test',
++                created_at=datetime.now(timezone.utc) + timedelta(seconds=i)))
++        conn.commit()
++    finally: conn.close()
++    stats = client.get('/v1/stats', headers=auth(client)).json()
++    assert stats['decided_cases'] == 1
++    assert stats['by_risk_band'] == {'clear': 1}
++    assert stats['by_recommendation'] == {'approve': 1}
+diff --git a/FraudLens-2.0-Frontend/src/experience/Admin.tsx b/FraudLens-2.0-Frontend/src/experience/Admin.tsx
+index f80dc66..6c81714 100644
+--- a/FraudLens-2.0-Frontend/src/experience/Admin.tsx
++++ b/FraudLens-2.0-Frontend/src/experience/Admin.tsx
+@@ -85,6 +85,8 @@ type CaseDetail = Row & {
+   declaration: Record<string, unknown>;
+   requestedEvidence: string[];
+   citedFindings: string[];
++  processing?: { status?: string; stage?: string; detail?: string };
++  analysisFallback?: boolean;
+   narrative?: string;
+   outcome?: string;
+   reason?: string;
+@@ -121,13 +123,16 @@ export default function Admin() {
+       .catch(() => undefined);
+   }, []);
+   useEffect(() => {
+-    if (user) load();
++    if (!user) return;
++    load();
++    const timer = window.setInterval(() => { if (!document.hidden) load(false); }, 10000);
++    return () => window.clearInterval(timer);
+   }, [user, page, search, filters, sort]);
+   useEffect(() => {
+     setPage(1);
+   }, [search, filters, sort]);
+-  async function load() {
+-    setLoading(true);
++  async function load(showLoading = true) {
++    if (showLoading) setLoading(true);
+     try {
+       const params = new URLSearchParams({ page: String(page), page_size: "10" });
+       if (search) params.set("search", search);
+@@ -204,12 +209,22 @@ export default function Admin() {
+       setLoading(false);
+     }
+   }
++  async function retryAnalysis() {
++    if (!detail) return;
++    setLoading(true);
++    setError("");
++    try {
++      await api("reprocess?id=" + detail.id);
++      await open(detail.id);
++    } catch (e) { setError((e as Error).message); }
++    finally { setLoading(false); }
++  }
+   const filtered = rows;
+   const metrics = [
+-    ["Total cases", rows.length],
+-    ["Awaiting review", rows.filter((r) => r.status === "Awaiting review").length],
++    ["Matching cases", total],
++    ["Awaiting review", rows.filter((r) => r.status === "open").length],
+     [
+-      "Straight-Through Processing",
++      "Clear recommendations on this page",
+       rows.length
+         ? ((100 * rows.filter((r) => r.recommendation === "Clear").length) / rows.length).toFixed(
+             1,
+@@ -563,7 +578,11 @@ export default function Admin() {
+                       {detail.citedFindings?.length > 0 && (
+                         <p>Cited findings: {detail.citedFindings.join(", ")}</p>
+                       )}
+-                      <small>This is a recommendation, not a final decision.</small>
++                      {detail.analysisFallback && <p role="status">Automated adjudication did not complete. This is a fallback for human review, not a model assessment.</p>}
++                      {detail.processing && <p role="status">Analysis: {detail.processing.status} · {detail.processing.stage}<br />{detail.processing.detail}</p>}
++                      <button type="button" disabled={loading || ["queued", "running"].includes(detail.processing?.status || "")} onClick={retryAnalysis}>Retry analysis</button>
++                      <button type="button" disabled={loading} onClick={() => open(detail.id)}>Refresh case</button>
++                      <small>This is a recommendation, not a final decision. Confidence values are heuristic scores, not calibrated probabilities of fraud.</small>
+                     </section>
+                     <section className="action-panel">
+                       <span>YOUR DECISION</span>
+diff --git a/FraudLens-2.0-Frontend/src/experience/AdminOverview.tsx b/FraudLens-2.0-Frontend/src/experience/AdminOverview.tsx
+index 0287129..a85c74e 100644
+--- a/FraudLens-2.0-Frontend/src/experience/AdminOverview.tsx
++++ b/FraudLens-2.0-Frontend/src/experience/AdminOverview.tsx
+@@ -36,7 +36,7 @@ export default function AdminOverview({
+       })
+       .catch(() => setCountState("error"));
+   }, [rows]);
+-  const pending = rows.filter((r) => r.status === "Awaiting review");
++  const pending = rows.filter((r) => r.status === "open");
+   const clear = rows.filter((r) => r.recommendation === "Clear").length;
+   const days = Array.from({ length: 14 }, (_, i) => {
+     const d = new Date();
+@@ -74,19 +74,19 @@ export default function AdminOverview({
+       </section>
+       <div className="ops-metrics">
+         {[
+-          ["file", "Total cases", String(rows.length), "Across both agents"],
+-          ["clock", "Awaiting review", String(pending.length), "Ready for a human decision"],
++          ["file", "Cases on this page", String(rows.length), "Use the queue to browse all cases"],
++          ["clock", "Awaiting review", String(pending.length), "Open cases on this page"],
+           [
+             "check",
+             "Clear recommendations",
+             rows.length ? ((clear / rows.length) * 100).toFixed(1) + "%" : "—",
+-            "Straight-Through Processing*",
++            "On this page; human decision required",
+           ],
+           [
+             "shield",
+             "Escalated to SIU",
+             String(rows.filter((r) => r.recommendation === "Escalate to SIU").length),
+-            "Special Investigation Unit",
++            "On this page",
+           ],
+         ].map(([icon, label, value, caption]) => (
+           <article key={label}>
+@@ -194,7 +194,7 @@ export default function AdminOverview({
+               </span>
+               <h3>Agent {kind === "claims" ? "Recon" : "Sentinel"}</h3>
+               <p>
+-                {rows.filter((r) => r.kind === kind && r.status === "Awaiting review").length}{" "}
++                {rows.filter((r) => r.kind === kind && r.status === "open").length}{" "}
+                 awaiting review · {rows.filter((r) => r.kind === kind).length} total cases
+               </p>
+             </div>
+diff --git a/FraudLens-2.0-Frontend/src/experience/Home.tsx b/FraudLens-2.0-Frontend/src/experience/Home.tsx
+index 3748921..e626a6f 100644
+--- a/FraudLens-2.0-Frontend/src/experience/Home.tsx
++++ b/FraudLens-2.0-Frontend/src/experience/Home.tsx
+@@ -194,8 +194,8 @@ export default function Home() {
+           </div>
+         </div>
+         <small>
+-          Research prototype for academic evaluation. Performance metrics will be published after
+-          measurement.
++          Automated findings support human review. Detection depends on evidence quality and
++          available checks; inconclusive results require further review.
+         </small>
+       </section>
+       <section className="finding-section wrap">
+diff --git a/FraudLens-2.0-Frontend/src/experience/Intake.tsx b/FraudLens-2.0-Frontend/src/experience/Intake.tsx
+index 907b591..6df6e30 100644
+--- a/FraudLens-2.0-Frontend/src/experience/Intake.tsx
++++ b/FraudLens-2.0-Frontend/src/experience/Intake.tsx
+@@ -18,6 +18,7 @@ type JobResult = {
+   progress?: number;
+   stage?: string;
+   detail?: string;
++  provider_unavailable?: boolean;
+ };
+ const registrationPattern = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
+ const maxUploadBytes = 5 * 1024 * 1024;
+@@ -125,13 +126,13 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
+       const pct = Math.round(Number(job.progress || 0) * 100);
+       setJobStatus(
+         job.status === "done"
+-          ? "Analysis queued successfully."
++          ? job.provider_unavailable ? "Automated analysis could not complete. A reviewer will assess your evidence." : "Analysis complete. Awaiting a human decision."
+           : job.status === "failed"
+             ? job.detail || "The background analysis failed."
+             : `${job.stage || job.status || "queued"}${pct ? ` - ${pct}%` : ""}`,
+       );
+       if (job.status === "done") return;
+-      if (job.status === "failed") throw new Error(job.detail || "The background analysis failed.");
++      if (job.status === "failed") return;
+       await new Promise((resolve) => setTimeout(resolve, delays[i]));
+     }
+   }
+@@ -171,6 +172,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
+     try {
+       setJobStatus("Uploading and validating vehicle photographs...");
+       const submitted = (await api("submit", { method: "POST", body: data })) as SubmitResult;
++      setResult(submitted);
+       setJobStatus("Case accepted. Waiting for background analysis...");
+       if (submitted.job_id) await waitForJob(submitted.job_id);
+       setResult(submitted);
+@@ -216,6 +218,8 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
+               <h2>Your case has been received.</h2>
+               <p>Save this case ID:</p>
+               <code>{result.id}</code>
++              <p role="status">{jobStatus}</p>
++              {error && <p role="alert">Your case is saved. Status could not be refreshed: {error}</p>}
+               <p>
+                 Your vehicle photographs have been accepted. The evidence will be reviewed and an
+                 adjuster will record the final decision. A request for additional photographs will
+diff --git a/FraudLens-2.0-Frontend/src/experience/Tracker.tsx b/FraudLens-2.0-Frontend/src/experience/Tracker.tsx
+index 39a4696..662beb6 100644
+--- a/FraudLens-2.0-Frontend/src/experience/Tracker.tsx
++++ b/FraudLens-2.0-Frontend/src/experience/Tracker.tsx
+@@ -94,7 +94,7 @@ export default function Tracker() {
+                 <strong>Final outcome:</strong> {result.outcome}
+               </p>
+             )}
+-            <small>Last updated: {new Date(result.updatedAt).toLocaleString()}</small>
++            <small>Status checked: {new Date(result.updatedAt).toLocaleString()}</small>
+           </section>
+         )}
+         <p>
+diff --git a/FraudLens-2.0-Frontend/src/experience/shared.tsx b/FraudLens-2.0-Frontend/src/experience/shared.tsx
+index fc8d44b..170bb65 100644
+--- a/FraudLens-2.0-Frontend/src/experience/shared.tsx
++++ b/FraudLens-2.0-Frontend/src/experience/shared.tsx
+@@ -295,7 +295,7 @@ export function Footer() {
+       </div>
+       <div className="footer-bottom">
+         <span>© 2026 FraudLens 2.0</span>
+-        <span>Research prototype built for academic evaluation.</span>
++        <span>Evidence-led review. Human accountability.</span>
+       </div>
+     </footer>
+   );
+@@ -349,10 +349,10 @@ export function Safety() {
+   );
+ }
+ const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+-const adminEmail = () => localStorage.getItem("fraudlens_admin_email") || "";
+-const adminPassword = () => localStorage.getItem("fraudlens_admin_password") || "";
++const adminEmail = () => sessionStorage.getItem("fraudlens_admin_email") || "";
++const adminToken = () => sessionStorage.getItem("fraudlens_admin_token") || "";
+ const authHeaders = (): Record<string, string> =>
+-  adminPassword() ? { Authorization: "Bearer " + adminPassword() } : {};
++  adminToken() ? { Authorization: "Bearer " + adminToken() } : {};
+ type ApiRecord = Record<string, unknown>;
+ const stringValue = (value: unknown) => String(value || "");
+ async function request(path: string, options: RequestInit = {}): Promise<ApiRecord> {
+@@ -401,8 +401,8 @@ const band = (b?: string) =>
+       : b === "escalate_siu"
+         ? "High"
+         : "Unrated";
+-const recommendation = (r?: string) =>
+-  r === "approve"
++const recommendation = (r?: string, riskBand?: string) =>
++  riskBand === "desk_review" ? "Desk review" : r === "approve"
+     ? "Clear"
+     : r === "request_evidence"
+       ? "Request Additional Evidence"
+@@ -489,7 +489,7 @@ async function caseDetail(id: string) {
+     garage: stringValue(d.garage_id),
+     amount: Number(d.claim_amount || 0),
+     risk: band(stringValue(d.risk_band)),
+-    recommendation: recommendation(stringValue(decision.recommendation)),
++    recommendation: recommendation(stringValue(decision.recommendation), stringValue(decision.risk_band)),
+     narrative: stringValue(decision.summary),
+     outcome: stringValue(adminAction.action),
+     reason: stringValue(adminAction.reason),
+@@ -521,37 +521,46 @@ async function caseDetail(id: string) {
+       input: s.tool_input,
+       result: s.tool_output,
+     })),
+-    audit: [],
++    processing: d.processing,
++    analysisFallback: !!decision.provider_unavailable,
++    audit: ((d.audit as ApiRecord[]) || []).map((entry) => ({
++      ...entry, detail: JSON.stringify(entry.detail),
++    })),
+   };
+ }
+ export async function api(path: string, options?: RequestInit): Promise<unknown> {
+   if (path === "config") return { intake: true, admin: true };
+   if (path === "session") {
+-    const email = adminEmail();
+-    if (!email || !adminPassword()) throw new Error("No active admin session.");
+-    return { user: email };
++    // Remove credentials retained by older releases.
++    localStorage.removeItem("fraudlens_admin_password");
++    localStorage.removeItem("fraudlens_admin_email");
++    if (!adminToken()) throw new Error("No active admin session.");
++    return request("/v1/auth/session");
+   }
+   if (path === "logout") {
+-    localStorage.removeItem("fraudlens_admin_email");
+-    localStorage.removeItem("fraudlens_admin_password");
++    try {
++      await request("/v1/auth/logout", { method: "POST" });
++    } finally {
++      sessionStorage.removeItem("fraudlens_admin_email");
++      sessionStorage.removeItem("fraudlens_admin_token");
++      imageUrls.forEach((url) => URL.revokeObjectURL(url));
++      imageUrls.clear();
++    }
+     return { ok: true };
+   }
+   if (path === "login" && options?.body) {
+-    const b = JSON.parse(String(options.body));
+-    localStorage.setItem("fraudlens_admin_email", b.email);
+-    localStorage.setItem("fraudlens_admin_password", b.password);
+-    try {
+-      await request("/v1/stats");
+-    } catch (e) {
+-      localStorage.removeItem("fraudlens_admin_email");
+-      localStorage.removeItem("fraudlens_admin_password");
+-      throw e;
+-    }
+-    return { user: b.email };
++    const j = await request("/v1/auth/login", {
++      method: "POST", headers: { "Content-Type": "application/json" }, body: options.body,
++    });
++    sessionStorage.setItem("fraudlens_admin_email", stringValue(j.user));
++    sessionStorage.setItem("fraudlens_admin_token", stringValue(j.token));
++    return { user: j.user };
+   }
+   if (path.startsWith("queue")) {
+-    const suffix = path.includes("?") ? "&" + path.slice(path.indexOf("?") + 1) : "";
+-    const j = await request("/v1/cases?sort_by=created_at&sort_dir=desc" + suffix);
++    const params = new URLSearchParams(path.split("?")[1] || "");
++    if (!params.has("sort_by")) params.set("sort_by", "created_at");
++    if (!params.has("sort_dir")) params.set("sort_dir", "desc");
++    const j = await request("/v1/cases?" + params);
+     const cases = await Promise.all(
+       ((j.items as ApiRecord[] | undefined) || []).map(async (r) => {
+         const thumbId = String(r.thumbnail_url || "").match(/\/v1\/images\/([^?]+)/)?.[1];
+@@ -564,7 +573,7 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
+           garage: stringValue(r.garage_id),
+           amount: Number(r.claim_amount || 0),
+           status: stringValue(r.status) || "open",
+-          recommendation: recommendation(stringValue(r.recommendation)),
++          recommendation: recommendation(stringValue(r.recommendation), stringValue(r.risk_band)),
+           risk: band(stringValue(r.risk_band)),
+           created_at: stringValue(r.created_at) || new Date().toISOString(),
+           thumbnail: thumbId ? await apiImageUrl(thumbId) : "",
+@@ -606,18 +615,26 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
+         action,
+         reason: b.reason,
+         admin_id: adminEmail() || "admin",
+-        requested_artifacts: b.publicNarrative ? [b.publicNarrative] : [],
++        public_message: b.publicNarrative || null,
+       }),
+     });
+   }
++  if (path.startsWith("reprocess?id=")) {
++    return request("/v1/cases/" + encodeURIComponent(path.slice("reprocess?id=".length)) + "/reprocess", { method: "POST" });
++  }
+   return request("/v1/" + path, options);
+ }
++const imageUrls = new Map<string, string>();
+ export async function apiImageUrl(id: string) {
++  const cached = imageUrls.get(id);
++  if (cached) return cached;
+   const r = await fetch(API_BASE + "/v1/images/" + encodeURIComponent(id) + "?thumb=1", {
+     headers: authHeaders(),
+   });
+   if (!r.ok) return "";
+-  return URL.createObjectURL(await r.blob());
++  const url = URL.createObjectURL(await r.blob());
++  imageUrls.set(id, url);
++  return url;
+ }
+ export const post = (path: string, body: unknown) =>
+   api(path, {
+diff --git a/PILOT_HANDOVER.md b/PILOT_HANDOVER.md
+new file mode 100644
+index 0000000..eb21ebe
+--- /dev/null
++++ b/PILOT_HANDOVER.md
+@@ -0,0 +1,133 @@
++# FraudLens local pilot handover
++
++This change continues the existing FastAPI/SQLite and React/TanStack project. It improves a single-instance, two-tab pilot. It is **not a completed multi-tenant SaaS release**, and it does not establish detector accuracy or guarantee Gemini availability.
++
++## Changes
++
++- `FraudLens-2.0-Backend/src/api.py`: server-validated admin email/password exchange, eight-hour revocable sessions, authenticated action attribution, private/public narrative separation, server-side image validation, unique stored filenames, rollback on indexing failure, real perception before the live API check pipeline, visible processing failures, persisted job retrieval, repeat-job conflict handling, a finding-counts endpoint, latest-decision statistics, latest-run trace selection and lightweight readiness endpoint.
++- `FraudLens-2.0-Backend/src/runtime_store.py`: additive SQLite tables for hashed session tokens and job status. Startup marks interrupted queued/running jobs failed so reviewers can retry. It does not automatically resume or provide a distributed queue.
++- `FraudLens-2.0-Frontend/src/experience/shared.tsx`: session token handling in sessionStorage, server login/session/logout, correct desk-review labels, actual audit entries, retry mapping, thumbnail reuse and removal of duplicate sort parameters.
++- `Admin.tsx`, `AdminOverview.tsx`: queue refresh every ten seconds while visible, retry/refresh controls, fallback disclosures, heuristic confidence disclosure and accurate page-scoped metric labels.
++- `Intake.tsx`: accepted case confirmation survives failed background analysis. `Tracker.tsx`: distinguishes status-check time from a server update time. `Home.tsx`: product wording retains detection limitations.
++- `FraudLens-2.0-Backend/railway.json`: readiness uses `/ready` without spending model quota.
++- `FraudLens-2.0-Backend/test_pilot_workflow.py`: isolated API regressions. Vision gate and embeddings are mocked; these tests do not measure detection.
++- `FraudLens-2.0-Backend/test_api.py`: expectations updated for authenticated reviewer identity and public narrative privacy.
++- `FraudLens-2.0-Backend/scripts/pilot_preflight.py`: dependency/configuration check, optional CLIP warmup and optional live model probe.
++
++Research policies, detector weights and thresholds have not been changed. The existing ablation must not be continued with changed experiment inputs without a versioned decision.
++
++## Local setup
++
++Use your existing Python 3.12 environment if it already has the pinned backend dependencies and model files. Do not overwrite your current database or `.env` with this source export. Back up your database while the app is stopped before first run; runtime tables are additive.
++
++In the backend directory:
++
++```text
++python -m pip install -r requirements.txt
++python scripts/pilot_preflight.py
++```
++
++The pinned requirements include CPU Torch packages; a Mac may need platform-specific Torch installation. The full pinned ML environment has not been installed or validated in this review environment. If installation fails, preserve the exact error rather than replacing every version.
++
++Configure backend `.env` using `.env.example`. Required local values include:
++
++```text
++ADMIN_EMAIL=your-reviewer-email
++ADMIN_PASSWORD_SHA256=your-password-hash
++GEMINI_API_KEY=your-key
++GEMINI_MODEL=the-model-you-have-verified-access-to
++LLM_PROVIDER=gemini
++CORS_ORIGINS=http://localhost:5173
++FRAUDLENS_DB=fraudlens.db
++```
++
++Do not paste secrets into chat or commit them. Generate the password hash with the existing frontend `npm run admin:password` helper. Login now requires the matching configured email as well as the password.
++
++Optional preflight steps, from the backend directory:
++
++```text
++python scripts/pilot_preflight.py --warm-models
++python scripts/pilot_preflight.py --live
++```
++
++Warmup can download model files. `--live` makes a real provider call and retries may consume more quota; it does not verify image analysis. Do not run it repeatedly during a presentation.
++
++Start one backend process, without reload during the presentation:
++
++```text
++python -m uvicorn src.api:app --host 127.0.0.1 --port 8000
++```
++
++In a second terminal, from the frontend directory, use Node 22.16 or later within major version 22:
++
++```text
++npm ci
++npm run dev
++```
++
++Set `VITE_API_BASE_URL=http://localhost:8000` in frontend `.env`. Open both Chrome tabs at `http://localhost:5173`. Keep the terminal processes running.
++
++## Two-tab rehearsal
++
++1. Check `http://localhost:8000/ready`. A ready response establishes database availability, not model availability.
++2. Tab A: submit a claims application with a genuine, consented vehicle photo and realistic declaration. Save the returned case ID immediately.
++3. Tab B: log in at `/admin`. The queue refreshes every ten seconds; open the new case and use Refresh case to retrieve updated processing status.
++4. Inspect original stored findings, their attribution and limitations, the recorded trace, and the report. A fallback or failed job must be shown as such. Retry only after resolving the cause.
++5. Record a human action. Enter a public message deliberately: it is the message the applicant sees. Internal reasons and model narratives are not returned by the public tracker.
++6. Tab A: open `/track` with the case ID and original registration/policy number. Check the recorded human outcome.
++7. Repeat for underwriting with the six views required by the existing form. This can consume substantially more vision quota than one claims photograph.
++8. Use Print report for browser print/PDF. This is not a server-generated signed PDF report.
++
++The API uses real perception and adjudication providers. It does not inject successful results or synthetic decisions into live submissions. Reusing a previously analyzed image may reuse its stored perception, which is existing content-hash caching, not a new model call.
++
++## Gemini free-tier constraints
++
++Stop competing research/perception batch jobs before rehearsal. Do not repeatedly resubmit or retry a case to force a desired verdict. Provider limits, delays and failures remain possible. The API retains evidence and makes failures visible; it cannot guarantee completion time or make quota available. Prepare an already completed **real** case as a disclosed backup, not as a fabricated result for a new submission.
++
++## Remaining work and acceptance gates
++
++- Live Gemini vision, adjudication, image gate, quota behavior and full browser rehearsal on the target laptop remain unverified here. No credentials or real corpus were supplied.
++- Historical corpus and scenario-database evaluation requires your sanitized databases, image corpus and output artifacts. Blank local databases cannot demonstrate historical rings, repeat claims, external corpus matches or garage patterns without actual supporting records.
++- AI-generated images and edited-image detection remain unproven for the uncovered archetypes. Zero-weight/retired checks remain as documented; they are not relabeled reliable.
++- Request-more-evidence records and communicates a request; an authenticated applicant evidence-resubmission workflow remains to be implemented.
++- Authentication is still one configured reviewer identity, now with expiring tokens. Per-user accounts, roles, tenant isolation, invitations and billing are not implemented. The legacy bearer-password interface remains for existing scripts.
++- Job state is durable but execution still uses in-process background tasks. Single process only. Multi-worker durable execution, shared rate limits and interrupted-work recovery require further work.
++- The current public tracker verifies a case ID plus registration/policy number, not a full applicant account.
++- Reports retain model-generated prose and heuristic scores. Citations and recorded inputs support review; they do not guarantee every model statement is correct.
++- Multi-tenant security review, backup/restore drills, production monitoring and independent detection validation remain release gates.
++
++## Offline regression commands
++
++From the backend directory:
++
++```text
++python -m pip install pytest
++python -m pytest test_pilot_workflow.py -q
++python test_models.py
++python test_api.py
++```
++
++The legacy API runner additionally requires the corpus images and CLIP dependencies. The original agent runner expects `fraudlens.db`. Do not interpret missing-resource failures as model-accuracy measurements. Frontend validation: `npm run build` from its directory.
++
++## Verification in this workspace
++
++- Frontend TypeScript check and full Vite production build: passed on Node 22.23.3. The existing Nitro/Vite compatibility warning remains; no dependency upgrade was made.
++- `python -m pytest test_pilot_workflow.py -q`: 11 passed.
++- `python test_models.py`: 81 passed.
++- Legacy API runner after intentional expectation updates: 21 passed, 4 failed because corpus photographs/CLIP dependencies were unavailable.
++- Agent engine runner with two isolated in-memory fixture cases instead of the missing corpus DB: 15 checks passed; the SDK-schema test skipped because google-genai was absent (the legacy runner incorrectly includes that skip in its printed 16-pass total). This exercises mocked provider responses, not live Gemini.
++- Python API import and changed-file compilation: passed. `git diff --check`: passed.
++- The backend tests used available FastAPI 0.143.0 and Starlette 1.8.0, not the project's complete pinned production environment. Re-run on the target laptop's pinned environment.
++- Live providers, all-archetype performance, actual browser interaction and multi-user/tenant isolation: not verified.
++
++## Applying this source package
++
++The download contains source, not your database, `.env`, image corpus, virtual environment or `node_modules`. Extract into a separate folder or apply the accompanying patch on a clean checkout of baseline commit `f30cd20f0d021e1dd670e49deb33a20dd96ed19f`. Keep a backup of local work first. Restore/configure your local resources deliberately; do not overwrite them with empty files.
++
++```text
++git switch -c pilot-workflow
++git apply --check /path/to/FraudLens_Pilot_Changes.patch
++git apply /path/to/FraudLens_Pilot_Changes.patch
++```
++
++Stop if the check reports a conflict; it indicates local differences that must be reviewed. These changes have not been pushed to GitHub or deployed.

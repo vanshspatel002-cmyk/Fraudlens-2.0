@@ -295,7 +295,7 @@ export function Footer() {
       </div>
       <div className="footer-bottom">
         <span>© 2026 FraudLens 2.0</span>
-        <span>Research prototype built for academic evaluation.</span>
+        <span>Evidence-led review. Human accountability.</span>
       </div>
     </footer>
   );
@@ -349,10 +349,10 @@ export function Safety() {
   );
 }
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
-const adminEmail = () => localStorage.getItem("fraudlens_admin_email") || "";
-const adminPassword = () => localStorage.getItem("fraudlens_admin_password") || "";
+const adminEmail = () => sessionStorage.getItem("fraudlens_admin_email") || "";
+const adminToken = () => sessionStorage.getItem("fraudlens_admin_token") || "";
 const authHeaders = (): Record<string, string> =>
-  adminPassword() ? { Authorization: "Bearer " + adminPassword() } : {};
+  adminToken() ? { Authorization: "Bearer " + adminToken() } : {};
 type ApiRecord = Record<string, unknown>;
 const stringValue = (value: unknown) => String(value || "");
 async function request(path: string, options: RequestInit = {}): Promise<ApiRecord> {
@@ -401,8 +401,8 @@ const band = (b?: string) =>
       : b === "escalate_siu"
         ? "High"
         : "Unrated";
-const recommendation = (r?: string) =>
-  r === "approve"
+const recommendation = (r?: string, riskBand?: string) =>
+  riskBand === "desk_review" ? "Desk review" : r === "approve"
     ? "Clear"
     : r === "request_evidence"
       ? "Request Additional Evidence"
@@ -489,7 +489,7 @@ async function caseDetail(id: string) {
     garage: stringValue(d.garage_id),
     amount: Number(d.claim_amount || 0),
     risk: band(stringValue(d.risk_band)),
-    recommendation: recommendation(stringValue(decision.recommendation)),
+    recommendation: recommendation(stringValue(decision.recommendation), stringValue(decision.risk_band)),
     narrative: stringValue(decision.summary),
     outcome: stringValue(adminAction.action),
     reason: stringValue(adminAction.reason),
@@ -521,37 +521,46 @@ async function caseDetail(id: string) {
       input: s.tool_input,
       result: s.tool_output,
     })),
-    audit: [],
+    processing: d.processing,
+    analysisFallback: !!decision.provider_unavailable,
+    audit: ((d.audit as ApiRecord[]) || []).map((entry) => ({
+      ...entry, detail: JSON.stringify(entry.detail),
+    })),
   };
 }
 export async function api(path: string, options?: RequestInit): Promise<unknown> {
   if (path === "config") return { intake: true, admin: true };
   if (path === "session") {
-    const email = adminEmail();
-    if (!email || !adminPassword()) throw new Error("No active admin session.");
-    return { user: email };
+    // Remove credentials retained by older releases.
+    localStorage.removeItem("fraudlens_admin_password");
+    localStorage.removeItem("fraudlens_admin_email");
+    if (!adminToken()) throw new Error("No active admin session.");
+    return request("/v1/auth/session");
   }
   if (path === "logout") {
-    localStorage.removeItem("fraudlens_admin_email");
-    localStorage.removeItem("fraudlens_admin_password");
+    try {
+      await request("/v1/auth/logout", { method: "POST" });
+    } finally {
+      sessionStorage.removeItem("fraudlens_admin_email");
+      sessionStorage.removeItem("fraudlens_admin_token");
+      imageUrls.forEach((url) => URL.revokeObjectURL(url));
+      imageUrls.clear();
+    }
     return { ok: true };
   }
   if (path === "login" && options?.body) {
-    const b = JSON.parse(String(options.body));
-    localStorage.setItem("fraudlens_admin_email", b.email);
-    localStorage.setItem("fraudlens_admin_password", b.password);
-    try {
-      await request("/v1/stats");
-    } catch (e) {
-      localStorage.removeItem("fraudlens_admin_email");
-      localStorage.removeItem("fraudlens_admin_password");
-      throw e;
-    }
-    return { user: b.email };
+    const j = await request("/v1/auth/login", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: options.body,
+    });
+    sessionStorage.setItem("fraudlens_admin_email", stringValue(j.user));
+    sessionStorage.setItem("fraudlens_admin_token", stringValue(j.token));
+    return { user: j.user };
   }
   if (path.startsWith("queue")) {
-    const suffix = path.includes("?") ? "&" + path.slice(path.indexOf("?") + 1) : "";
-    const j = await request("/v1/cases?sort_by=created_at&sort_dir=desc" + suffix);
+    const params = new URLSearchParams(path.split("?")[1] || "");
+    if (!params.has("sort_by")) params.set("sort_by", "created_at");
+    if (!params.has("sort_dir")) params.set("sort_dir", "desc");
+    const j = await request("/v1/cases?" + params);
     const cases = await Promise.all(
       ((j.items as ApiRecord[] | undefined) || []).map(async (r) => {
         const thumbId = String(r.thumbnail_url || "").match(/\/v1\/images\/([^?]+)/)?.[1];
@@ -564,7 +573,7 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
           garage: stringValue(r.garage_id),
           amount: Number(r.claim_amount || 0),
           status: stringValue(r.status) || "open",
-          recommendation: recommendation(stringValue(r.recommendation)),
+          recommendation: recommendation(stringValue(r.recommendation), stringValue(r.risk_band)),
           risk: band(stringValue(r.risk_band)),
           created_at: stringValue(r.created_at) || new Date().toISOString(),
           thumbnail: thumbId ? await apiImageUrl(thumbId) : "",
@@ -606,18 +615,26 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
         action,
         reason: b.reason,
         admin_id: adminEmail() || "admin",
-        requested_artifacts: b.publicNarrative ? [b.publicNarrative] : [],
+        public_message: b.publicNarrative || null,
       }),
     });
   }
+  if (path.startsWith("reprocess?id=")) {
+    return request("/v1/cases/" + encodeURIComponent(path.slice("reprocess?id=".length)) + "/reprocess", { method: "POST" });
+  }
   return request("/v1/" + path, options);
 }
+const imageUrls = new Map<string, string>();
 export async function apiImageUrl(id: string) {
+  const cached = imageUrls.get(id);
+  if (cached) return cached;
   const r = await fetch(API_BASE + "/v1/images/" + encodeURIComponent(id) + "?thumb=1", {
     headers: authHeaders(),
   });
   if (!r.ok) return "";
-  return URL.createObjectURL(await r.blob());
+  const url = URL.createObjectURL(await r.blob());
+  imageUrls.set(id, url);
+  return url;
 }
 export const post = (path: string, body: unknown) =>
   api(path, {
