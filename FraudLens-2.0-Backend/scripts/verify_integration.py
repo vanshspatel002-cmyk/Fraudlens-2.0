@@ -103,6 +103,9 @@ def main() -> int:
         from src import api
 
         api.DB_PATH = str(db_path)
+        api.UPLOAD_DIR = tmp / 'uploads'
+        api.THUMB_DIR = tmp / 'thumbnails'
+        os.environ['FRAUDLENS_WORKER_ENABLED']='0'
         api._JOBS.clear()
         original_run_pipeline = api._run_pipeline
         api._run_pipeline = lambda job_id, case_id: api._set_job(
@@ -116,7 +119,9 @@ def main() -> int:
         os.environ["ADMIN_PASSWORD_SHA256"] = hashlib.sha256(
             b"integration-admin").hexdigest()
         client = TestClient(api.app)
-        client.headers.update({"Authorization": "Bearer integration-admin"})
+        os.environ['ADMIN_EMAIL']='integration@example.com'
+        login=client.post('/v1/auth/login',json={'email':'integration@example.com','password':'integration-admin'})
+        client.headers.update({'Authorization':'Bearer '+login.json()['token']})
 
         print("\n1. submit a case through the API")
         with corpus_vehicle_image().open("rb") as fh:

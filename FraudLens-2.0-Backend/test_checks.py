@@ -99,7 +99,12 @@ def get_conn():
     if _conn is None:
         if not GROUND_TRUTH_CSV.exists():
             raise FileNotFoundError(f"{GROUND_TRUTH_CSV} not found - run `python -m src.generate_dataset` first")
-        _conn = db.connect(resolve_db_path())
+        import sqlite3, tempfile
+        target = sqlite3.connect(':memory:')
+        source = sqlite3.connect(resolve_db_path().resolve().as_uri()+'?mode=ro',uri=True)
+        source.backup(target); source.close()
+        target.row_factory=sqlite3.Row;target.execute('PRAGMA foreign_keys=ON')
+        _conn=target
         db.init_db(_conn)
     return _conn
 

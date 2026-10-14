@@ -796,6 +796,17 @@ def test_db_perception_record_with_no_embedding_roundtrips_as_none():
     conn.close()
 
 
+@test
+def test_legacy_case_read_without_optional_notes_column():
+    conn=fresh_conn()
+    try:
+        db.insert_case(conn,make_case())
+        conn.execute('ALTER TABLE cases DROP COLUMN declaration_notes')
+        assert db.get_case(conn,'case-1').declaration_notes is None
+        assert db.get_all_cases(conn)[0].declaration_notes is None
+    finally:conn.close()
+
+
 if __name__ == "__main__":
     ok = run_all()
     sys.exit(0 if ok else 1)

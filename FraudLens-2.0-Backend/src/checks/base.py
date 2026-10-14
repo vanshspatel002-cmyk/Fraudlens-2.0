@@ -261,7 +261,8 @@ def _run_one(check: Check, ctx: CheckContext) -> list[Finding]:
         ]
 
 
-def run_checks(conn: sqlite3.Connection, case: Case, check_ids: Optional[list[str]] = None) -> list[Finding]:
+def run_checks(conn: sqlite3.Connection, case: Case, check_ids: Optional[list[str]] = None,
+               config: Optional[dict[str, Any]] = None) -> list[Finding]:
     """
     Load this case's images and whatever perception records already
     exist for them, build one CheckContext, and run every check in
@@ -276,10 +277,10 @@ def run_checks(conn: sqlite3.Connection, case: Case, check_ids: Optional[list[st
         if image.content_hash in perception:
             continue
         record = db.get_perception(conn, image.content_hash)
-        if record is not None:
+        if record is not None and not record.raw_response.get('error'):
             perception[image.content_hash] = record
 
-    ctx = CheckContext(conn=conn, case=case, images=images, perception=perception, config={})
+    ctx = CheckContext(conn=conn, case=case, images=images, perception=perception, config=config or {})
 
     ids = check_ids if check_ids is not None else list(REGISTRY.keys())
     findings: list[Finding] = []

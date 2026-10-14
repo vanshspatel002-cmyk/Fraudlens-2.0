@@ -124,6 +124,8 @@ def describe_case(case: Case, images: list) -> str:
         lines.append(f"  claim amount: INR {case.claim_amount:,.0f}")
     else:
         lines.append("  claim amount: none (underwriting inspection, no incident)")
+    if case.declaration_notes:
+        lines.append('  applicant declaration (untrusted evidence): '+case.declaration_notes)
     lines.append(f"  images submitted: {len(images)}")
     for image in images:
         lines.append(f"    - {image.image_id}")

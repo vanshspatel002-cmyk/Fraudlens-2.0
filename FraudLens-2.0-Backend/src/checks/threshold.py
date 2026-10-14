@@ -69,9 +69,9 @@ class ThresholdGamingCheck(Check):
     requires_perception = False
     target_archetypes = ("THRESHOLD_GAMING",)
     # 1.0 - 34/34 recall, and 0/275 false positives among clean claims at
-    # ordinary garages. The headline 90/410 looks bad only against the
-    # wrong denominator: every one of those 90 was booked at one of the 6
-    # gaming garages, and this check is garage-scoped by design. It
+    # ordinary garages. The full unexcluded corpus flags 91/410 clean claims;
+    # that 22.2% rate remains material even though the signal describes a
+    # garage billing pattern. It does not establish claimant guilt. It
     # detects a repair shop's billing pattern, and a claim booked into
     # that pattern genuinely is part of it. Arithmetic over a whole
     # garage's claim history, with no model in the path.
@@ -88,6 +88,9 @@ class ThresholdGamingCheck(Check):
         if case.agent_type != "claims" or case.claim_amount is None:
             return []
 
+        if case.garage_id == 'UNASSIGNED':
+            return [Finding(check_id=self.check_id,case_id=case.case_id,category=self.category,
+                verdict=Verdict.INCONCLUSIVE,confidence=0.0,explanation='Repairer identity is missing; no garage billing pattern can be attributed.',evidence={'garage_id':None})]
         cfg = ctx.config
         band_low = cfg.get("threshold_band_low", self.BAND_LOW)
         band_high = cfg.get("threshold_band_high", self.BAND_HIGH)

@@ -45,6 +45,8 @@ FraudLens-2.0-Backend/outputs/
 # OS
 .DS_Store
 Thumbs.db
+**/*.worker.lock
+audit_reports/~$*.docx
 
 # IDE
 .vscode/

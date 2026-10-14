@@ -256,7 +256,7 @@ class EntityGraphCheck(Check):
     def _claimant_vehicle_cycling(
         self, conn: sqlite3.Connection, case: Any,
     ) -> Optional[dict[str, Any]]:
-        if not case.claimant_id or not case.garage_id:
+        if not case.claimant_id or not case.garage_id or case.garage_id == 'UNASSIGNED':
             return None
         try:
             rows = conn.execute(

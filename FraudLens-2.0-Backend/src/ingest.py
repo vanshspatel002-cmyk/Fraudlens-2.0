@@ -87,14 +87,22 @@ class CLIPEmbedder:
     _PRETRAINED = "laion2b_s34b_b79k"
 
     def __init__(self) -> None:
+        import threading
+        self._load_lock = threading.Lock()
         self._model = None
         self._preprocess = None
         self._tokenizer = None
 
     def _ensure_loaded(self) -> None:
+        with self._load_lock:
+            self._load_model()
+
+    def _load_model(self) -> None:
         if self._model is not None:
             return
         import open_clip
+        import os, torch
+        torch.set_num_threads(max(1,int(os.environ.get('FRAUDLENS_TORCH_THREADS','2'))))
 
         model, _, preprocess = open_clip.create_model_and_transforms(
             self._MODEL_NAME, pretrained=self._PRETRAINED, device="cpu"
@@ -210,6 +218,7 @@ def ingest_image(
     case_id: str,
     path: Union[str, Path],
     embedder: Optional[CLIPEmbedder] = None,
+    embedding: Optional[list[float]] = None,
 ) -> Image:
     """
     Turn one file on disk into a saved Image row. By the time this
@@ -226,7 +235,7 @@ def ingest_image(
         content_hash=compute_sha256(path),
         phash=phash,
         dhash=dhash,
-        embedding=(embedder or _default_embedder).embed(path),
+        embedding=embedding if embedding is not None else (embedder or _default_embedder).embed(path),
         exif=extract_exif(path),
     )
     db.save_image(conn, image)

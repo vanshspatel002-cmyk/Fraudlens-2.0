@@ -96,9 +96,8 @@ logging.basicConfig(
 )
 access_log = logging.getLogger("fraudlens.access")
 
-# The survey threshold below which Indian motor claims are typically settled
-# without an independent surveyor. Exposed per case because it is the
-# structural fact the whole threshold-gaming archetype turns on.
+# Preserved research billing benchmark. Current regulatory applicability and
+# insurer procedures have not been established by this software verification.
 SURVEY_THRESHOLD_INR = 50_000.0
 
 @asynccontextmanager
@@ -107,13 +106,25 @@ async def lifespan(_app):
     conn = db.connect(DB_PATH)
     try:
         db.init_db(conn)
+        conn.execute('PRAGMA journal_mode=WAL')
         runtime_store.init(conn)
-        # A single API process owns BackgroundTasks. Never leave interrupted
-        # work looking live after a restart; reviewers can explicitly retry it.
-        runtime_store.interrupt_jobs(conn)
+        conn.commit()
     finally:
         conn.close()
-    yield
+    if os.environ.get('FRAUDLENS_WARM_MODELS') == '1':
+        from src.ingest import _default_embedder
+        from src.vehicle_gate import _text_embeddings
+        _default_embedder._ensure_loaded()
+        _text_embeddings(_default_embedder)
+    from src.durable_worker import DurableWorker
+    worker = DurableWorker(DB_PATH, _run_pipeline)
+    _app.state.worker = worker
+    if os.environ.get('FRAUDLENS_WORKER_ENABLED', '1') == '1':
+        worker.start()
+    try:
+        yield
+    finally:
+        worker.stop()
 
 
 app = FastAPI(
@@ -137,7 +148,7 @@ app.add_middleware(
     allow_origins=_cors_origins(),
     allow_credentials=False,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type", "X-Admin-Password"],
+    allow_headers=['Content-Type','Authorization','X-Admin-Password','X-Applicant-Token','Idempotency-Key'],
     expose_headers=["ETag", "Content-Length"],
 )
 
@@ -149,7 +160,7 @@ _HEALTH_GEMINI_CACHE: dict[str, Any] = {"checked_at": 0.0, "reachable": None, "s
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
+    forwarded = request.headers.get("x-forwarded-for", "") if os.environ.get('FRAUDLENS_TRUST_PROXY') == '1' else ''
     if forwarded:
         return forwarded.split(",", 1)[0].strip()
     return request.client.host if request.client else "unknown"
@@ -158,7 +169,7 @@ def _client_ip(request: Request) -> str:
 def _rate_limit_key(request: Request) -> tuple[Optional[str], int]:
     if request.method == "POST" and request.url.path == "/v1/auth/login":
         return "login", 5
-    if request.method == "POST" and request.url.path == "/v1/cases":
+    if request.method == "POST" and (request.url.path == "/v1/cases" or request.url.path.endswith('/evidence')):
         return "submit", RATE_LIMIT_SUBMIT_MAX
     if request.method == "GET" and request.url.path == "/v1/track":
         return "track", RATE_LIMIT_TRACK_MAX
@@ -206,6 +217,9 @@ async def _ops_middleware(request: Request, call_next):
         "client_ip": _client_ip(request),
         "admin": admin_actor,
     }, sort_keys=True))
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    if request.url.path.startswith('/v1/'):
+        response.headers['Cache-Control'] = 'no-store'
     response.headers["X-Request-Latency-Ms"] = str(latency_ms)
     return response
 
@@ -289,48 +303,45 @@ async def _unhandled_handler(_request: Request, exc: Exception) -> JSONResponse:
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-def require_admin(
-    request: Request,
-    authorization: Optional[str] = Header(default=None),
-    x_admin_password: Optional[str] = Header(default=None),
-) -> str:
-    """
-    Browser admin auth for the FastAPI deployment.
-
-    The frontend sends the admin password as a bearer token; the server compares
-    only its SHA-256 digest with ADMIN_PASSWORD_SHA256 from the environment.
-    EVIDENCE_SERVICE_TOKEN is also accepted for server-to-server callers.
-    """
-    expected_hash = (os.environ.get("ADMIN_PASSWORD_SHA256") or "").strip().lower()
-    service_token = (os.environ.get("EVIDENCE_SERVICE_TOKEN") or "").strip()
-    if not expected_hash and not service_token:
-        raise ApiError(503, "ADMIN_AUTH_NOT_CONFIGURED",
-                       "Admin access has not been configured.")
-
-    credential = x_admin_password or ""
-    if authorization:
-        scheme, _, value = authorization.partition(" ")
-        credential = value if scheme.lower() == "bearer" and value else authorization
-    credential = credential.strip()
+def require_admin(request: Request, authorization: Optional[str] = Header(default=None),
+                  x_admin_password: Optional[str] = Header(default=None)) -> str:
+    expected = os.environ.get('ADMIN_PASSWORD_SHA256', '').strip().lower()
+    service = os.environ.get('EVIDENCE_SERVICE_TOKEN', '').strip()
+    scheme, _, value = (authorization or '').partition(' ')
+    credential = value.strip() if scheme.lower() == 'bearer' else ''
+    if not credential and os.environ.get('FRAUDLENS_ALLOW_LEGACY_AUTH') == '1':
+        credential = x_admin_password or ''
     if not credential:
-        raise ApiError(401, "UNAUTHORISED", "Admin credentials are required.")
-
-    if service_token and hmac.compare_digest(credential, service_token):
-        request.state.admin_actor = "service"
-        return "service"
-
+        raise ApiError(401, 'UNAUTHORISED', 'Reviewer authentication is required.')
+    if service and hmac.compare_digest(credential, service):
+        request.state.admin_actor, request.state.role = 'service', 'service'
+        return 'service'
     with runtime_store.connection(DB_PATH) as conn:
-        actor = runtime_store.session_actor(conn, credential, expected_hash)
-    if actor:
-        request.state.admin_actor = actor
+        record = runtime_store.session_record(conn, credential, expected)
+        if record and not conn.execute('SELECT 1 FROM reviewer_accounts WHERE email=?',(record['actor'],)).fetchone() and record['actor'].lower()!=os.environ.get('ADMIN_EMAIL','').strip().lower():
+            record=None
+    if record:
+        request.state.admin_actor, request.state.role = record['actor'], record['role']
+        request.state.expires_at = record['expires_at']
+        return record['actor']
+    if os.environ.get('FRAUDLENS_ALLOW_LEGACY_AUTH') == '1' and expected and hmac.compare_digest(runtime_store.digest(credential), expected):
+        actor = os.environ.get('ADMIN_EMAIL', 'admin')
+        request.state.admin_actor, request.state.role = actor, 'admin'
         return actor
+    raise ApiError(401, 'UNAUTHORISED', 'Reviewer session is invalid or expired.')
 
-    supplied_hash = hashlib.sha256(credential.encode("utf-8")).hexdigest()
-    if expected_hash and hmac.compare_digest(supplied_hash, expected_hash):
-        actor = os.environ.get("ADMIN_EMAIL", "admin")
-        request.state.admin_actor = actor
-        return actor
-    raise ApiError(401, "UNAUTHORISED", "Admin credentials are invalid.")
+
+def require_reviewer(request: Request, actor: str = Depends(require_admin)) -> str:
+    if request.state.role not in ('admin', 'reviewer', 'service'):
+        raise ApiError(403, 'FORBIDDEN', 'This account has read-only access.')
+    return actor
+
+
+def require_owner(request: Request, actor: str = Depends(require_admin)) -> str:
+    if request.state.role != 'admin':
+        raise ApiError(403, 'FORBIDDEN', 'An administrator account is required.')
+    return actor
+
 
 class LoginIn(BaseModel):
     email: str = Field(min_length=1, max_length=254)
@@ -339,6 +350,8 @@ class LoginIn(BaseModel):
 
 class SessionOut(BaseModel):
     user: str
+    role: str = 'admin'
+    organization_id: str = 'local'
     token: Optional[str] = None
     expires_at: Optional[float] = None
 
@@ -349,29 +362,34 @@ class LogoutOut(BaseModel):
 
 @app.post("/v1/auth/login", response_model=SessionOut, tags=["auth"])
 def login(payload: LoginIn) -> SessionOut:
-    actor = os.environ.get("ADMIN_EMAIL", "").strip()
-    expected = os.environ.get("ADMIN_PASSWORD_SHA256", "").strip().lower()
-    if not actor or not expected:
-        raise ApiError(503, "ADMIN_AUTH_NOT_CONFIGURED", "Admin access has not been configured.")
-    supplied = hashlib.sha256(payload.password.encode()).hexdigest()
-    if not (hmac.compare_digest(payload.email.strip().lower(), actor.lower())
-            and hmac.compare_digest(supplied, expected)):
-        raise ApiError(401, "UNAUTHORISED", "Email or password is incorrect.")
-    token = secrets.token_urlsafe(48)
-    expires = time.time() + 8 * 3600
+    email = payload.email.strip().lower()
+    actor = os.environ.get('ADMIN_EMAIL', '').strip().lower()
+    expected = os.environ.get('ADMIN_PASSWORD_SHA256', '').strip().lower()
     with runtime_store.connection(DB_PATH) as conn:
+        account = conn.execute('SELECT * FROM reviewer_accounts WHERE email=?', (email,)).fetchone()
+        valid = bool(account and account['enabled'] and runtime_store.password_matches(payload.password, account['password_hash']))
+        if account:
+            actor, expected, role = email, account['password_hash'], account['role']
+        else:
+            valid = bool(actor and expected and hmac.compare_digest(email, actor) and hmac.compare_digest(runtime_store.digest(payload.password), expected))
+            role = 'admin'
+        if not valid:
+            raise ApiError(401, 'UNAUTHORISED', 'Email or password is incorrect.')
+        token = secrets.token_urlsafe(48)
+        expires = time.time() + 8 * 3600
         runtime_store.create_session(conn, token, actor, expected, expires)
-    return SessionOut(user=actor, token=token, expires_at=expires)
+    return SessionOut(user=actor, role=role, token=token, expires_at=expires)
 
 
-@app.get("/v1/auth/session", response_model=SessionOut, tags=["auth"])
-def session(_admin: str = Depends(require_admin)) -> SessionOut:
-    return SessionOut(user=_admin)
+@app.get('/v1/auth/session', response_model=SessionOut, tags=['auth'])
+def session(request: Request, _admin: str = Depends(require_admin)) -> SessionOut:
+    return SessionOut(user=_admin, role=request.state.role, expires_at=getattr(request.state, 'expires_at', None))
 
 
 @app.post("/v1/auth/logout", response_model=LogoutOut, tags=["auth"])
 def logout(authorization: Optional[str] = Header(default=None)) -> LogoutOut:
-    token = (authorization or "").removeprefix("Bearer ")
+    scheme, _, value = (authorization or '').partition(' ')
+    token = value.strip() if scheme.lower() == 'bearer' else ''
     with runtime_store.connection(DB_PATH) as conn:
         runtime_store.delete_session(conn, token)
     return LogoutOut(ok=True)
@@ -431,18 +449,29 @@ def measurements() -> dict[str, dict[str, Any]]:
     return _MEASUREMENTS
 
 
-def concerns_by_check(conn: sqlite3.Connection) -> dict[str, int]:
-    return {r[0]: r[1] for r in conn.execute(
-        "SELECT check_id, COUNT(*) FROM findings WHERE verdict = 'concern' "
-        "GROUP BY check_id")}
+CURRENT_FINDINGS = """SELECT f.* FROM findings f WHERE
+    NOT EXISTS (SELECT 1 FROM api_jobs j WHERE j.case_id=f.case_id)
+    OR EXISTS (SELECT 1 FROM processing_results r JOIN api_jobs j ON j.job_id=r.run_id,
+        json_each(r.finding_ids) ids WHERE r.case_id=f.case_id AND ids.value=f.finding_id
+        AND j.rowid=(SELECT latest.rowid FROM api_jobs latest WHERE latest.case_id=f.case_id
+            ORDER BY latest.rowid DESC LIMIT 1))"""
 
 
-def get_conn() -> Iterator[sqlite3.Connection]:
+def concerns_by_check(conn):
+    return dict(conn.execute('SELECT check_id,COUNT(*) FROM ('+CURRENT_FINDINGS+") WHERE verdict='concern' GROUP BY check_id").fetchall())
+
+
+def get_conn(request: Request) -> Iterator[sqlite3.Connection]:
     conn = db.connect(DB_PATH)
     db.init_db(conn)
     runtime_store.init(conn)
+    conn.commit()
+    if request.method == 'GET':conn.execute('BEGIN')
     try:
         yield conn
+    except BaseException:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -525,6 +554,7 @@ class DecisionOut(BaseModel):
 
 
 class CaseSummary(BaseModel):
+    declaration_notes: Optional[str] = None
     """One queue row. Carries everything a table renders, so no second request."""
 
     case_id: str
@@ -564,8 +594,8 @@ class CaseSummary(BaseModel):
     claim_amount: Optional[float] = None
     below_survey_threshold: Optional[bool] = Field(
         default=None,
-        description="Claim below the ₹50,000 surveyor threshold - the band settled "
-                    "without independent inspection.")
+        description="Claim below the preserved ₹50,000 research billing benchmark; "
+                    "current survey requirements are unverified.")
     recommendation: Optional[str] = None
     risk_band: Optional[str] = None
     concern_count: int = 0
@@ -576,6 +606,8 @@ class CaseSummary(BaseModel):
 
 
 class CaseDetail(CaseSummary):
+    declaration_notes: Optional[str] = None
+    review_revision: int = 0
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     images: list[ImageOut] = Field(default_factory=list)
@@ -592,6 +624,8 @@ class CaseDetail(CaseSummary):
     total_concerns: int = 0
     audit: list[dict[str, Any]] = Field(default_factory=list)
     processing: Optional[dict[str, Any]] = None
+    evidence_request: Optional[dict[str, Any]] = None
+    report_history: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CaseListOut(BaseModel):
@@ -720,7 +754,9 @@ class PolicyOut(BaseModel):
 class JobOut(BaseModel):
     job_id: str
     case_id: Optional[str] = None
-    status: Literal["queued", "running", "done", "failed"]
+    status: Literal['queued', 'running', 'completed', 'done', 'failed', 'interrupted']
+    attempts: int = 0
+    updated_at: Optional[float] = None
     progress: float = Field(default=0.0, ge=0.0, le=1.0)
     stage: Optional[str] = None
     detail: Optional[str] = None
@@ -728,6 +764,7 @@ class JobOut(BaseModel):
 
 
 class SubmitCaseOut(BaseModel):
+    applicant_token: Optional[str] = None
     case_id: str
     job_id: str
     status: str
@@ -740,6 +777,10 @@ class AdminActionOut(BaseModel):
     action: Literal["approve", "reject", "request_more_evidence"]
     reason: Optional[str] = None
     timestamp: datetime
+    reviewed_run_id: Optional[str] = None
+    reviewed_decision_id: Optional[str] = None
+    reviewed_evidence_ids: list[str] = Field(default_factory=list)
+    reviewed_processing_status: Optional[str] = None
 
 
 class ActionOut(BaseModel):
@@ -771,6 +812,7 @@ class HealthOut(BaseModel):
 
 
 class ActionIn(BaseModel):
+    expected_revision: Optional[int] = Field(default=None, ge=0)
     public_message: Optional[str] = Field(default=None, max_length=3000)
     action: AdminAction
     reason: Optional[str] = None
@@ -809,10 +851,17 @@ class ReportDeclaration(BaseModel):
     driving_license_number: Optional[str] = None
     fir_number: Optional[str] = None
     settlement_preference: Optional[str] = None
+    declaration_notes: Optional[str] = None
     bank_account_last4: Optional[str] = None
 
 
 class CaseReportOut(BaseModel):
+    run_id: Optional[str] = None
+    policy_version: Optional[str] = None
+    processing: Optional[dict[str, Any]] = None
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence_label: str = 'Heuristic score; not a calibrated fraud probability'
+    limitations: list[str] = Field(default_factory=list)
     case_id: str
     declaration: ReportDeclaration
     findings_by_category: dict[str, list[FindingOut]] = Field(default_factory=dict)
@@ -823,6 +872,9 @@ class CaseReportOut(BaseModel):
 
 
 class TrackOut(BaseModel):
+    agent_type: str
+    processing_status: Optional[str] = None
+    evidence_request: Optional[dict[str, Any]] = None
     case_id: str
     status: str
     final_admin_action: Optional[Literal["approve", "reject", "request_more_evidence"]] = None
@@ -839,8 +891,8 @@ def _check_status(check: Any, concerns: int) -> str:
         return "demoted"
     if concerns == 0 and getattr(check, "limitation", ""):
         return "corpus_untestable"
-    if concerns == 0:
-        return "quota_blocked" if check.requires_perception else "corpus_untestable"
+    # A zero concern count says nothing about quota or execution success.
+    # Missing perception is reported by the actual inconclusive finding.
     return "active"
 
 
@@ -881,7 +933,8 @@ def _decision_out(d: Any, conn: Optional[sqlite3.Connection] = None) -> Decision
     fallback = llm_calls == 0 and policy.startswith("agent")
     if conn is not None:
         for event in reversed(db.get_audit_events_for_case(conn, d.case_id)):
-            if event.event_type == "case_adjudicated" and event.details.get("policy_version") == policy:
+            if event.event_type == "case_adjudicated" and (event.details.get('decision_id') == d.decision_id or
+                (not event.details.get('decision_id') and event.details.get('policy_version') == policy)):
                 fallback = event.details.get("converged") is False
                 break
     return DecisionOut(
@@ -903,15 +956,25 @@ def _decision_out(d: Any, conn: Optional[sqlite3.Connection] = None) -> Decision
     )
 
 
-def _admin_action_out(action: Optional[AdminActionRecord]) -> Optional[AdminActionOut]:
+def _admin_action_out(action: Optional[AdminActionRecord], conn=None) -> Optional[AdminActionOut]:
     if action is None:
         return None
+    context = None
+    if conn is not None:
+        row=conn.execute("""SELECT details FROM audit_log WHERE case_id=? AND event_type='admin_action'
+            AND json_extract(details,'$.recorded_at')=? AND json_extract(details,'$.admin_id')=?
+            ORDER BY rowid DESC LIMIT 1""",(action.case_id,action.timestamp.isoformat(),action.admin_id)).fetchone()
+        context=json.loads(row[0]) if row else None
     return AdminActionOut(
         case_id=action.case_id,
         admin_id=action.admin_id,
         action=action.action.value,
         reason=action.reason,
         timestamp=action.timestamp,
+        reviewed_run_id=context.get('run_id') if context else None,
+        reviewed_decision_id=context.get('decision_id') if context else None,
+        reviewed_evidence_ids=context.get('evidence_ids',[]) if context else [],
+        reviewed_processing_status=context.get('processing_status') if context else None,
     )
 
 
@@ -963,12 +1026,26 @@ def _perception_by_hash(conn: sqlite3.Connection, hashes: list[str]) -> dict[str
                    "damage_description": r[3], "anomaly_notes": r[4]} for r in rows}
 
 
+def _current_findings(conn, case_id):
+    result = runtime_store.current_result(conn,case_id)
+    if runtime_store.latest_job(conn,case_id):
+        ids = set(json.loads(result['finding_ids'])) if result else set()
+        return [f for f in db.get_findings_for_case(conn,case_id) if f.finding_id in ids]
+    return db.get_findings_for_case(conn,case_id)
+
+
+def _current_decision(conn,case_id):
+    result = runtime_store.current_result(conn,case_id)
+    decisions = db.get_decisions_for_case(conn,case_id)
+    if runtime_store.latest_job(conn,case_id):
+        return next((d for d in decisions if result and d.decision_id==result['decision_id']),None)
+    return _best_decision(decisions)
+
+
 def _summary_for(conn: sqlite3.Connection, case: Case) -> CaseSummary:
     decisions = db.get_decisions_for_case(conn, case.case_id)
-    best = _best_decision(decisions)
-    concerns = conn.execute(
-        "SELECT COUNT(*) FROM findings WHERE case_id = ? AND verdict = 'concern'",
-        (case.case_id,)).fetchone()[0]
+    best = _current_decision(conn,case.case_id)
+    concerns = sum(f.verdict.value == 'concern' for f in _current_findings(conn,case.case_id))
     images = conn.execute(
         "SELECT image_id FROM images WHERE case_id = ? ORDER BY image_id",
         (case.case_id,)).fetchall()
@@ -988,6 +1065,7 @@ def _summary_for(conn: sqlite3.Connection, case: Case) -> CaseSummary:
         driving_license_number=case.driving_license_number,
         fir_number=case.fir_number, settlement_preference=case.settlement_preference,
         bank_account_last4=case.bank_account_last4,
+        declaration_notes=case.declaration_notes,
         claimant_id=case.claimant_id, garage_id=case.garage_id,
         declared_location=case.declared_location, incident_date=case.declared_time,
         created_at=case.created_at, claim_amount=case.claim_amount,
@@ -1046,7 +1124,8 @@ def list_cases(
     if agent_type:
         cases = [c for c in cases if c.agent_type == agent_type]
     if status:
-        cases = [c for c in cases if c.status == status]
+        statuses = set(status.split(','))
+        cases = [c for c in cases if c.status in statuses]
     if garage_id:
         cases = [c for c in cases if c.garage_id == garage_id]
     if archetype:
@@ -1063,11 +1142,19 @@ def list_cases(
         needle = search.strip().lower()
         cases = [c for c in cases if needle in " ".join(
             str(x or "").lower() for x in
-            (c.case_id, c.vehicle_registration, c.claimant_id, c.garage_id))]
+            (c.case_id,c.vehicle_registration,c.claimant_id,c.garage_id,c.person_name,c.policy_number))]
 
+    if not risk_band and not recommendation and has_concerns is None and sort_by in {'created_at','claim_amount'}:
+        reverse=sort_dir=='desc'
+        if sort_by=='claim_amount':cases.sort(key=lambda c:(c.claim_amount is None,c.claim_amount or 0),reverse=reverse)
+        else:cases.sort(key=lambda c:(c.created_at is None,c.created_at or datetime.min.replace(tzinfo=timezone.utc)),reverse=reverse)
+        total=len(cases);start=(page-1)*page_size
+        items=[_summary_for(conn,c) for c in cases[start:start+page_size]]
+        return CaseListOut(total=total,page=page,page_size=page_size,has_more=start+len(items)<total,items=items)
     summaries = [_summary_for(conn, c) for c in cases]
     if risk_band:
-        summaries = [s for s in summaries if s.risk_band == risk_band]
+        bands = set(risk_band.split(','))
+        summaries = [s for s in summaries if (s.risk_band or 'unrated') in bands]
     if recommendation:
         summaries = [s for s in summaries if s.recommendation == recommendation]
     if has_concerns is not None:
@@ -1119,7 +1206,7 @@ def get_case_detail(case_id: str,
     concerns = concerns_by_check(conn)
     grouped: dict[str, list[FindingOut]] = {c.value: [] for c in CheckCategory}
     attributed: Counter = Counter()
-    for f in db.get_findings_for_case(conn, case_id):
+    for f in _current_findings(conn, case_id):
         out = _finding_out(f, case, concerns)
         grouped.setdefault(out.category, []).append(out)
         if out.verdict == "concern":
@@ -1129,11 +1216,12 @@ def get_case_detail(case_id: str,
                            concern_count=sum(1 for f in fs if f.verdict == "concern"))
               for cat, fs in grouped.items()]
     decisions = db.get_decisions_for_case(conn, case_id)
-    best = _best_decision(decisions)
+    best = _current_decision(conn,case_id)
     base = _summary_for(conn, case)
 
     return CaseDetail(
         **base.model_dump(),
+        review_revision=conn.execute('SELECT COUNT(*) FROM admin_actions WHERE case_id=?',(case_id,)).fetchone()[0],
         latitude=case.latitude, longitude=case.longitude,
         images=images, finding_groups=groups, findings_by_category=grouped,
         decision=_decision_out(best, conn) if best else None,
@@ -1144,8 +1232,10 @@ def get_case_detail(case_id: str,
         audit=[{"created_at": e.created_at, "event": e.event_type,
                 "actor": e.details.get("admin_id", "system"), "detail": e.details}
                for e in db.get_audit_events_for_case(conn, case_id)
-               if e.event_type == "admin_action"],
+               ],
         processing=runtime_store.latest_job(conn, case_id),
+        evidence_request=runtime_store.open_request(conn,case_id),
+        report_history=[dict(row) for row in conn.execute('SELECT snapshot_id,run_id,created_at FROM report_snapshots WHERE case_id=? ORDER BY rowid DESC',(case_id,))],
     )
 
 
@@ -1182,42 +1272,58 @@ def _report_declaration(case: Case) -> ReportDeclaration:
         fir_number=case.fir_number,
         settlement_preference=case.settlement_preference,
         bank_account_last4=case.bank_account_last4,
+        declaration_notes=case.declaration_notes,
     )
 
 
 @app.get("/v1/cases/{case_id}/report", response_model=CaseReportOut, tags=["cases"],
          responses={404: {"model": ErrorResponse}})
-def get_case_report(case_id: str,
-                    _admin: str = Depends(require_admin),
-                    conn: sqlite3.Connection = Depends(get_conn)) -> CaseReportOut:
-    case = db.get_case(conn, case_id)
-    if case is None:
-        raise ApiError(404, "CASE_NOT_FOUND", f"No case with id {case_id!r}.")
+def get_case_report(case_id: str, snapshot_id: Optional[str] = Query(default=None),
+                    _admin: str = Depends(require_admin), conn: sqlite3.Connection = Depends(get_conn)) -> CaseReportOut:
+    if snapshot_id:
+        row=conn.execute('SELECT payload FROM report_snapshots WHERE snapshot_id=? AND case_id=?',(snapshot_id,case_id)).fetchone()
+        if not row: raise ApiError(404,'REPORT_NOT_FOUND','Report version not found for this case.')
+        return CaseReportOut(**json.loads(row[0]))
+    return _build_report(conn,case_id)
 
-    concerns = concerns_by_check(conn)
-    grouped: dict[str, list[FindingOut]] = {c.value: [] for c in CheckCategory}
-    for finding in db.get_findings_for_case(conn, case_id):
-        out = _finding_out(finding, case, concerns)
-        grouped.setdefault(out.category, []).append(out)
-    groups = [
-        FindingGroup(
-            category=category,
-            findings=findings,
-            concern_count=sum(1 for f in findings if f.verdict == "concern"),
-        )
-        for category, findings in grouped.items()
-    ]
-    best = _best_decision(db.get_decisions_for_case(conn, case_id))
-    decision = _decision_out(best, conn) if best else None
-    return CaseReportOut(
-        case_id=case_id,
-        declaration=_report_declaration(case),
-        findings_by_category=grouped,
-        finding_groups=groups,
-        agent_recommendation=decision,
+
+def _build_report(conn,case_id):
+    case=db.get_case(conn,case_id)
+    if not case: raise ApiError(404,'CASE_NOT_FOUND','Case not found.')
+    concerns=concerns_by_check(conn)
+    grouped={c.value:[] for c in CheckCategory}
+    for finding in _current_findings(conn,case_id):
+        out=_finding_out(finding,case,concerns); grouped.setdefault(out.category,[]).append(out)
+    groups=[FindingGroup(category=cat,findings=fs,concern_count=sum(f.verdict=='concern' for f in fs)) for cat,fs in grouped.items()]
+    best=_current_decision(conn,case_id); decision=_decision_out(best,conn) if best else None
+    result=runtime_store.current_result(conn,case_id); job=runtime_store.latest_job(conn,case_id)
+    human=_admin_action_out(db.get_latest_admin_action(conn,case_id),conn)
+    limitations=['Scores are heuristic; independent detection accuracy and claimant intent are not established.']
+    if not job: limitations.append('Legacy research result: findings and images were not recorded against a processing run.')
+    if job and job['status'] not in {'completed','done'}: limitations.append('Current processing is '+job['status']+'. Saved findings do not establish successful model completion.')
+    if decision and decision.provider_unavailable: limitations.append('Agent did not converge. Recorded recommendation is a fallback requiring human review.')
+    if human and human.reviewed_run_id and job and human.reviewed_run_id != job['job_id']:
+        limitations.append('Latest human action reviewed earlier run '+human.reviewed_run_id+'; it is preserved as history.')
+    elif human and not human.reviewed_evidence_ids:
+        limitations.append('Legacy human action: its processing run and reviewed evidence were not recorded.')
+    for fs in grouped.values():
+        for finding in fs:
+            if finding.check_limitation: limitations.append(finding.check_id+': '+finding.check_limitation)
+            if finding.verdict=='inconclusive': limitations.append(finding.check_id+': '+finding.explanation)
+    evidence_ids=json.loads(result['image_ids']) if result else [i.image_id for i in db.get_images_for_case(conn,case_id)]
+    return CaseReportOut(case_id=case_id,declaration=_report_declaration(case),
+        findings_by_category=grouped,finding_groups=groups,agent_recommendation=decision,
         agent_narrative=decision.summary if decision else None,
-        admin_action=_admin_action_out(db.get_latest_admin_action(conn, case_id)),
-    )
+        admin_action=human,
+        run_id=job['job_id'] if job else None,policy_version=decision.policy_version if decision else None,
+        processing=job,evidence_ids=evidence_ids,limitations=list(dict.fromkeys(limitations)))
+
+
+def _snapshot_report(conn,case_id):
+    report=_build_report(conn,case_id)
+    payload=report.model_dump_json()
+    snapshot_id=runtime_store.digest(payload)
+    conn.execute('INSERT OR IGNORE INTO report_snapshots VALUES (?,?,?,?,?)',(snapshot_id,case_id,report.run_id,payload,time.time()))
 
 
 @app.get("/v1/cases/{case_id}/trace", response_model=TraceOut, tags=["cases"],
@@ -1243,8 +1349,11 @@ def get_trace(case_id: str,
     converged = None
     excluded = 0
 
+    selected=_current_decision(conn,case_id)
     events = [event for event in db.get_audit_events_for_case(conn, case_id)
-              if event.event_type == "case_adjudicated"]
+              if selected and event.event_type == 'case_adjudicated' and
+              (event.details.get('decision_id')==selected.decision_id or
+               (not event.details.get('decision_id') and not runtime_store.latest_job(conn,case_id) and event.details.get('policy_version')==selected.policy_version))]
     for event in events[-1:]:
         details = event.details or {}
         policy_version = details.get("policy_version", policy_version)
@@ -1311,10 +1420,13 @@ def track_case(
             if public_message:
                 narrative = public_message
     return TrackOut(
+        agent_type=case.agent_type,
         case_id=case_id,
         status=case.status,
         final_admin_action=admin_action.action.value if admin_action else None,
-        narrative=narrative,
+        narrative='Additional evidence received; awaiting a new human review.' if case.status == 'evidence_received' else narrative,
+        processing_status=(runtime_store.latest_job(conn,case_id) or {}).get('status'),
+        evidence_request=({k:v for k,v in request.items() if k in {'request_id','artifacts','status'}} if (request := runtime_store.open_request(conn,case_id)) else None),
     )
 
 
@@ -1371,8 +1483,9 @@ def _thumbnail(path: str, image_id: str) -> Optional[Path]:
     """Generate on first request, cache to disk. The queue asks for dozens at once."""
     THUMB_DIR.mkdir(parents=True, exist_ok=True)
     out = THUMB_DIR / f"{image_id}.jpg"
-    if out.exists():
+    if out.exists() and out.stat().st_size:
         return out
+    temporary=None
     try:
         from PIL import Image as PILImage
         with PILImage.open(path) as im:
@@ -1380,10 +1493,15 @@ def _thumbnail(path: str, image_id: str) -> Optional[Path]:
             if im.width > THUMB_WIDTH:
                 ratio = THUMB_WIDTH / im.width
                 im = im.resize((THUMB_WIDTH, max(1, int(im.height * ratio))))
-            im.save(out, "JPEG", quality=82)
+            temporary=THUMB_DIR/(uuid.uuid4().hex+'.jpg')
+            im.save(temporary,'JPEG',quality=82)
+            im.close()
+        temporary.replace(out)
         return out
     except Exception:  # noqa: BLE001
         return None
+    finally:
+        if temporary:temporary.unlink(missing_ok=True)
 
 
 @app.get("/v1/images/{image_id}", tags=["images"], response_class=FileResponse,
@@ -1411,7 +1529,7 @@ def get_image(image_id: str,
 
     etag = hashlib.sha256(f"{image.content_hash or image_id}:{thumb}".encode()).hexdigest()[:32]
     return FileResponse(served, media_type=media_type, headers={
-        "ETag": f'"{etag}"', "Cache-Control": "public, max-age=86400"})
+        "ETag": f'"{etag}"', "Cache-Control": "private, no-store"})
 
 
 # ---------------------------------------------------------------------------
@@ -1533,7 +1651,7 @@ class FindingCountsOut(BaseModel):
 @app.get("/v1/finding-counts", response_model=FindingCountsOut, tags=["stats"])
 def finding_counts(_admin: str = Depends(require_admin), conn: sqlite3.Connection = Depends(get_conn)):
     return FindingCountsOut(counts=[FindingCount(name=r[0], verdict=r[1], count=r[2])
-        for r in conn.execute("SELECT check_id, verdict, COUNT(*) FROM findings GROUP BY check_id, verdict")])
+        for r in conn.execute("SELECT check_id, verdict, COUNT(*) FROM ("+CURRENT_FINDINGS+") GROUP BY check_id, verdict")])
 
 
 @app.get("/v1/stats", response_model=StatsOut, tags=["dashboard"])
@@ -1545,11 +1663,14 @@ def get_stats(_admin: str = Depends(require_admin),
         return {str(k): int(v) for k, v in conn.execute(sql) if k is not None}
 
     total_cases = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
-    latest_decisions = """SELECT d.* FROM agent_decisions d WHERE d.rowid = (
-        SELECT latest.rowid FROM agent_decisions latest WHERE latest.case_id = d.case_id
-        ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1)"""
+    latest_decisions = """SELECT d.* FROM agent_decisions d WHERE
+        (NOT EXISTS (SELECT 1 FROM api_jobs j WHERE j.case_id=d.case_id)
+         AND d.rowid=(SELECT latest.rowid FROM agent_decisions latest WHERE latest.case_id=d.case_id ORDER BY latest.created_at DESC,latest.rowid DESC LIMIT 1))
+        OR EXISTS (SELECT 1 FROM processing_results r JOIN api_jobs j ON j.job_id=r.run_id
+            WHERE r.decision_id=d.decision_id AND j.rowid=(SELECT latest.rowid FROM api_jobs latest
+                WHERE latest.case_id=d.case_id ORDER BY latest.rowid DESC LIMIT 1))"""
     by_band = counts(f"SELECT risk_band, COUNT(*) FROM ({latest_decisions}) GROUP BY risk_band")
-    decided = conn.execute("SELECT COUNT(DISTINCT case_id) FROM agent_decisions").fetchone()[0]
+    decided = conn.execute('SELECT COUNT(*) FROM ('+latest_decisions+')').fetchone()[0]
     concerns = concerns_by_check(conn)
 
     by_attribution: Counter = Counter()
@@ -1588,12 +1709,12 @@ def get_stats(_admin: str = Depends(require_admin),
         by_risk_band=by_band,
         by_recommendation=counts(f"SELECT recommendation, COUNT(*) FROM ({latest_decisions}) GROUP BY recommendation"),
         decided_cases=decided, undecided_cases=max(0, total_cases - decided),
-        total_findings=conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0],
+        total_findings=conn.execute('SELECT COUNT(*) FROM ('+CURRENT_FINDINGS+')').fetchone()[0],
         concern_findings=sum(concerns.values()),
         concerns_by_check=concerns, concerns_by_attribution=dict(by_attribution),
         images=conn.execute("SELECT COUNT(*) FROM images").fetchone()[0],
         images_with_perception=conn.execute(
-            "SELECT COUNT(*) FROM perception_records").fetchone()[0],
+            "SELECT COUNT(*) FROM images i WHERE EXISTS (SELECT 1 FROM perception_records p WHERE p.content_hash=i.content_hash)").fetchone()[0],
         straight_through_rate=(by_band.get("clear", 0) / decided) if decided else None,
         ablation_arms=arms)
 
@@ -1601,7 +1722,9 @@ def get_stats(_admin: str = Depends(require_admin),
 @app.get("/v1/policies", response_model=list[PolicyOut], tags=["config"])
 def get_policies(_admin: str = Depends(require_admin)) -> list[PolicyOut]:
     out = []
-    for agent_type, p in (("claims", CLAIMS_POLICY), ("underwriting", UNDERWRITING_POLICY)):
+    from src.agent.production_policy import production_policy
+    for agent_type in ('claims','underwriting'):
+        p=production_policy(agent_type)
         bias = next((l.strip() for l in p.system_prompt.splitlines()
                      if l.strip().startswith("Bias:")), None)
         out.append(PolicyOut(
@@ -1624,56 +1747,8 @@ def _background_status(log_path: str) -> str:
     return "stale"
 
 
-def _provider_health(provider_configured: bool) -> tuple[Optional[bool], str, Optional[datetime]]:
-    if not provider_configured:
-        return None, "not_configured", None
-    now = time.monotonic()
-    if now - float(_HEALTH_GEMINI_CACHE.get("checked_at") or 0.0) < HEALTH_GEMINI_TTL_SECONDS:
-        checked = _HEALTH_GEMINI_CACHE.get("checked_datetime")
-        return (
-            _HEALTH_GEMINI_CACHE.get("reachable"),
-            str(_HEALTH_GEMINI_CACHE.get("status") or "unknown"),
-            checked if isinstance(checked, datetime) else None,
-        )
-    checked_at = datetime.now(timezone.utc)
-    previous_consumer = os.environ.get("GEMINI_QUOTA_CONSUMER")
-    os.environ["GEMINI_QUOTA_CONSUMER"] = "health"
-    try:
-        from src.llm import GeminiProvider, _to_gemini_contents, is_rate_limit_error, is_unavailable_error
-        provider = GeminiProvider()
-        messages = [{"role": "user", "content": "Reply with exactly: ready"}]
-        response = provider._call_rotating(
-            lambda client: client.models.generate_content(
-                model=provider.model,
-                contents=_to_gemini_contents(messages),
-            ),
-            attempts=1,
-        )
-        text = getattr(response, "text", "").strip().lower()
-        reachable = text == "ready" or bool(text)
-        status = "ok" if reachable else "empty_response"
-    except Exception as exc:  # noqa: BLE001
-        reachable = False
-        if "QuotaBudgetExhausted" in type(exc).__name__:
-            status = "local_quota_budget_exhausted"
-        elif "is_rate_limit_error" in locals() and is_rate_limit_error(exc):
-            status = "rate_limited"
-        elif "is_unavailable_error" in locals() and is_unavailable_error(exc):
-            status = "gemini_503_unavailable"
-        else:
-            status = f"{type(exc).__name__}: {str(exc)[:180]}"
-    finally:
-        if previous_consumer is None:
-            os.environ.pop("GEMINI_QUOTA_CONSUMER", None)
-        else:
-            os.environ["GEMINI_QUOTA_CONSUMER"] = previous_consumer
-    _HEALTH_GEMINI_CACHE.update({
-        "checked_at": now,
-        "checked_datetime": checked_at,
-        "reachable": reachable,
-        "status": status,
-    })
-    return reachable, status, checked_at
+def _provider_health(provider_configured):
+    return None, 'configured_unverified' if provider_configured else 'not_configured', None
 
 
 class ReadyOut(BaseModel):
@@ -1694,14 +1769,16 @@ def ready() -> ReadyOut:
 @app.get("/v1/health", response_model=HealthOut, tags=["config"])
 def health() -> HealthOut:
     reachable, cases, perception_records, image_records = True, 0, 0, 0
+    conn = None
     try:
         conn = db.connect(DB_PATH)
         cases = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
         perception_records = conn.execute("SELECT COUNT(*) FROM perception_records").fetchone()[0]
         image_records = conn.execute("SELECT COUNT(*) FROM images").fetchone()[0]
-        conn.close()
     except Exception:  # noqa: BLE001
         reachable = False
+    finally:
+        if conn is not None:conn.close()
 
     provider_configured = any(os.environ.get(k) for k in
                               ("GEMINI_API_KEY", "GEMINI_API_KEY_1", "GOOGLE_API_KEY"))
@@ -1716,7 +1793,11 @@ def health() -> HealthOut:
     except Exception:  # noqa: BLE001
         total = 0
 
-    jobs = Counter(str(job.get("status", "unknown")) for job in _JOBS.values())
+    try:
+        with runtime_store.connection(DB_PATH) as jobs_conn:
+            jobs=dict(jobs_conn.execute('SELECT status,COUNT(*) FROM api_jobs GROUP BY status').fetchall())
+    except Exception:
+        jobs={}
     degraded = (
         not reachable
         or (provider_configured and provider_reachable is False)
@@ -1724,7 +1805,7 @@ def health() -> HealthOut:
 
     return HealthOut(
         status="degraded" if degraded else "ok",
-        database=DB_PATH, database_reachable=reachable, cases=cases,
+        database=Path(DB_PATH).name, database_reachable=reachable, cases=cases,
         provider_configured=provider_configured,
         provider_reachable=provider_reachable,
         provider_status=provider_status,
@@ -1749,59 +1830,78 @@ def _set_job(job_id: str, **fields: Any) -> None:
         job = runtime_store.get_job(conn, job_id) or {"job_id": job_id}
         job.update(fields)
         runtime_store.save_job(conn, job)
-    _JOBS[job_id] = job
+    # SQLite is the source of truth; do not retain an unbounded job cache.
 
 
 def _run_pipeline(job_id: str, case_id: str) -> None:
-    """
-    Checks and adjudication for one case.
-
-    When the provider is unreachable the orchestrator's documented fallback
-    applies, and the job records `provider_unavailable` so the interface can
-    say the band came from an outage rather than from the agent's judgement.
-    Submission never fails for want of quota.
-    """
-    _set_job(job_id, status="running", stage="checks", progress=0.3, case_id=case_id)
+    provider = None
     try:
+        from src.llm import get_provider, is_rate_limit_error, is_quota_budget_error
+        from src.perception import perceive_image
         from src.orchestrator import process_case
+        from src.agent.production_policy import production_policy
+        with runtime_store.connection(DB_PATH) as check:
+            job = runtime_store.get_job(check, job_id)
+            if not job or job['status'] != 'running':
+                return
+            result = check.execute('SELECT converged FROM processing_results WHERE run_id=?', (job_id,)).fetchone()
+            if result:
+                complete = bool(result['converged'])
+                _set_job(job_id, status='completed' if complete else 'failed',
+                         stage='complete' if complete else 'needs_review', progress=1.0,
+                         provider_unavailable=not complete)
+                return
         conn = db.connect(DB_PATH)
         try:
-            from src.llm import get_provider
-            from src.perception import perceive_image
             provider = get_provider()
             images = db.get_images_for_case(conn, case_id)
-            if not images:
-                raise ValueError("No indexed evidence is available for analysis")
+            if not images: raise ValueError('No indexed evidence available')
             perception_errors = 0
+            network_stopped = False
             for index, image in enumerate(images):
-                _set_job(job_id, stage="perception", progress=0.1 + 0.4 * index / len(images))
+                _set_job(job_id, stage='perception', progress=0.1+0.4*index/len(images))
+                if network_stopped:
+                    cached = db.get_perception(conn, image.content_hash)
+                    if cached is None or cached.raw_response.get('error'):
+                        perception_errors += 1
+                    continue
                 try:
-                    perceive_image(conn, image, provider)
+                    record = perceive_image(conn, image, provider, retry_attempts=1)
                     conn.commit()
-                except Exception:
-                    conn.rollback()
-                    perception_errors += 1
-                    access_log.exception("Perception failed for image %s", image.image_id)
-            _set_job(job_id, stage="checks_and_adjudication", progress=0.6)
-            decision = process_case(conn, case_id, provider=provider)
-            unavailable = _decision_out(decision, conn).provider_unavailable
+                    if record.raw_response.get('error'):
+                        perception_errors += 1
+                except Exception as exc:
+                    conn.rollback(); perception_errors += 1
+                    access_log.error('Vision unavailable: image=%s error_type=%s', image.image_id, type(exc).__name__)
+                    if is_rate_limit_error(exc) or is_quota_budget_error(exc):
+                        network_stopped = True
+            _set_job(job_id, stage='checks_and_adjudication', progress=0.6)
+            adjudicator = provider
             if perception_errors:
-                db.log_audit_event(conn, AuditEvent(event_type="perception_incomplete", case_id=case_id,
-                    details={"failed_images": perception_errors, "total_images": len(images)}))
-                conn.commit()
+                class UnavailableVision:
+                    def chat(self, *args, **kwargs):
+                        raise RuntimeError('Vision is incomplete; a human must review the saved evidence.')
+                adjudicator = UnavailableVision()
+            case = db.get_case(conn, case_id)
+            decision = process_case(conn, case_id, provider=adjudicator,
+                                    policy=production_policy(case.agent_type), run_id=job_id)
+            unavailable = _decision_out(decision, conn).provider_unavailable
+            _set_job(job_id, status='failed' if unavailable or perception_errors else 'completed',
+                stage='needs_review' if unavailable or perception_errors else 'complete', progress=1.0,
+                provider_unavailable=unavailable,
+                detail='Automated analysis incomplete. Evidence is saved; fallback requires human review.' if unavailable or perception_errors else None,
+                failed_images=perception_errors)
+            _snapshot_report(conn, case_id)
+            conn.commit()
         finally:
             conn.close()
-        _set_job(job_id, status="done", stage="complete", progress=1.0,
-                 provider_unavailable=unavailable,
-                 detail=("Automated adjudication did not converge. This decision is the documented "
-                         "fallback rather than the agent's judgement."
-                         if unavailable else
-                         f"Vision analysis was unavailable for {perception_errors} image(s). Review check limitations."
-                         if perception_errors else None))
-    except Exception as e:  # noqa: BLE001
-        access_log.exception("Analysis failed for case %s", case_id)
-        _set_job(job_id, status="failed", stage="failed", progress=1.0,
-                 detail="Automated analysis could not complete. Your evidence is saved. A reviewer can retry analysis.")
+    except Exception as exc:
+        access_log.error('Analysis failed: case=%s error_type=%s', case_id, type(exc).__name__)
+        _set_job(job_id, status='failed', stage='failed', progress=1.0,
+                 error_type=type(exc).__name__, detail='Analysis could not complete. Evidence is saved. A reviewer can retry after resolving the cause.')
+    finally:
+        if provider and hasattr(provider, 'close'):
+            provider.close()
 
 
 def _build_case(case_id: str, agent_type: str, claim_type: Optional[str],
@@ -1821,6 +1921,7 @@ def _build_case(case_id: str, agent_type: str, claim_type: Optional[str],
                 person_address: Optional[str] = None, person_contact: Optional[str] = None,
                 driving_license_number: Optional[str] = None, fir_number: Optional[str] = None,
                 settlement_preference: Optional[str] = None,
+                declaration_notes: Optional[str] = None,
                 bank_account_last4: Optional[str] = None) -> Case:
     return Case(
         case_id=case_id,
@@ -1830,7 +1931,7 @@ def _build_case(case_id: str, agent_type: str, claim_type: Optional[str],
         garage_id=garage_id or "UNASSIGNED",
         claim_type=claim_type or ("underwriting_inspection" if agent_type == "underwriting"
                                   else "motor_claim"),
-        declared_time=declared_time or datetime.now(timezone.utc),
+        declared_time=declared_time,
         declared_location=declared_location, latitude=latitude, longitude=longitude,
         agent_type=agent_type, claim_amount=claim_amount,
         vehicle_registration=vehicle_registration, status="open",
@@ -1853,6 +1954,7 @@ def _build_case(case_id: str, agent_type: str, claim_type: Optional[str],
           responses={422: {"model": ErrorResponse}})
 def submit_case(
     background: BackgroundTasks,
+    idempotency_key: Optional[str] = Header(default=None, min_length=16, max_length=128),
     agent_type: str = Form("claims"),
     claim_type: Optional[str] = Form(None),
     declared_location: Optional[str] = Form(None),
@@ -1882,6 +1984,7 @@ def submit_case(
     fir_number: Optional[str] = Form(None),
     settlement_preference: Optional[str] = Form(None),
     bank_account_last4: Optional[str] = Form(None),
+    declaration_notes: Optional[str] = Form(default=None,max_length=3000),
     claimant_id: Optional[str] = Form(None),
     garage_id: Optional[str] = Form(None),
     latitude: Optional[float] = Form(None),
@@ -1889,6 +1992,15 @@ def submit_case(
     images: Optional[list[UploadFile]] = File(None),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> SubmitCaseOut:
+    submission_fields = {k: v for k, v in locals().items() if k not in {'conn', 'images', 'background', 'idempotency_key'}}
+    if idempotency_key:
+        try:
+            parsed_key=uuid.UUID(idempotency_key)
+            if parsed_key.version != 4:raise ValueError('UUID4 required')
+        except ValueError as exc:
+            raise ApiError(422,'INVALID_SUBMISSION_KEY','Use a random UUID4 submission key.') from exc
+    if not (vehicle_registration or policy_number):
+        raise ApiError(422, 'TRACKING_IDENTIFIER_REQUIRED', 'Provide a vehicle registration or policy number.')
     if agent_type not in ("claims", "underwriting"):
         raise ApiError(422, "VALIDATION_FAILED",
                        "agent_type must be 'claims' or 'underwriting'.",
@@ -1903,7 +2015,7 @@ def submit_case(
             if not upload.filename:
                 continue
             safe_name = Path(upload.filename).name
-            target = tmp_dir / f"{uuid.uuid4().hex}_{safe_name}"
+            target = tmp_dir / uuid.uuid4().hex
             # Sync read: this endpoint is deliberately not async, so the
             # request's sqlite connection stays on one thread.
             content = upload.file.read(5 * 1024 * 1024 + 1)
@@ -1915,7 +2027,10 @@ def submit_case(
                 with PILImage.open(target) as picture:
                     if picture.format not in {"JPEG", "PNG", "WEBP"} or picture.width * picture.height > 25_000_000:
                         raise ValueError("unsupported image format or dimensions")
+                    extension={'JPEG':'.jpg','PNG':'.png','WEBP':'.webp'}[picture.format]
                     picture.verify()
+                decoded_target=target.with_suffix(extension)
+                target.rename(decoded_target); target=decoded_target
             except Exception as exc:
                 raise ApiError(422, "INVALID_IMAGE", "Upload valid JPEG, PNG or WebP photographs up to 25 megapixels.") from exc
             staged.append((target, safe_name))
@@ -1988,6 +2103,17 @@ def submit_case(
             # 422 rather than letting it become a 500.
             raise ApiError(422, "VALIDATION_FAILED", str(e)) from e
 
+        fingerprint = runtime_store.digest(json.dumps({'fields': submission_fields,
+            'images': [hashlib.sha256(path.read_bytes()).hexdigest() for path, _ in staged]}, sort_keys=True, default=str))
+        conn.execute('BEGIN IMMEDIATE')
+        receipt_key = runtime_store.digest('submission:' + idempotency_key) if idempotency_key else None
+        if receipt_key:
+            old = conn.execute('SELECT * FROM submission_receipts WHERE receipt_key=?', (receipt_key,)).fetchone()
+            if old:
+                if old['fingerprint'] != fingerprint:
+                    raise ApiError(409, 'IDEMPOTENCY_CONFLICT', 'This submission key was used with different evidence or details.')
+                return SubmitCaseOut(**json.loads(old['response']))
+        case.declaration_notes=declaration_notes
         db.insert_case(conn, case)
         db.log_audit_event(conn, AuditEvent(
             event_type="vehicle_image_gate",
@@ -1998,66 +2124,76 @@ def submit_case(
         ))
 
         upload_dir = UPLOAD_DIR / case_id
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        paths = []
-        for source, original_name in staged:
-            target = upload_dir / f"{uuid.uuid4().hex}_{original_name}"
-            shutil.copyfile(source, target)
-            paths.append(str(target))
-
+        created_upload_dir = False
         saved = 0
         try:
+            upload_dir.mkdir(parents=True, exist_ok=False)
+            created_upload_dir = True
             from src import ingest
-            for path in paths:
-                ingest.ingest_image(conn, case_id, path)
-                saved += 1
+            image_ids = []
+            hashes = set()
+            for (source, original_name), score in zip(staged,scores):
+                content_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+                if content_hash in hashes:
+                    raise ApiError(422, 'DUPLICATE_EVIDENCE', 'The same photograph was attached more than once.')
+                hashes.add(content_hash)
+                target = upload_dir / f'{uuid.uuid4().hex}{source.suffix.lower()}'
+                shutil.copyfile(source, target)
+                indexed = ingest.ingest_image(conn, case_id, target,embedding=getattr(score,'embedding',None))
+                image_ids.append(indexed.image_id); saved += 1
+            token = secrets.token_urlsafe(48)
+            conn.execute('INSERT INTO applicant_grants VALUES (?,?,?)', (runtime_store.digest(token),case_id,time.time()+30*86400))
+            runtime_store.enqueue(conn, case_id, job_id)
+            conn.execute('INSERT INTO evidence_batches VALUES (?,?,?,?,?)', (uuid.uuid4().hex,case_id,None,json.dumps(image_ids),time.time()))
+            response = SubmitCaseOut(case_id=case_id,job_id=job_id,status='queued',images_received=saved,applicant_token=token)
+            if receipt_key:
+                # The grant is a high-entropy capability returned only to its submission-key holder.
+                conn.execute('INSERT INTO submission_receipts VALUES (?,?,?,?)', (receipt_key,fingerprint,response.model_dump_json(),time.time()))
             conn.commit()
         except Exception as exc:
             conn.rollback()
-            shutil.rmtree(upload_dir, ignore_errors=True)
-            access_log.exception("Evidence ingestion failed for %s", case_id)
-            raise ApiError(503, "EVIDENCE_INGEST_FAILED",
-                           "Evidence could not be indexed. No case was accepted; please retry.") from exc
-
-    _set_job(job_id, status="queued", stage="queued", progress=0.0, case_id=case_id)
-    background.add_task(_run_pipeline, job_id, case_id)
-    return SubmitCaseOut(case_id=case_id, job_id=job_id, status="queued",
-                         images_received=saved)
+            if created_upload_dir and not upload_dir.is_symlink() and upload_dir.resolve().parent == UPLOAD_DIR.resolve():
+                shutil.rmtree(upload_dir, ignore_errors=True)
+            if isinstance(exc, ApiError): raise
+            access_log.error('Evidence acceptance failed: %s',type(exc).__name__)
+            raise ApiError(503,'EVIDENCE_INGEST_FAILED','Evidence could not be indexed. No case was accepted; please retry.') from exc
+    return response
 
 
 @app.post("/v1/cases/{case_id}/reprocess", response_model=SubmitCaseOut, tags=["cases"],
           responses={404: {"model": ErrorResponse}})
 def reprocess_case(case_id: str, background: BackgroundTasks,
-                   _admin: str = Depends(require_admin),
-                   conn: sqlite3.Connection = Depends(get_conn)) -> SubmitCaseOut:
+                   _admin: str = Depends(require_reviewer), conn: sqlite3.Connection = Depends(get_conn)) -> SubmitCaseOut:
     if db.get_case(conn, case_id) is None:
-        raise ApiError(404, "CASE_NOT_FOUND", f"No case with id {case_id!r}.")
-    active = runtime_store.latest_job(conn, case_id)
-    if active and active.get("status") in {"queued", "running"}:
-        raise ApiError(409, "ANALYSIS_RUNNING", "Analysis is already queued or running.")
-    job_id = uuid.uuid4().hex
-    _set_job(job_id, status="queued", stage="queued", progress=0.0, case_id=case_id)
-    background.add_task(_run_pipeline, job_id, case_id)
-    images = conn.execute("SELECT COUNT(*) FROM images WHERE case_id = ?",
-                          (case_id,)).fetchone()[0]
-    return SubmitCaseOut(case_id=case_id, job_id=job_id, status="queued",
-                         images_received=images)
+        raise ApiError(404, 'CASE_NOT_FOUND', 'Case not found.')
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        _snapshot_report(conn, case_id)
+        job = runtime_store.enqueue(conn, case_id)
+        db.log_audit_event(conn, AuditEvent(event_type='analysis_requested',case_id=case_id,
+            details={'admin_id':_admin,'run_id':job['job_id']}))
+        conn.commit()
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        raise ApiError(409,'ANALYSIS_RUNNING','Analysis is already queued or running.') from exc
+    return SubmitCaseOut(case_id=case_id,job_id=job['job_id'],status='queued',images_received=len(db.get_images_for_case(conn,case_id)))
 
 
-@app.get("/v1/jobs/{job_id}", response_model=JobOut, tags=["cases"],
-         responses={404: {"model": ErrorResponse}})
-def get_job(job_id: str) -> JobOut:
+@app.get('/v1/jobs/{job_id}', response_model=JobOut, tags=['cases'])
+def get_job(job_id: str, request: Request, x_applicant_token: Optional[str] = Header(default=None)) -> JobOut:
     with runtime_store.connection(DB_PATH) as conn:
-        job = runtime_store.get_job(conn, job_id)
-    if job is None:
-        raise ApiError(404, "JOB_NOT_FOUND", f"No job with id {job_id!r}.")
-    return JobOut(**{k: v for k, v in job.items() if k in JobOut.model_fields})
+        job = runtime_store.get_job(conn,job_id)
+        if not job:
+            raise ApiError(404,'JOB_NOT_FOUND','Job not found.')
+        if not runtime_store.applicant_authorized(conn,x_applicant_token,job['case_id']):
+            require_admin(request,request.headers.get('authorization'))
+    return JobOut(**{k:v for k,v in job.items() if k in JobOut.model_fields})
 
 
 @app.post("/v1/cases/{case_id}/action", response_model=ActionOut, tags=["cases"],
           responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}})
 def record_action(case_id: str, payload: ActionIn,
-                  _admin: str = Depends(require_admin),
+                  _admin: str = Depends(require_reviewer),
                   conn: sqlite3.Connection = Depends(get_conn)) -> ActionOut:
     """
     Record what a human admin decided.
@@ -2065,6 +2201,8 @@ def record_action(case_id: str, payload: ActionIn,
     This vocabulary is intentionally not Recommendation. The agent still has no
     rejection member; the human admin action enum does.
     """
+    if _admin == 'service':
+        raise ApiError(403,'HUMAN_REVIEWER_REQUIRED','Service credentials cannot record human decisions.')
     case = db.get_case(conn, case_id)
     if case is None:
         raise ApiError(404, "CASE_NOT_FOUND", f"No case with id {case_id!r}.")
@@ -2077,7 +2215,7 @@ def record_action(case_id: str, payload: ActionIn,
     status = {
         AdminAction.APPROVE: "closed_approved",
         AdminAction.REJECT: "closed_rejected",
-        AdminAction.REQUEST_MORE_EVIDENCE: "open",
+        AdminAction.REQUEST_MORE_EVIDENCE: 'awaiting_evidence',
     }[payload.action]
     now = datetime.now(timezone.utc)
     record = AdminActionRecord(
@@ -2087,15 +2225,52 @@ def record_action(case_id: str, payload: ActionIn,
         reason=payload.reason,
         timestamp=now,
     )
+    if payload.action == AdminAction.REQUEST_MORE_EVIDENCE:
+        artifacts = [a.strip() for a in payload.requested_artifacts if a.strip()]
+        if not artifacts or len(artifacts)>12 or any(len(a)>500 for a in artifacts):
+            raise ApiError(422,'SPECIFIC_EVIDENCE_REQUIRED','Name 1-12 specific photographs needed, one per item.')
+    conn.execute('BEGIN IMMEDIATE')
+    revision=conn.execute('SELECT COUNT(*) FROM admin_actions WHERE case_id=?',(case_id,)).fetchone()[0]
+    if payload.expected_revision is not None and payload.expected_revision != revision:
+        raise ApiError(409,'REVIEW_CHANGED','Another reviewer changed this case. Refresh before recording a decision.')
+    _snapshot_report(conn, case_id)
+    conn.execute("UPDATE evidence_requests SET status='superseded' WHERE case_id=? AND status='open'",(case_id,))
+    if payload.action == AdminAction.REQUEST_MORE_EVIDENCE:
+        conn.execute('INSERT INTO evidence_requests VALUES (?,?,?,?,?,?,NULL)',
+            (uuid.uuid4().hex,case_id,json.dumps(artifacts),_admin,'open',time.time()))
     db.insert_admin_action(conn, record)
+    reviewed_job=runtime_store.latest_job(conn,case_id)
+    reviewed_result=runtime_store.current_result(conn,case_id)
     conn.execute("UPDATE cases SET status = ? WHERE case_id = ?", (status, case_id))
     db.log_audit_event(conn, AuditEvent(
         event_type="admin_action", case_id=case_id,
         details={"action": payload.action.value, "reason": payload.reason,
                  "admin_id": _admin,
+                 'recorded_at':record.timestamp.isoformat(),
+                 'run_id':reviewed_job['job_id'] if reviewed_job else None,
+                 'decision_id':reviewed_result['decision_id'] if reviewed_result else None,
+                 'evidence_ids':[image.image_id for image in db.get_images_for_case(conn,case_id)],
+                 'processing_status':reviewed_job['status'] if reviewed_job else None,
                  "requested_artifacts": payload.requested_artifacts,
                  "public_message": payload.public_message,
                  "previous_status": case.status}))
+    _snapshot_report(conn,case_id)
     conn.commit()
     return ActionOut(case_id=case_id, action=payload.action.value, status=status,
                      reason=payload.reason, admin_id=_admin, recorded_at=now)
+
+
+from src.evidence_workflow import install as _install_pilot_extensions
+_install_pilot_extensions(app)
+
+
+@app.get('/v1/operations',tags=['config'])
+def operations(_admin: str=Depends(require_admin),conn: sqlite3.Connection=Depends(get_conn)):
+    jobs=[json.loads(row[0]) for row in conn.execute("SELECT payload FROM api_jobs WHERE status IN ('failed','interrupted') ORDER BY rowid DESC LIMIT 10")]
+    oldest=conn.execute("SELECT MIN(COALESCE(json_extract(payload,'$.created_at'),updated_at)) FROM api_jobs WHERE status='queued'").fetchone()[0]
+    worker=getattr(app.state,'worker',None)
+    return {'organization_id':'local','tenant_isolation':False,
+        'worker_active_in_this_process':bool(worker and worker.thread and worker.thread.is_alive()),
+        'jobs_by_status':dict(conn.execute('SELECT status,COUNT(*) FROM api_jobs GROUP BY status').fetchall()),
+        'recent_failures':[{k:v for k,v in job.items() if k in {'job_id','case_id','status','stage','error_type','detail','attempts','updated_at'}} for job in jobs if job['status'] in {'failed','interrupted'}][:10],
+        'oldest_queued_age_seconds':max(0,time.time()-oldest) if oldest is not None else 0}

@@ -70,6 +70,7 @@ def adjudication_event(
         event_type="case_adjudicated",
         case_id=case_id,
         details={
+            "decision_id": decision.decision_id,
             "arm": arm,
             "policy_version": policy_version,
             "risk_band": decision.risk_band.value if decision.risk_band else None,
@@ -90,6 +91,7 @@ def process_case(
     provider: Optional[LLMProvider] = None,
     use_agent: bool = True,
     persist: bool = True,
+    run_id: Optional[str] = None,
 ) -> AgentDecision:
     """
     Run one case end to end and return its decision.
@@ -106,8 +108,29 @@ def process_case(
         policy = policy_for(case.agent_type)
 
     started = time.monotonic()
-    findings = run_checks(conn, case, check_ids=list(policy.check_ids))
+    check_options = {'config': {'cache_ocr': True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
+    findings = run_checks(conn, case, check_ids=list(policy.check_ids), **check_options)
+    if run_id and policy.policy_version.startswith('agent-production-'):
+        from src.checks import REGISTRY
+        from src.models import Verdict
+        for finding in findings:
+            if REGISTRY[finding.check_id].weight == 0:
+                if finding.check_id == 'baseline_corruption':
+                    finding.evidence={**finding.evidence,'experimental_explanation':finding.explanation,
+                        'recorded_declaration_notes':case.declaration_notes}
+                    if 'declared_condition' in finding.evidence:
+                        finding.evidence['experimental_assumed_condition']=finding.evidence.pop('declared_condition')
+                    finding.explanation='This experimental check assumes an undamaged declaration, which is not established by an underwriting application alone. Review the recorded applicant declaration.'
+                finding.evidence = {**finding.evidence,
+                    'experimental_verdict': finding.verdict.value,
+                    'experimental_confidence': finding.confidence,
+                    'production_limitation': 'Zero-weight experimental check; no production detection signal.'}
+                finding.verdict = Verdict.INCONCLUSIVE
+                finding.confidence = 0.0
+                finding.explanation = 'Experimental zero-weight observation, inconclusive for production routing. ' + finding.explanation
 
+    if run_id:
+        conn.commit()  # release optional check-cache writes before the provider call
     trace: list[dict[str, Any]] = []
     if use_agent:
         if provider is None:
@@ -126,23 +149,19 @@ def process_case(
         converged = True
 
     if persist:
-        # Findings are persisted alongside the decision so a reviewer can
-        # see what the adjudicator saw. Wrapped: a storage failure on the
-        # audit trail must not lose the decision itself.
-        try:
-            for finding in findings:
-                db.insert_finding(conn, finding)
-        except sqlite3.IntegrityError:
-            pass  # already stored by an earlier pass over this case
+        for finding in findings:
+            db.insert_finding(conn, finding)
         db.insert_agent_decision(conn, decision)
-        db.log_audit_event(conn, adjudication_event(
-            case_id=case.case_id,
-            arm="agent" if use_agent else "baseline",
-            policy_version=policy.policy_version,
-            decision=decision,
-            converged=converged,
-            trace=trace,
-        ))
+        event = adjudication_event(case.case_id, 'agent' if use_agent else 'baseline',
+                                   policy.policy_version, decision, converged, trace)
+        if run_id:
+            event.details['run_id'] = run_id
+            conn.execute('INSERT INTO processing_results VALUES (?,?,?,?,?,?,?,?)',
+                (run_id, case_id, decision.decision_id,
+                 __import__('json').dumps([f.finding_id for f in findings]),
+                 __import__('json').dumps([i.image_id for i in db.get_images_for_case(conn, case_id)]),
+                 policy.policy_version, int(converged), time.time()))
+        db.log_audit_event(conn, event)
         conn.commit()
 
     return decision

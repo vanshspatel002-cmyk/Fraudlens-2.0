@@ -185,12 +185,17 @@ def build_fixture() -> tuple[Path, TestClient]:
     conn.close()
 
     api.DB_PATH = str(db_path)
+    api.UPLOAD_DIR = tmp / 'uploads'
+    api.THUMB_DIR = tmp / 'thumbnails'
+    os.environ['FRAUDLENS_WORKER_ENABLED']='0'
     os.environ["ADMIN_EMAIL"] = "reviewer@example.com"
     os.environ["ADMIN_PASSWORD_SHA256"] = hashlib.sha256(b"test-admin").hexdigest()
     api._ARCHETYPES = {"case-claims-1": "EXTERNAL_SOURCING", "case-uw-1": "CLEAN"}
     api._JOBS.clear()
     test_client = TestClient(api.app)
-    test_client.headers.update({"Authorization": "Bearer test-admin"})
+    login = test_client.post('/v1/auth/login',json={'email':'reviewer@example.com','password':'test-admin'})
+    assert login.status_code==200,login.text
+    test_client.headers.update({'Authorization':'Bearer '+login.json()['token']})
     return tmp, test_client
 
 
@@ -417,7 +422,8 @@ def test_submit_creates_case_and_job_without_calling_the_model():
         assert detail.json()["vehicle_make"] == "Honda"
         assert detail.json()["policy_number"] == "POL-NEW-1"
         assert detail.json()["bank_account_last4"] == "9876"
-        assert calls == [(body["job_id"], body["case_id"])], calls
+        assert calls == [], calls
+        assert client().get('/v1/jobs/'+body['job_id']).json()['status']=='queued'
     finally:
         api._run_pipeline = original
     print("  submit persists the case, queues a job, and calls no model")
@@ -463,7 +469,7 @@ def test_job_status_is_pollable_and_unknown_job_404s():
         with open(corpus_vehicle_path(), "rb") as fh:
             body = client().post(
                 "/v1/cases",
-                data={"agent_type": "underwriting"},
+                data={'agent_type':'underwriting','vehicle_registration':'MH12UW0001'},
                 files={"images": ("vehicle.jpg", fh, "image/jpeg")},
             ).json()
         job = client().get(f"/v1/jobs/{body['job_id']}")
@@ -479,11 +485,11 @@ def test_job_status_is_pollable_and_unknown_job_404s():
 @test
 def test_action_updates_status_and_writes_an_audit_event():
     r = client().post("/v1/cases/case-uw-1/action",
-                      json={"action": "request_more_evidence", "reason": "need plate",
+                      json={"action": "request_more_evidence", "reason": "need plate", "requested_artifacts": ['A clear registration plate photograph'],
                             "admin_id": "adjuster-7"})
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "open"
-    assert client().get("/v1/cases/case-uw-1").json()["status"] == "open"
+    assert r.json()['status']=='awaiting_evidence'
+    assert client().get('/v1/cases/case-uw-1').json()['status']=='awaiting_evidence'
 
     conn = db.connect(api.DB_PATH)
     try:
@@ -513,10 +519,10 @@ def test_admin_reject_requires_reason_and_closes_case():
 
     reopen = client().post("/v1/cases/case-uw-1/action",
                            json={"action": "request_more_evidence",
-                                 "reason": "upload clearer VIN image",
+                                 "reason": "upload clearer VIN image", "requested_artifacts": ['A clear VIN photograph'],
                                  "admin_id": "admin-1"})
     assert reopen.status_code == 200, reopen.text
-    assert reopen.json()["status"] == "open"
+    assert reopen.json()['status']=='awaiting_evidence'
 
     approve = client().post("/v1/cases/case-claims-1/action",
                             json={"action": "approve", "admin_id": "admin-2"})
@@ -549,7 +555,7 @@ def test_public_track_is_narrow_and_verified():
     })
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body) == {"case_id", "status", "final_admin_action", "narrative"}, body
+    assert set(body) == {'case_id','agent_type','status','final_admin_action','narrative','processing_status','evidence_request'}, body
     assert body["final_admin_action"] == "approve", body
     assert body["narrative"] == "Your application has been approved by a reviewer."
     assert "findings" not in body and "trace" not in body and "evidence" not in body

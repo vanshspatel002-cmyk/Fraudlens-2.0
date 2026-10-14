@@ -157,7 +157,7 @@ def get_garage_history(conn: sqlite3.Connection, case: Case) -> dict[str, Any]:
     against what population baseline, so the agent can state the pattern
     in its narrative instead of repeating the check's sentence.
     """
-    if not case.garage_id:
+    if not case.garage_id or case.garage_id == 'UNASSIGNED':
         return {"tool": "get_garage_history", "garage_id": None,
                 "note": "this case has no garage attached"}
 

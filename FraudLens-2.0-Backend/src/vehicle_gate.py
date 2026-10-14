@@ -50,6 +50,7 @@ class VehicleGateScore:
     margin: float
     accepted: bool
     predicted_category: str
+    embedding: Optional[list[float]] = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -92,6 +93,7 @@ def classify_image(
         margin=margin,
         accepted=accepted,
         predicted_category="vehicle" if accepted else "non_vehicle",
+        embedding=image_embedding.tolist(),
     )
 
 

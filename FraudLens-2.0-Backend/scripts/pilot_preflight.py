@@ -41,14 +41,18 @@ def main():
             print('CLIP load failed:', type(exc).__name__)
             errors.append('CLIP')
     if args.live:
+        provider = None
         try:
             from src.llm import get_provider
-            result = get_provider().chat([{'role': 'user', 'content': 'Reply with ready.'}])
+            provider = get_provider()
+            result = provider.chat([{'role': 'user', 'content': 'Reply with ready.'}])
             if not result.text.strip(): raise ValueError('Empty provider reply')
             print('Live model: response received (not a vision or accuracy test)')
         except Exception as exc:
             print('Live model failed:', type(exc).__name__)
             errors.append('live model')
+        finally:
+            if provider is not None and hasattr(provider, 'close'): provider.close()
     print('BLOCKED: resolve missing items before rehearsal.' if errors else 'Preflight passed. Run the two-tab rehearsal next.')
     return 1 if errors else 0
 

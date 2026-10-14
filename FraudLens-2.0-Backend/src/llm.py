@@ -309,12 +309,17 @@ class GeminiProvider(LLMProvider):
         self._clients: dict[str, Any] = {}
         self.model = model
 
+    def close(self):
+        for client in self._clients.values():
+            client.close()
+        self._clients.clear()
+
     # -- key rotation -----------------------------------------------------
 
     def _client_for(self, label: str, secret: str):
         """One cached Client per key - constructing them is not free."""
         if label not in self._clients:
-            self._clients[label] = self._genai.Client(api_key=secret)
+            self._clients[label] = self._genai.Client(api_key=secret, http_options=self._genai.types.HttpOptions(timeout=60000, retry_options=self._genai.types.HttpRetryOptions(attempts=1)))
         return self._clients[label]
 
     @property
@@ -347,6 +352,8 @@ class GeminiProvider(LLMProvider):
             consumer = quota_budget.infer_consumer()
 
             def _budgeted_call():
+                from . import session_budget
+                session_budget.check()
                 quota_budget.reserve_call(
                     consumer,
                     label,
@@ -354,7 +361,14 @@ class GeminiProvider(LLMProvider):
                     model=self.model,
                     kind="gemini",
                 )
-                return make_call(client)
+                attempt = session_budget.reserve(self.model)
+                try:
+                    result = make_call(client)
+                except Exception as exc:
+                    session_budget.outcome(exc, attempt=attempt)
+                    raise
+                session_budget.outcome(attempt=attempt)
+                return result
 
             try:
                 # 503/transient handling stays inside _call_with_retry;
@@ -404,7 +418,8 @@ class GeminiProvider(LLMProvider):
         # this SDK (there's no separate `tools=` kwarg on
         # generate_content), so a fresh config is built per call rather
         # than cached on self the way the old GenerationConfig was.
-        return types.GenerateContentConfig(temperature=0, tools=tools or None)
+        return types.GenerateContentConfig(temperature=0, tools=tools or None,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
 
     # -- chat -----------------------------------------------------------
 
@@ -482,12 +497,12 @@ class GeminiProvider(LLMProvider):
         def _call(client):
             from PIL import Image
 
-            image = Image.open(image_path)
-            return client.models.generate_content(
-                model=self.model,
-                contents=[prompt, image],
-                config=self._config(),
-            )
+            with Image.open(image_path) as image:
+                return client.models.generate_content(
+                    model=self.model,
+                    contents=[prompt, image],
+                    config=self._config(),
+                )
 
         response = self._call_rotating(_call, attempts=retry_attempts)
         latency_ms = int((time.monotonic() - start) * 1000)

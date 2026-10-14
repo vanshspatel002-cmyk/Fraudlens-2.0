@@ -43,8 +43,12 @@ src/models.py.
 from __future__ import annotations
 
 import re
+import hashlib
+import importlib.metadata
+import math
 from typing import Any, Optional
 
+from .. import db
 from ..models import CheckCategory, Finding, Image, Verdict
 from .base import Check, CheckContext, register_check
 
@@ -174,6 +178,8 @@ class PlateOCRCheck(Check):
 
     def _check_one_image(self, ctx: CheckContext, image: Image, reader: Any, threshold: float) -> Finding:
         policy_registration = ctx.case.vehicle_registration
+        cache_reused = False
+        cache_key = None
 
         def finding(verdict: Verdict, confidence: float, explanation: str, evidence: dict[str, Any]) -> Finding:
             return Finding(
@@ -187,6 +193,7 @@ class PlateOCRCheck(Check):
                     "image_id": image.image_id,
                     "policy_registration": policy_registration,
                     "policy_registration_normalised": normalise(policy_registration or ""),
+                    **({'ocr_cache_key':cache_key,'ocr_cache_reused':cache_reused} if cache_key else {}),
                     **evidence,
                 },
             )
@@ -199,7 +206,31 @@ class PlateOCRCheck(Check):
             )
 
         try:
-            raw_results = reader.readtext(image.path)
+            if ctx.config.get('cache_ocr'):
+                engine='easyocr-'+importlib.metadata.version('easyocr')+'-en-cpu-readtext-default-v1'
+                cache_key=hashlib.sha256((engine+':'+image.content_hash).encode()).hexdigest()
+                cached=db.cache_get(ctx.conn,'production_plate_ocr',cache_key)
+            else:
+                cached=None
+            if cached is not None:
+                raw_results=cached['observations'];cache_reused=True
+            else:
+                raw_results=reader.readtext(image.path)
+                if cache_key:
+                    observations=[]
+                    for box,text,confidence in raw_results:
+                        confidence=float(confidence)
+                        if not math.isfinite(confidence) or not 0<=confidence<=1:
+                            raise ValueError('Invalid OCR confidence')
+                        # Only text/confidence participates in this check. Never
+                        # cache a case verdict, policy registration or identity.
+                        observations.append([None,str(text),confidence])
+                    db.cache_set(ctx.conn,'production_plate_ocr',cache_key,
+                                 {'engine':engine,'observations':observations})
+                    # Optional cache data precedes the atomic final run result.
+                    # Release its writer lock before the next slow OCR call.
+                    ctx.conn.commit()
+                    raw_results=observations
         except Exception as e:  # noqa: BLE001 - unreadable file; never kill the run
             return finding(
                 Verdict.INCONCLUSIVE, 0.0,

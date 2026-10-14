@@ -456,6 +456,7 @@ class Case:
     fir_number: Optional[str] = None
     settlement_preference: Optional[str] = None
     bank_account_last4: Optional[str] = None
+    declaration_notes: Optional[str] = None
 
     def __post_init__(self) -> None:
         _require_nonblank(self.case_id, "case_id")

@@ -230,7 +230,7 @@ CREATE TABLE IF NOT EXISTS cache_entries (
 
 
 def connect(db_path: Union[str, Path] = "fraudlens.db") -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -276,6 +276,7 @@ _CASE_MIGRATIONS = (
     ("fir_number", "TEXT"),
     ("settlement_preference", "TEXT"),
     ("bank_account_last4", "TEXT"),
+    ('declaration_notes','TEXT'),
 )
 
 
@@ -344,8 +345,8 @@ def insert_case(conn: sqlite3.Connection, case: Case) -> None:
         " fuel_type, idv, policy_number, policy_type, previous_policy_number, "
         " policy_ncb_percent, policy_start_date, policy_end_date, person_name, "
         " person_dob, person_address, person_contact, driving_license_number, "
-        " fir_number, settlement_preference, bank_account_last4) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " fir_number, settlement_preference, bank_account_last4, declaration_notes) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             case.case_id,
             case.claimant_id,
@@ -383,6 +384,7 @@ def insert_case(conn: sqlite3.Connection, case: Case) -> None:
             case.fir_number,
             case.settlement_preference,
             case.bank_account_last4,
+            case.declaration_notes,
         ),
     )
 
@@ -444,6 +446,7 @@ def _case_from_row(row: sqlite3.Row) -> Case:
         fir_number=row["fir_number"],
         settlement_preference=row["settlement_preference"],
         bank_account_last4=row["bank_account_last4"],
+        declaration_notes=row['declaration_notes'] if 'declaration_notes' in row.keys() else None,
     )
 
 
@@ -507,7 +510,7 @@ def insert_finding(conn: sqlite3.Connection, finding: Finding) -> None:
 
 def get_findings_for_case(conn: sqlite3.Connection, case_id: str) -> list[Finding]:
     rows = conn.execute(
-        "SELECT * FROM findings WHERE case_id = ? ORDER BY created_at", (case_id,)
+        "SELECT * FROM findings WHERE case_id = ? ORDER BY rowid", (case_id,)
     ).fetchall()
     return [_finding_from_row(r) for r in rows]
 
@@ -718,7 +721,7 @@ def delete_decisions_for_policy(conn: sqlite3.Connection, policy_version: str) -
 
 def get_decisions_for_case(conn: sqlite3.Connection, case_id: str) -> list[AgentDecision]:
     rows = conn.execute(
-        "SELECT * FROM agent_decisions WHERE case_id = ? ORDER BY created_at", (case_id,)
+        "SELECT * FROM agent_decisions WHERE case_id = ? ORDER BY rowid", (case_id,)
     ).fetchall()
     return [
         AgentDecision(
@@ -762,7 +765,7 @@ def insert_admin_action(conn: sqlite3.Connection, action: AdminActionRecord) -> 
 
 def get_admin_actions_for_case(conn: sqlite3.Connection, case_id: str) -> list[AdminActionRecord]:
     rows = conn.execute(
-        "SELECT * FROM admin_actions WHERE case_id = ? ORDER BY timestamp, rowid", (case_id,)
+        "SELECT * FROM admin_actions WHERE case_id = ? ORDER BY rowid", (case_id,)
     ).fetchall()
     return [
         AdminActionRecord(
@@ -778,7 +781,7 @@ def get_admin_actions_for_case(conn: sqlite3.Connection, case_id: str) -> list[A
 
 def get_latest_admin_action(conn: sqlite3.Connection, case_id: str) -> Optional[AdminActionRecord]:
     row = conn.execute(
-        "SELECT * FROM admin_actions WHERE case_id = ? ORDER BY timestamp DESC, rowid DESC LIMIT 1",
+        "SELECT * FROM admin_actions WHERE case_id = ? ORDER BY rowid DESC LIMIT 1",
         (case_id,),
     ).fetchone()
     if row is None:
@@ -824,7 +827,7 @@ def get_image(conn: sqlite3.Connection, image_id: str) -> Optional[Image]:
 
 def get_images_for_case(conn: sqlite3.Connection, case_id: str) -> list[Image]:
     rows = conn.execute(
-        "SELECT * FROM images WHERE case_id = ? ORDER BY created_at", (case_id,)
+        "SELECT * FROM images WHERE case_id = ? ORDER BY rowid", (case_id,)
     ).fetchall()
     return [_image_from_row(r) for r in rows]
 
@@ -876,7 +879,7 @@ def log_audit_event(conn: sqlite3.Connection, event: AuditEvent) -> None:
 
 def get_audit_events_for_case(conn: sqlite3.Connection, case_id: str) -> list[AuditEvent]:
     rows = conn.execute(
-        "SELECT * FROM audit_log WHERE case_id = ? ORDER BY created_at", (case_id,)
+        "SELECT * FROM audit_log WHERE case_id = ? ORDER BY rowid", (case_id,)
     ).fetchall()
     return [
         AuditEvent(

@@ -142,7 +142,11 @@ def get_conn():
     if _conn is None:
         _tmpdir = tempfile.mkdtemp(prefix="fraudlens_agent_test_")
         copy = Path(_tmpdir) / "corpus.db"
-        shutil.copy("fraudlens.db", copy)
+        import sqlite3
+        source=sqlite3.connect(Path('fraudlens.db').resolve().as_uri()+'?mode=ro',uri=True)
+        target=sqlite3.connect(copy)
+        try:source.backup(target)
+        finally:source.close();target.close()
         _conn = db.connect(copy)
         db.init_db(_conn)
     return _conn

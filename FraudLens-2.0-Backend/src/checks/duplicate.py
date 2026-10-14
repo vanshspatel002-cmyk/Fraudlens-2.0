@@ -250,11 +250,11 @@ class InternalDuplicateCheck(Check):
 
     @staticmethod
     def _compared_count(ctx: CheckContext) -> int:
-        from .. import db
-
-        return sum(
-            1 for other in db.get_all_images(ctx.conn) if other.case_id != ctx.case.case_id and other.embedding is not None
-        )
+        # This metric needs neither decoded embeddings nor hydrated Image
+        # objects. Keep the comparison pool identical to find_similar().
+        return ctx.conn.execute("""SELECT COUNT(*) FROM images
+            WHERE case_id<>? AND embedding IS NOT NULL AND json_type(embedding)<>'null'""",
+            (ctx.case.case_id,)).fetchone()[0]
 
     def _verdict_for(
         self,
