@@ -654,9 +654,11 @@ export default function Admin() {
                       {detail.evidenceRequest && <p>Reviewer requested: {detail.evidenceRequest.artifacts.join('; ')}</p>}
                       {detailTab === 'Report' && detail.reportHistory?.length > 0 && <label className="field report-history-selector"><span>Report history</span>
                         <select defaultValue="" onChange={async e => {
-                          if (!e.target.value) return;
+                          const snapshotId = e.currentTarget.value;
+                          e.currentTarget.value = '';
+                          if (!snapshotId) return;
                           try {
-                            const report = await historicalReport(detail.id, e.target.value);
+                            const report = await historicalReport(detail.id, snapshotId);
                             const json = JSON.stringify(report, null, 2);
                             setHistoricalReport(json);
                           } catch (err) {setError((err as Error).message);}
