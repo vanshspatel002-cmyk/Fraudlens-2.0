@@ -990,3 +990,16 @@
 }
 
 @media print { .report-history-selector { display:none !important; } }
+
+@media print {
+  /* The paper extends beyond the admin cards' height on the last page. */
+  html:has(.admin),
+  body:has(.admin) {
+    background: white !important;
+    background-image: none !important;
+  }
+  .admin .case-meta .agent-tag {
+    background: white !important;
+    color: black !important;
+  }
+}
