@@ -100,11 +100,12 @@ class CLIPEmbedder:
     def _load_model(self) -> None:
         if self._model is not None:
             return
-        import open_clip
-        import os, torch
+        from .timing import span
+        with span('clip.import_dependencies'):
+            import open_clip
+            import os, torch
         torch.set_num_threads(max(1,int(os.environ.get('FRAUDLENS_TORCH_THREADS','2'))))
 
-        from .timing import span
         with span('clip.initialize'):
             model, _, preprocess = open_clip.create_model_and_transforms(
                 self._MODEL_NAME, pretrained=self._PRETRAINED, device="cpu"

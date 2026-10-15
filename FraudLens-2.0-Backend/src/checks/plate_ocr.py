@@ -103,7 +103,10 @@ def normalise(text: str) -> str:
     return _NON_ALNUM.sub("", text or "").upper()
 
 
-def coerce_to_plate(text: str) -> Optional[str]:
+PRODUCTION_COMPARISON_VERSION = 'plate-ocr-observed-prefix-v2'
+
+
+def coerce_to_plate(text: str, *, observed_prefix: bool = False) -> Optional[str]:
     """
     Try to read `text` as an Indian registration, repairing the common
     OCR confusions positionally. Returns the canonical plate string, or
@@ -115,6 +118,11 @@ def coerce_to_plate(text: str) -> Optional[str]:
     """
     cleaned = normalise(text)
     if not 9 <= len(cleaned) <= 11:
+        return None
+    # Production correction: digits in an advert's telephone number cannot
+    # establish the two-letter registration prefix. Preserve the historical
+    # research interpretation unless explicitly selected by the run policy.
+    if observed_prefix and not cleaned[:2].isalpha():
         return None
 
     middle_len = len(cleaned) - 8
@@ -202,6 +210,7 @@ class PlateOCRCheck(Check):
                 explanation=explanation,
                 evidence={
                     "image_id": image.image_id,
+                    **({'comparison_version':PRODUCTION_COMPARISON_VERSION} if ctx.config.get('plate_ocr_observed_prefix') else {}),
                     "policy_registration": policy_registration,
                     "policy_registration_normalised": normalise(policy_registration or ""),
                     **({'ocr_cache_key':cache_key,'ocr_cache_reused':cache_reused} if cache_key else {}),
@@ -260,7 +269,7 @@ class PlateOCRCheck(Check):
             except (ValueError, TypeError):
                 continue
             raw_strings.append({"text": text, "confidence": round(float(ocr_confidence), 4)})
-            plate = coerce_to_plate(text)
+            plate = coerce_to_plate(text, observed_prefix=bool(ctx.config.get('plate_ocr_observed_prefix')))
             if plate is not None:
                 candidates.append((plate, float(ocr_confidence), text))
 
@@ -268,8 +277,9 @@ class PlateOCRCheck(Check):
             return finding(
                 Verdict.INCONCLUSIVE,
                 0.0,
-                "No licence-plate-shaped text could be read from this image - expected at this resolution, "
-                "not itself suspicious.",
+                ("OCR detected text but no licence-plate-shaped candidate could be read. "
+                 if raw_strings else "OCR ran but detected no text. ")
+                + "Plate legibility is unverified; this is not itself suspicious.",
                 {"raw_ocr_strings": raw_strings, "plate_candidate": None,
                  "ocr_status": "no_plate_candidate" if raw_strings else "no_text_detected",
                  "legibility": "unverified; no readable plate established"},

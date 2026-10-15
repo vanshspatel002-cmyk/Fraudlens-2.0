@@ -1350,6 +1350,8 @@ def _build_report(conn,case_id):
     limitations.append('INR 50,000 is a preserved research billing benchmark; current legal applicability and insurer procedures are unverified.')
     limitations.append('Check findings use local computations and recorded observations; they do not establish successful fresh model adjudication.')
     sources = (job or {}).get('perception_sources')
+    if (job or {}).get('checks_revision'):
+        limitations.append('Production check implementation revision: ' + job['checks_revision'] + '. This is separate from the recorded agent policy version.')
     if sources:
         limitations.append('Vision sources for this run: ' + ', '.join(f'{name}={count}' for name,count in sources.items()) + '. Cached observations are reused evidence, not new model responses.')
     else:
@@ -1369,6 +1371,11 @@ def _build_report(conn,case_id):
         for finding in fs:
             if finding.check_limitation: limitations.append(finding.check_id+': '+finding.check_limitation)
             if finding.verdict=='inconclusive': limitations.append(finding.check_id+': '+finding.explanation)
+            if finding.check_id == 'scene_consistency':
+                unavailable = [name for name,value in finding.evidence.items()
+                    if name.endswith('_status') and value != 'consistent']
+                if unavailable:
+                    limitations.append('scene_consistency: partial comparison; these components were not confirmed consistent: ' + ', '.join(unavailable) + '. A PASS covers available comparisons only.')
     evidence_ids=json.loads(result['image_ids']) if result else [i.image_id for i in db.get_images_for_case(conn,case_id)]
     return CaseReportOut(case_id=case_id,declaration=_report_declaration(case),
         findings_by_category=grouped,finding_groups=groups,agent_recommendation=decision,
@@ -1938,8 +1945,8 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                     provenance = {}
                     with span('pipeline.perception_image'):
                         record = perceive_image(conn, image, provider, retry_attempts=1, provenance=provenance)
-                    perception_sources[provenance.get('source', 'unavailable')] += 1
                     conn.commit()
+                    perception_sources[provenance.get('source', 'unavailable')] += 1
                     if record.raw_response.get('error'):
                         perception_errors += 1
                 except Exception as exc:
@@ -1948,7 +1955,9 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                     access_log.error('Vision unavailable: image=%s error_type=%s', image.image_id, type(exc).__name__)
                     if is_rate_limit_error(exc) or is_quota_budget_error(exc):
                         network_stopped = True
-            _set_job(job_id, stage='checks_and_adjudication', progress=0.6, perception_sources=perception_sources)
+            _set_job(job_id, stage='evidence checks', progress=0.6, perception_sources=perception_sources,
+                     provider_request_profile=getattr(provider,'request_profile','unrecorded'),
+                     checks_revision='plate-ocr-observed-prefix-v2')
             adjudicator = provider
             if perception_errors:
                 class UnavailableVision:
@@ -1956,9 +1965,19 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                         raise RuntimeError('Vision is incomplete; a human must review the saved evidence.')
                 adjudicator = UnavailableVision()
             case = db.get_case(conn, case_id)
+            last_phase = 'evidence checks'
+            def stage_progress(stage, progress):
+                nonlocal last_phase
+                # Keep expensive OCR visible without adding a cloud transaction
+                # for every tiny check. All individual timings remain in logs.
+                phase = 'plate OCR' if stage == 'check: plate_ocr' else (
+                    'agent adjudication' if stage == 'agent adjudication' else 'evidence checks')
+                if phase != last_phase:
+                    _set_job(job_id, stage=phase, progress=progress)
+                    last_phase = phase
             decision = process_case(conn, case_id, provider=adjudicator,
                                     policy=production_policy(case.agent_type), run_id=job_id,
-                                    on_stage=lambda stage,progress: _set_job(job_id,stage=stage,progress=progress))
+                                    on_stage=stage_progress)
             unavailable = _decision_out(decision, conn).provider_unavailable
             _set_job(job_id, status='failed' if unavailable or perception_errors else 'completed',
                 stage='needs_review' if unavailable or perception_errors else 'complete', progress=1.0,

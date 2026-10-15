@@ -288,7 +288,8 @@ def _vision_cache_key(image_bytes: bytes, prompt: str, model: str) -> str:
 class GeminiProvider(LLMProvider):
     """LLMProvider backed by Google's Gemini API via google-genai."""
 
-    def __init__(self, model: str = GEMINI_MODEL, api_key: Optional[str] = None) -> None:
+    def __init__(self, model: str = GEMINI_MODEL, api_key: Optional[str] = None,
+                 request_profile: Optional[str] = None) -> None:
         # Imported here, not at module scope, so importing src.llm never
         # requires google-genai to be installed unless a GeminiProvider
         # is actually constructed - handy for the day a second provider
@@ -310,7 +311,10 @@ class GeminiProvider(LLMProvider):
         # Compatibility correction, separate from historical research policy.
         # Old perception_records remain legitimate reusable observations; raw
         # request caches for a changed sampling configuration need distinct keys.
-        self._request_cache_suffix = '_gemini3_defaults_v2' if model.startswith('gemini-3') else ''
+        self.request_profile = request_profile or os.getenv('FRAUDLENS_GEMINI_REQUEST_PROFILE', 'legacy')
+        if self.request_profile not in {'legacy', 'gemini3_defaults_v2'}:
+            raise ValueError('Unknown Gemini request profile')
+        self._request_cache_suffix = '_gemini3_defaults_v2' if model.startswith('gemini-3') and self.request_profile == 'gemini3_defaults_v2' else ''
 
     def close(self):
         for client in self._clients.values():
@@ -421,7 +425,7 @@ class GeminiProvider(LLMProvider):
         # this SDK (there's no separate `tools=` kwarg on
         # generate_content), so a fresh config is built per call rather
         # than cached on self the way the old GenerationConfig was.
-        sampling = {} if self.model.startswith('gemini-3') else {'temperature': 0}
+        sampling = {} if self._request_cache_suffix else {'temperature': 0}
         return types.GenerateContentConfig(**sampling, tools=tools or None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
 

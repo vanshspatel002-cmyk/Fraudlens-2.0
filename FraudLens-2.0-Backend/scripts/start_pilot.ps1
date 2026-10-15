@@ -36,6 +36,7 @@ if ($SqlitePath) {
 }
 $env:FRAUDLENS_LIVE_LEDGER = $ledgerPath
 $env:FRAUDLENS_LIVE_LIMIT = '15'
+$env:FRAUDLENS_GEMINI_REQUEST_PROFILE = 'gemini3_defaults_v2'
 $env:GEMINI_QUOTA_BUDGET = Join-Path $pilotDirectory 'quota_budget.json'
 $env:GEMINI_QUOTA_CONSUMER = 'pilot'
 # PostgreSQL defaults to the qualified dedicated-worker setup; SQLite retains

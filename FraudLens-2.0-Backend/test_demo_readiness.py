@@ -65,13 +65,36 @@ def test_ocr_engine_failure_is_distinct_from_no_text():
     assert result.evidence['ocr_status']=='engine_unavailable'
 
 
+def test_production_ocr_rejects_phone_number_as_registration():
+    from src.checks.plate_ocr import coerce_to_plate
+    assert coerce_to_plate('880-855-9217')=='BB08SS9217'  # preserved historical behavior
+    assert coerce_to_plate('880-855-9217',observed_prefix=True) is None
+    case,image,_=scene_inputs();case.vehicle_registration='GJ18WD0226'
+    ctx=CheckContext(None,case,[image],{},config={'plate_ocr_observed_prefix':True})
+    result=PlateOCRCheck()._check_one_image(ctx,image,SimpleNamespace(readtext=lambda p:[(None,'880-855-9217',.5794)]),.5)
+    assert result.verdict is Verdict.INCONCLUSIVE and result.evidence['ocr_status']=='no_plate_candidate'
+    assert result.evidence['comparison_version']=='plate-ocr-observed-prefix-v2'
+
+
+def test_production_prefix_preserves_observed_plate():
+    from src.checks.plate_ocr import coerce_to_plate
+    assert coerce_to_plate('HR 26 TC . 0710',observed_prefix=True)=='HR26TC0710'
+
+
 def test_gemini_three_defaults_and_separate_cache_protocol():
     for model,temp,suffix in [('gemini-3.5-flash',None,'_gemini3_defaults_v2'),('gemini-2.5-flash',0,'')]:
-        provider=llm.GeminiProvider(model=model,api_key='offline-placeholder')
+        provider=llm.GeminiProvider(model=model,api_key='offline-placeholder',request_profile='gemini3_defaults_v2')
         assert provider._config().temperature==temp
         assert provider._config().automatic_function_calling.disable
         assert provider._request_cache_suffix==suffix
         provider.close()
+
+
+def test_legacy_research_sampling_and_cache_namespace_are_preserved():
+    provider=llm.GeminiProvider(api_key='offline-placeholder',request_profile='legacy')
+    assert provider._config().temperature==0
+    assert provider._request_cache_suffix==''
+    provider.close()
 
 
 def test_sdk_serializes_vision_and_chat_without_network(tmp_path,monkeypatch):
@@ -85,7 +108,7 @@ def test_sdk_serializes_vision_and_chat_without_network(tmp_path,monkeypatch):
     transport=httpx.Client(transport=httpx.MockTransport(handle))
     client=genai.Client(api_key='offline-placeholder',http_options=types.HttpOptions(
         httpx_client=transport,timeout=60000,retry_options=types.HttpRetryOptions(attempts=1)))
-    provider=llm.GeminiProvider(api_key='offline-placeholder')
+    provider=llm.GeminiProvider(api_key='offline-placeholder',request_profile='gemini3_defaults_v2')
     # This isolated transport is the only execution path; no ledger is opened.
     monkeypatch.setattr(provider,'_call_rotating',lambda call,**kw:call(client))
     path=tmp_path/'photo.png';Image.new('RGB',(8,8),'blue').save(path)
@@ -98,6 +121,37 @@ def test_sdk_serializes_vision_and_chat_without_network(tmp_path,monkeypatch):
         assert all('temperature' not in body['generationConfig'] for _,body in requests)
     finally:
         client.close();provider.close();transport.close()
+
+
+def test_production_sdk_options_do_not_hide_retries_on_503(tmp_path,monkeypatch):
+    from google import genai
+    from google.genai import errors
+    from PIL import Image
+    attempts=[];configured=[]
+    def handle(request):
+        attempts.append(1)
+        return httpx.Response(503,json={'error':{'code':503,'message':'Offline transport fixture','status':'UNAVAILABLE'}})
+    transport=httpx.Client(transport=httpx.MockTransport(handle))
+    original=genai.Client
+    def factory(**kwargs):
+        options=kwargs['http_options']
+        configured.append((options.timeout,options.retry_options.attempts))
+        options.httpx_client=transport
+        return original(**kwargs)
+    monkeypatch.setattr(genai,'Client',factory)
+    ledger=tmp_path/'test-ledger.json'
+    monkeypatch.setenv('FRAUDLENS_LIVE_LEDGER',str(ledger))
+    monkeypatch.setenv('GEMINI_QUOTA_BUDGET',str(tmp_path/'test-quota.json'))
+    monkeypatch.setenv('GEMINI_QUOTA_CONSUMER','offline-test')
+    path=tmp_path/'image.png';Image.new('RGB',(8,8)).save(path)
+    provider=llm.GeminiProvider(api_key='offline-placeholder',request_profile='gemini3_defaults_v2')
+    try:
+        with pytest.raises(errors.ServerError):
+            provider.describe_image(str(path),'Offline failure test',retry_attempts=1)
+        assert attempts==[1] and configured==[(60000,1)]
+        assert json.loads(ledger.read_text())['attempts']==1
+        assert json.loads(ledger.read_text())['events'][0]['outcome']=='failure:503'
+    finally:provider.close();transport.close()
 
 
 @pytest.mark.parametrize('source,cached',[('fresh_provider',False),('request_cache',True)])

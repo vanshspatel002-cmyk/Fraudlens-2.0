@@ -109,7 +109,7 @@ def process_case(
         policy = policy_for(case.agent_type)
 
     started = time.monotonic()
-    check_options = {'config': {'cache_ocr': True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
+    check_options = {'config': {'cache_ocr': True, 'plate_ocr_observed_prefix': True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
     from src.timing import span
     def check_started(check_id, index, total):
         # Only optional observations/cache writes exist at this point. Release

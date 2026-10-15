@@ -4,6 +4,7 @@ Live integration is disabled. Some tests use explicitly mocked model responses;
 none of these results establishes provider reliability or detection accuracy.
 """
 import json
+import argparse
 import os
 from pathlib import Path
 import re
@@ -22,16 +23,31 @@ COMMANDS=[
 
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--resume',action='store_true',help='Keep verified completed runners; use new logs for interrupted/failed attempts.')
+    args=parser.parse_args()
     OUT.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy()
     env.update(FRAUDLENS_TEST_LIVE='0',FRAUDLENS_WARM_MODELS='0',
         FRAUDLENS_WORKER_ENABLED='0',HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',
         GEMINI_QUOTA_BUDGET=str(OUT/'quota_budget.json'),GEMINI_QUOTA_CONSUMER='offline-test')
+    saved=json.loads((OUT/'results.json').read_text(encoding='utf-8')) if args.resume and (OUT/'results.json').exists() else []
     results=[]
     for index,command in enumerate(COMMANDS):
         name=command[0] if command[0]!='-m' else 'focused-pytest'
         logfile=OUT/(Path(name).stem+'.log')
-        if logfile.exists():raise SystemExit('Existing release log; inspect rather than overwrite: '+str(logfile))
+        previous=next((r for r in saved if r['runner']==name),None)
+        if previous and previous['exit_code']==0 and previous['counts']['failed']==0:
+            if previous['command'] != [sys.executable,*command] or not (ROOT/previous['log']).is_file():
+                raise SystemExit('Saved runner does not match this command/log: '+name)
+            results.append(previous)
+            print('Preserved completed runner',name,flush=True)
+            continue
+        if logfile.exists():
+            if not args.resume:raise SystemExit('Existing release log; inspect rather than overwrite: '+str(logfile))
+            attempt=2
+            while (OUT/(Path(name).stem+f'-attempt{attempt}.log')).exists():attempt+=1
+            logfile=OUT/(Path(name).stem+f'-attempt{attempt}.log')
         print('Running',name,flush=True);started=time.monotonic()
         with logfile.open('w',encoding='utf-8') as log:
             run=subprocess.run([sys.executable,'-u','-X','utf8',*command],cwd=ROOT,env=env,
