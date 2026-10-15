@@ -15,17 +15,22 @@ class ExecutionLost(RuntimeError):
 
 
 @contextmanager
-def execution(job):
+def execution(job, ownership_lost=None):
     _execution.job = job
+    _execution.ownership_lost = ownership_lost
     try:
         yield
     finally:
         _execution.job = None
+        _execution.ownership_lost = None
 
 
 def fence(conn, job_id):
     if not db.is_postgres(conn):
         return
+    lost = getattr(_execution,'ownership_lost',None)
+    if lost is not None and lost.is_set():
+        raise ExecutionLost('Cluster leadership was lost; stale results were discarded.')
     owner = getattr(_execution, 'job', None)
     row = conn.execute('SELECT payload FROM api_jobs WHERE job_id=? FOR UPDATE', (job_id,)).fetchone()
     current = json.loads(row[0]) if row else {}
@@ -168,10 +173,10 @@ def latest_job(conn, case_id):
 
 def job_view(job):
     """Execution fencing belongs in storage, never in UI/report payloads."""
-    return {k:v for k,v in job.items() if k != 'execution_token'} if job else None
+    return {k:v for k,v in job.items() if k not in {'execution_token','leader_epoch'}} if job else None
 
 
-def claim_next(conn):
+def claim_next(conn, leader_epoch=None):
     if not conn.in_transaction:
         conn.execute('BEGIN IMMEDIATE')
     suffix = ' FOR UPDATE SKIP LOCKED' if db.is_postgres(conn) else ''
@@ -179,6 +184,8 @@ def claim_next(conn):
     if not row: conn.commit(); return None
     job=json.loads(row[0]); job.update(status='running',stage='starting',attempts=job.get('attempts',0)+1,started_at=time.time())
     job['execution_token'] = secrets.token_hex(24)
+    if leader_epoch is not None:
+        job['leader_epoch'] = leader_epoch
     from .models import AuditEvent
     db.log_audit_event(conn,AuditEvent(event_type='processing_started',case_id=job['case_id'],
         details={'run_id':job['job_id'],'attempt':job['attempts']}))
@@ -186,13 +193,15 @@ def claim_next(conn):
     return job
 
 
-def interrupt_jobs(conn):
+def interrupt_jobs(conn, before_epoch=None):
     """Only call under the cluster advisory lock or SQLite OS lock."""
     if db.is_postgres(conn) and not conn.in_transaction:
         conn.execute('BEGIN')
     suffix = ' FOR UPDATE' if db.is_postgres(conn) else ''
     for row in conn.execute("SELECT payload FROM api_jobs WHERE status='running'" + suffix).fetchall():
         job=json.loads(row[0])
+        if before_epoch is not None and job.get('leader_epoch',0) >= before_epoch:
+            continue  # an old leader must not recover a newer leader's work
         completed=conn.execute('SELECT converged FROM processing_results WHERE run_id=?',(job['job_id'],)).fetchone()
         if completed: job.update(status='completed' if completed[0] else 'failed',stage='complete' if completed[0] else 'needs_review',progress=1.0,provider_unavailable=not bool(completed[0]))
         else:
@@ -204,6 +213,27 @@ def interrupt_jobs(conn):
         from .models import AuditEvent
         db.log_audit_event(conn,AuditEvent(event_type='processing_restart_recovery',case_id=job['case_id'],
             details={'run_id':job['job_id'],'status':job['status'],'attempt':job.get('attempts',0)}))
+
+
+def release_lost_claim(conn, claimed):
+    """Release only this attempt after leadership loss, never a newer attempt."""
+    conn.execute('BEGIN')
+    row=conn.execute('SELECT payload FROM api_jobs WHERE job_id=? FOR UPDATE',(claimed['job_id'],)).fetchone()
+    current=json.loads(row[0]) if row else None
+    if not current or current['status']!='running' or current.get('execution_token')!=claimed.get('execution_token'):
+        return
+    result=conn.execute('SELECT converged FROM processing_results WHERE run_id=?',(claimed['job_id'],)).fetchone()
+    if result:
+        current.update(status='completed' if result[0] else 'failed',stage='complete' if result[0] else 'needs_review',
+                       progress=1.,provider_unavailable=not bool(result[0]))
+    else:
+        retry=current.get('attempts',0)<current.get('max_attempts',3)
+        current.update(status='queued' if retry else 'interrupted',stage='leadership_lost',
+                       detail='Worker ownership was lost; recovery queued.' if retry else 'Recovery limit reached. Reviewer action required.')
+    save_job(conn,current)
+    from .models import AuditEvent
+    db.log_audit_event(conn,AuditEvent(event_type='processing_leadership_lost',case_id=current['case_id'],
+        details={'run_id':current['job_id'],'status':current['status'],'attempt':current.get('attempts',0)}))
 
 
 def current_result(conn, case_id):

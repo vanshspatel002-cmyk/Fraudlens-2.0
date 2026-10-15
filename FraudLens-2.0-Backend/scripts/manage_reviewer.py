@@ -16,8 +16,9 @@ def main():
     parser.add_argument('--disable',action='store_true')
     args=parser.parse_args();email=args.email.strip().lower()
     if '@' not in email:raise SystemExit('Provide an email address.')
-    conn=db.connect(args.db);db.init_db(conn);runtime_store.init(conn)
+    conn=db.connect(args.db)
     try:
+        db.init_db(conn);runtime_store.init(conn)
         if args.disable:
             changed=conn.execute('UPDATE reviewer_accounts SET enabled=0 WHERE email=?',(email,)).rowcount
             if not changed:raise SystemExit('Account not found; no changes made.')

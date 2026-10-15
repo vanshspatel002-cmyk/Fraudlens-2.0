@@ -75,6 +75,7 @@ class Connection:
     def __init__(self, raw, schema, pool=None):
         self.raw, self.schema, self.pool = raw, schema, pool
         self.closed = False
+        self.commit_uncertain = False
 
     @property
     def in_transaction(self):
@@ -91,46 +92,64 @@ class Connection:
 
     def _execute(self, query, params=None):
         command = query.lstrip().split(None, 1)[0].upper()
-        # Match sqlite3's implicit write transaction, without leaving ordinary
-        # SELECTs idle in a transaction during slow inference.
-        if command in {'INSERT', 'UPDATE', 'DELETE'} and not self.in_transaction:
-            self.raw.execute('BEGIN')
-            self._configure_transaction()
         if query.strip().upper() == 'BEGIN IMMEDIATE':
             query = 'BEGIN'
         if command == 'BEGIN':
-            cursor = self.raw.execute(query)
-            self._configure_transaction()
+            with self.raw.pipeline():
+                cursor = self.raw.execute(query)
+                self._configure_transaction()
             return cursor
         query = parameters(query) if params is not None else query
         if not self.in_transaction:
-            # All schema settings are transaction local, including ordinary
-            # reads. Works with direct, session and transaction poolers. The
-            # client cursor retains its buffered result after COMMIT.
-            with self.raw.transaction():
-                self._configure_transaction()
-                return self.raw.execute(query, params)
+            writing = command in {'INSERT','UPDATE','DELETE'}
+            try:
+                # Send setup/read/commit together. Separate network waits per
+                # SET/BEGIN made cloud-backed evidence/queue requests unusable.
+                # Writes retain their transaction until the caller commits.
+                with self.raw.pipeline():
+                    self.raw.execute('BEGIN')
+                    self._configure_transaction()
+                    cursor = self.raw.execute(query, params)
+                    if not writing:
+                        self.raw.execute('COMMIT')
+                return cursor
+            except BaseException:
+                if not writing:
+                    self.rollback()
+                raise
         return self.raw.execute(query, params)
 
     def _configure_transaction(self):
         # Supabase may default to shorter textual floats. Round-trip every
         # SQLite binary64 value exactly, including historical confidences.
-        self.raw.execute(sql.SQL("SET LOCAL search_path TO {}, pg_catalog; "
-            "SET LOCAL statement_timeout = '60s'; SET LOCAL lock_timeout = '15s'; "
-            'SET LOCAL extra_float_digits = 3').format(sql.Identifier(self.schema)), prepare=False)
+        self.raw.execute("""SELECT set_config('search_path',%s,true),
+            set_config('statement_timeout','60s',true),set_config('lock_timeout','15s',true),
+            set_config('idle_in_transaction_session_timeout','90s',true),
+            set_config('extra_float_digits','3',true)""",
+            (sql.Identifier(self.schema).as_string(self.raw)+',pg_catalog',))
 
     def executemany(self, query, rows):
         if not self.in_transaction:
-            self.raw.execute('BEGIN')
-            self._configure_transaction()
+            self.execute('BEGIN')
         with self.raw.cursor() as cursor:
             cursor.executemany(parameters(query), rows)
 
     def commit(self):
-        self.raw.commit()
+        try:
+            self.raw.commit()
+        except (psycopg.OperationalError, psycopg.InterfaceError) as exc:
+            # The server may have committed before the connection disappeared.
+            # Never remove evidence on the assumption that rollback succeeded.
+            self.commit_uncertain = True
+            raise type(exc)('PostgreSQL commit confirmation unavailable; preserve evidence and retry the same submission key.') from None
 
     def rollback(self):
-        self.raw.rollback()
+        if self.raw.closed:
+            return
+        try:
+            self.raw.rollback()
+        except (psycopg.OperationalError, psycopg.InterfaceError):
+            self.raw.close()  # do not mask the original authentication/HTTP error
 
     def close(self):
         if self.closed:
@@ -170,9 +189,11 @@ def connect():
                 raise ValueError('FRAUDLENS_PG_POOL_SIZE must be 3-16 (leader, API and job connections).')
             pool = ConnectionPool(dsn, min_size=0, max_size=size, timeout=15,
                 max_waiting=32, max_idle=120, reconnect_timeout=15,
+                check=ConnectionPool.check_connection,
                 name='fraudlens-backend', open=True,
                 kwargs={'autocommit':True,'row_factory':row_factory,'prepare_threshold':None,
                         'connect_timeout':15,'application_name':'fraudlens_backend',
+                        'keepalives_idle':30,'keepalives_interval':10,'keepalives_count':3,
                         'sslmode':settings.get('sslmode') or ('disable' if local else 'require')})
             _pools[key] = pool
     try:

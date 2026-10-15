@@ -66,32 +66,60 @@ class DurableWorker:
         # Each claimed run also has a fencing token checked in its result tx.
         while not self.stop_event.is_set():
             guard = None
+            heartbeat = None
+            heartbeat_stop = threading.Event()
+            ownership_lost = threading.Event()
             try:
                 guard = db.connect(self.path)
                 guard.execute('BEGIN')
-                guard.execute("SET LOCAL idle_in_transaction_session_timeout='0'")
+                timeout=int(os.environ.get('FRAUDLENS_PG_LEADER_TIMEOUT_SECONDS','120'))
+                if not 10 <= timeout <= 300:
+                    raise ValueError('PostgreSQL leader timeout must be 10-300 seconds.')
+                guard.execute("SELECT set_config('idle_in_transaction_session_timeout',?,true)",(str(timeout)+'s',))
                 acquired = guard.execute('SELECT pg_try_advisory_xact_lock(hashtextextended(?,0))',
                                          ('fraudlens-worker:' + guard.schema,)).fetchone()[0]
                 if not acquired:
                     guard.rollback()
                     self.stop_event.wait(2)
                     continue
-                with runtime_store.connection(self.path) as conn:
-                    runtime_store.interrupt_jobs(conn)
                 self.lock = guard
+                epoch=guard.execute('SELECT txid_current()').fetchone()[0]
+                def keep_leadership(connection=guard,stopping=heartbeat_stop,lost=ownership_lost,interval=min(5,timeout/3)):
+                    while not stopping.wait(interval):
+                        try:
+                            connection.execute('SELECT 1')
+                        except Exception:
+                            lost.set()
+                            return
+                heartbeat = threading.Thread(target=keep_leadership,name='fraudlens-pg-heartbeat',daemon=True)
+                heartbeat.start()
+                with runtime_store.connection(self.path) as conn:
+                    runtime_store.interrupt_jobs(conn,before_epoch=epoch)
                 while not self.stop_event.is_set():
+                    if ownership_lost.is_set():
+                        raise runtime_store.ExecutionLost('PostgreSQL leadership connection was lost.')
                     guard.execute('SELECT 1')  # detect a lost database session
                     with runtime_store.connection(self.path) as conn:
-                        job = runtime_store.claim_next(conn)
+                        job = runtime_store.claim_next(conn,leader_epoch=epoch)
                     if job:
-                        with runtime_store.execution(job):
+                        with runtime_store.execution(job,ownership_lost):
                             self.execute(job['job_id'], job['case_id'])
+                        try:
+                            guard.execute('SELECT 1')
+                        except Exception:
+                            ownership_lost.set()
+                        if ownership_lost.is_set():
+                            with runtime_store.connection(self.path) as conn:
+                                runtime_store.release_lost_claim(conn,job)
                     else:
                         self.stop_event.wait(1)
             except Exception as exc:
                 log.error('PostgreSQL worker error (%s); queue retained', type(exc).__name__)
                 self.stop_event.wait(2)
             finally:
+                heartbeat_stop.set()
+                if heartbeat:
+                    heartbeat.join(timeout=2)
                 self.lock = None
                 if guard:
                     guard.close()

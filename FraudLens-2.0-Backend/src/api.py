@@ -102,6 +102,10 @@ SURVEY_THRESHOLD_INR = 50_000.0
 
 @asynccontextmanager
 async def lifespan(_app):
+    if DB_PATH == 'postgresql' and os.environ.get('FRAUDLENS_WORKER_ENABLED','1') == '1':
+        ledger = os.environ.get('FRAUDLENS_LIVE_LEDGER')
+        if not ledger or not Path(ledger).is_file():
+            raise RuntimeError('PostgreSQL pilot workers require the preserved FRAUDLENS_LIVE_LEDGER. Use scripts/start_pilot.ps1; never reset the existing provider stop.')
     if DB_PATH != 'postgresql':
         Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = db.connect(DB_PATH)
@@ -475,12 +479,12 @@ def concerns_by_check(conn):
 
 def get_conn(request: Request) -> Iterator[sqlite3.Connection]:
     conn = db.connect(DB_PATH)
-    db.init_db(conn)
-    runtime_store.init(conn)
-    conn.commit()
-    if request.method == 'GET':
-        conn.execute('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' if db.is_postgres(conn) else 'BEGIN')
     try:
+        db.init_db(conn)
+        runtime_store.init(conn)
+        conn.commit()
+        if request.method == 'GET':
+            conn.execute('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' if db.is_postgres(conn) else 'BEGIN')
         yield conn
     except BaseException:
         conn.rollback()
@@ -1802,7 +1806,7 @@ def ready() -> ReadyOut:
     try:
         with runtime_store.connection(DB_PATH) as conn:
             conn.execute("SELECT 1 FROM cases LIMIT 1")
-    except db.DatabaseError as exc:
+    except (RuntimeError, *db.DatabaseError) as exc:
         raise ApiError(503, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
     return ReadyOut(status="ok")
 
@@ -2207,9 +2211,12 @@ def submit_case(
             conn.commit()
         except Exception as exc:
             conn.rollback()
-            if created_upload_dir and not upload_dir.is_symlink() and upload_dir.resolve().parent == UPLOAD_DIR.resolve():
+            uncertain = getattr(conn,'commit_uncertain',False)
+            if not uncertain and created_upload_dir and not upload_dir.is_symlink() and upload_dir.resolve().parent == UPLOAD_DIR.resolve():
                 shutil.rmtree(upload_dir, ignore_errors=True)
             if isinstance(exc, ApiError): raise
+            if uncertain:
+                raise ApiError(503,'SUBMISSION_SAVE_UNCONFIRMED','Save confirmation was interrupted. Keep this submission key and retry the same form; evidence files were preserved.') from exc
             access_log.error('Evidence acceptance failed: %s',type(exc).__name__)
             raise ApiError(503,'EVIDENCE_INGEST_FAILED','Evidence could not be indexed. No case was accepted; please retry.') from exc
     return response

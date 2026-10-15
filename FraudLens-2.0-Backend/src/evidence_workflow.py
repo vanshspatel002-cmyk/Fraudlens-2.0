@@ -87,9 +87,12 @@ def install(app):
             return SubmitCaseOut(case_id=case_id,job_id=job['job_id'],status='queued',images_received=len(image_ids))
         except Exception as exc:
             conn.rollback()
-            if created_batch_dir and not batch_dir.is_symlink() and batch_dir.resolve().parent == (upload_root/case_id).resolve():
+            uncertain = getattr(conn,'commit_uncertain',False)
+            if not uncertain and created_batch_dir and not batch_dir.is_symlink() and batch_dir.resolve().parent == (upload_root/case_id).resolve():
                 shutil.rmtree(batch_dir,ignore_errors=True)
             if isinstance(exc,ApiError): raise
+            if uncertain:
+                raise ApiError(503,'EVIDENCE_SAVE_UNCONFIRMED','Save confirmation was interrupted. Refresh tracking before retrying; evidence files were preserved.') from exc
             raise ApiError(503,'EVIDENCE_INGEST_FAILED','Additional evidence was not accepted. Original evidence is preserved; please retry.') from exc
 
     class AccountIn(BaseModel):

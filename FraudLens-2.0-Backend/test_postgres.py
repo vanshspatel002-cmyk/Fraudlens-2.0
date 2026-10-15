@@ -42,8 +42,11 @@ def pg_schema():
         conn.execute('BEGIN')
         pg_migrations.install(conn)
         conn.commit()
+        conn.close()
         yield name
     finally:
+        # Do not hold a borrowed connection idle for the entire long suite.
+        conn=db.connect('postgresql')
         conn.rollback()
         # Only this fixture's newly allocated namespace may be removed.
         assert conn.schema == name and name.startswith('fraudlens_test_') and len(name) == 47
@@ -172,10 +175,14 @@ def test_postgres_browser_roles_cannot_read_or_write_any_table(client,role):
         status=pg_migrations.security_status(conn)
         assert status=={'tables':22,'rls_enabled':22,'browser_privilege_violations':0}
         for table in (*pg_migrations.TABLES,'schema_migrations','migration_imports'):
-            for operation in ('SELECT * FROM {} LIMIT 0','DELETE FROM {} WHERE false'):
-                with pytest.raises(db.DatabaseError):
-                    with conn.raw.transaction():
-                        conn.raw.execute(sql.SQL('SET LOCAL ROLE {}').format(sql.Identifier(role)))
+            column='version' if table=='schema_migrations' else 'source_digest' if table=='migration_imports' else 'rowid'
+            operations=('SELECT * FROM {} LIMIT 0','DELETE FROM {} WHERE false',
+                        'INSERT INTO {} DEFAULT VALUES','UPDATE {} SET '+column+'='+column+' WHERE false')
+            for operation in operations:
+                with conn.raw.transaction():
+                    conn.raw.execute(sql.SQL('SET LOCAL ROLE {}').format(sql.Identifier(role)))
+                    assert conn.raw.execute('SELECT current_user').fetchone()[0]==role
+                    with pytest.raises(db.DatabaseError):
                         conn.raw.execute(sql.SQL(operation).format(sql.Identifier(conn.schema,table)))
 
 
@@ -216,6 +223,7 @@ def test_postgres_import_refuses_changed_existing_target(client):
     from scripts.migrate_postgres import inventory,apply
     receipt=submit(client).json()
     source=sqlite3.connect(':memory:')
+    source.row_factory=sqlite3.Row
     try:
         db.init_db(source);runtime_store.init(source);source.commit()
         incoming=inventory(source)
@@ -228,3 +236,139 @@ def test_postgres_import_refuses_changed_existing_target(client):
             assert db.get_case(conn,receipt['case_id']) is not None
     finally:
         source.close()
+
+
+def test_migration_checksum_is_stable_across_windows_newlines(tmp_path,monkeypatch):
+    folder=tmp_path/'migrations';folder.mkdir()
+    migration=folder/'001_initial.sql'
+    migration.write_bytes(b'SELECT 1;\nSELECT 2;\n')
+    monkeypatch.setattr(pg_migrations,'ROOT',folder)
+    unix=pg_migrations.checksum()
+    migration.write_bytes(b'SELECT 1;\r\nSELECT 2;\r\n')
+    assert pg_migrations.checksum()==unix
+
+
+def test_postgres_worker_requires_preserved_live_ledger(monkeypatch):
+    monkeypatch.setattr(api,'DB_PATH','postgresql')
+    monkeypatch.setenv('FRAUDLENS_WORKER_ENABLED','1')
+    monkeypatch.delenv('FRAUDLENS_LIVE_LEDGER',raising=False)
+    with pytest.raises(RuntimeError,match='preserved FRAUDLENS_LIVE_LEDGER'):
+        with TestClient(api.app):
+            pass
+
+
+def lose_commit_confirmation(monkeypatch, timing):
+    import psycopg
+    from psycopg.pq import TransactionStatus
+    original=psycopg.Connection.commit
+    injected=[]
+    def fail_once(raw):
+        if not injected and raw.info.transaction_status!=TransactionStatus.IDLE:
+            injected.append(True)
+            if timing=='after':original(raw)
+            raw.close()  # real database connection loss; model calls remain mocked
+            raise psycopg.OperationalError('Explicit isolated commit acknowledgement loss')
+        return original(raw)
+    monkeypatch.setattr(psycopg.Connection,'commit',fail_once)
+    return injected
+
+
+@pytest.mark.parametrize('timing',['before','after'])
+def test_postgres_uncertain_submission_preserves_files_and_replays_safely(client,monkeypatch,timing):
+    injected=lose_commit_confirmation(monkeypatch,timing)
+    key=str(uuid.uuid4())
+    def send():
+        return client.post('/v1/cases',headers={'Idempotency-Key':key},
+            data={'agent_type':'claims','policy_number':'POL-123'},
+            files={'images':('photo.png',photo(),'image/png')})
+    first=send()
+    assert injected and first.status_code==503
+    assert first.json()['code']=='SUBMISSION_SAVE_UNCONFIRMED'
+    assert len(list(api.UPLOAD_DIR.rglob('*.png')))==1
+    with runtime_store.connection('postgresql') as conn:
+        assert conn.execute('SELECT count(*) FROM cases').fetchone()[0]==int(timing=='after')
+    retry=send()
+    assert retry.status_code==201,retry.text
+    with runtime_store.connection('postgresql') as conn:
+        assert conn.execute('SELECT count(*) FROM cases').fetchone()[0]==1
+        assert conn.execute('SELECT count(*) FROM api_jobs').fetchone()[0]==1
+        assert __import__('pathlib').Path(db.get_images_for_case(conn,retry.json()['case_id'])[0].path).is_file()
+
+
+def test_postgres_uncertain_supplement_preserves_committed_evidence(client,monkeypatch):
+    receipt=submit(client).json();durable.finish(receipt['case_id'])
+    request_id=durable.request_evidence(client,receipt['case_id'],auth(client))
+    injected=lose_commit_confirmation(monkeypatch,'after')
+    response=client.post('/v1/cases/'+receipt['case_id']+'/evidence',
+        headers={'X-Applicant-Token':receipt['applicant_token']},data={'request_id':request_id},
+        files={'images':('requested.png',photo('blue'),'image/png')})
+    assert injected and response.status_code==503
+    assert response.json()['code']=='EVIDENCE_SAVE_UNCONFIRMED'
+    tracked=client.get('/v1/track',params={'case_id':receipt['case_id'],'policy_number':'POL-123'}).json()
+    assert tracked['status']=='evidence_received' and tracked['evidence_request'] is None
+    with runtime_store.connection('postgresql') as conn:
+        paths=[__import__('pathlib').Path(i.path) for i in db.get_images_for_case(conn,receipt['case_id'])]
+        assert len(paths)==2 and all(p.is_file() for p in paths)
+        assert runtime_store.latest_job(conn,receipt['case_id'])['status']=='queued'
+
+
+def test_postgres_recovery_epoch_and_release_cannot_reset_newer_work(client):
+    receipt=submit(client).json()
+    with runtime_store.connection('postgresql') as conn:
+        first=runtime_store.claim_next(conn,leader_epoch=200)
+        runtime_store.interrupt_jobs(conn,before_epoch=100);conn.commit()
+        assert runtime_store.get_job(conn,receipt['job_id'])['status']=='running'
+        runtime_store.interrupt_jobs(conn,before_epoch=201);conn.commit()
+        latest=runtime_store.claim_next(conn,leader_epoch=201)
+        assert latest['execution_token']!=first['execution_token']
+        runtime_store.release_lost_claim(conn,first);conn.commit()
+        assert runtime_store.get_job(conn,receipt['job_id'])['status']=='running'
+        runtime_store.release_lost_claim(conn,latest);conn.commit()
+        assert runtime_store.get_job(conn,receipt['job_id'])['status']=='queued'
+
+
+def test_postgres_lost_heartbeat_fences_progress(client):
+    receipt=submit(client).json()
+    with runtime_store.connection('postgresql') as conn:job=runtime_store.claim_next(conn)
+    lost=threading.Event();lost.set()
+    with runtime_store.execution(job,lost):
+        with pytest.raises(runtime_store.ExecutionLost,match='leadership'):
+            api._set_job(receipt['job_id'],status='completed')
+    with runtime_store.connection('postgresql') as conn:
+        assert runtime_store.get_job(conn,receipt['job_id'])['status']=='running'
+
+
+def test_postgres_heartbeat_keeps_one_leader_during_long_work(client,monkeypatch):
+    from src.durable_worker import DurableWorker
+    receipt=submit(client).json();started=threading.Event();release=threading.Event();seen=[]
+    monkeypatch.setenv('FRAUDLENS_PG_LEADER_TIMEOUT_SECONDS','10')
+    def execute(job_id,case_id):
+        seen.append(job_id);started.set()
+        assert release.wait(50)
+        api._set_job(job_id,status='completed',stage='complete')
+    one=DurableWorker('postgresql',execute);two=DurableWorker('postgresql',execute)
+    one.start();two.start()
+    try:
+        assert started.wait(20)
+        time.sleep(13)  # exceeds the explicitly shortened test guard timeout
+        assert seen==[receipt['job_id']]
+        with runtime_store.connection('postgresql') as conn:
+            job=runtime_store.get_job(conn,receipt['job_id'])
+            assert job['status']=='running' and job['attempts']==1 and job['leader_epoch']>0
+        release.set()
+    finally:
+        release.set();one.stop();two.stop()
+        one.thread.join(25);two.thread.join(25)
+        assert not one.thread.is_alive() and not two.thread.is_alive()
+
+
+def test_database_initialization_failure_always_closes_connection(monkeypatch):
+    from starlette.requests import Request
+    calls=[]
+    fake=SimpleNamespace(rollback=lambda:calls.append('rollback'),close=lambda:calls.append('close'))
+    monkeypatch.setattr(db,'connect',lambda _:fake)
+    def fail(_):raise RuntimeError('Explicit isolated initialization failure')
+    monkeypatch.setattr(db,'init_db',fail)
+    with pytest.raises(RuntimeError,match='initialization failure'):
+        next(api.get_conn(Request({'type':'http','method':'GET'})))
+    assert calls==['rollback','close']

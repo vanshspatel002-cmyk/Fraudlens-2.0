@@ -151,26 +151,41 @@ export default function Admin() {
     return () => window.removeEventListener('fraudlens-session-expired', expired);
   }, []);
   useEffect(() => {
-    if (!user) return;
-    load();
-    const timer = window.setInterval(() => { if (!document.hidden) load(false); }, 10000);
-    return () => { window.clearInterval(timer); queueRequest.current++; };
-  }, [user, page, search, filters, sort]);
+    if (!user || detail?.id) return;
+    let cancelled = false;
+    let timer: number;
+    const refresh = async (initial = false) => {
+      if (initial || !document.hidden) await load(initial);
+      if (!cancelled) timer = window.setTimeout(() => { void refresh(); }, 10000);
+    };
+    // Wait for the preceding refresh to finish. Cloud latency must not make
+    // every response stale by starting a newer request every ten seconds.
+    timer = window.setTimeout(() => { void refresh(true); }, search ? 250 : 0);
+    return () => { cancelled = true; window.clearTimeout(timer); queueRequest.current++; };
+  }, [user, page, search, filters, sort, detail?.id]);
   useEffect(() => {
     setPage(1);
   }, [search, filters, sort]);
   useEffect(() => {
     if (!detail?.id || !user) return;
     const id = detail.id;
-    const timer = window.setInterval(() => {
-      if (document.hidden) return;
-      const request = ++detailRequest.current;
-      api('case?id=' + encodeURIComponent(id)).then(value => {
-        if (request !== detailRequest.current) return;
-        setDetail(previous => previous?.id === id ? value as CaseDetail : previous);
-      }).catch(err => { if (request === detailRequest.current) setError((err as Error).message); });
-    }, 10000);
-    return () => { window.clearInterval(timer); detailRequest.current++; };
+    let cancelled = false;
+    let timer: number;
+    const refresh = async () => {
+      if (!document.hidden) {
+        const request = ++detailRequest.current;
+        try {
+          const value = await api('case?id=' + encodeURIComponent(id));
+          if (request === detailRequest.current)
+            setDetail(previous => previous?.id === id ? value as CaseDetail : previous);
+        } catch (err) {
+          if (request === detailRequest.current) setError((err as Error).message);
+        }
+      }
+      if (!cancelled) timer = window.setTimeout(() => { void refresh(); }, 10000);
+    };
+    timer = window.setTimeout(() => { void refresh(); }, 10000);
+    return () => { cancelled = true; window.clearTimeout(timer); detailRequest.current++; };
   }, [detail?.id, user]);
   async function load(showLoading = true) {
     const request = ++queueRequest.current;
