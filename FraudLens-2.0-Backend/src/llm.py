@@ -94,9 +94,8 @@ _RETRY_BASE_SECONDS = 2.0
 # a few seconds, so this schedule is shorter than Gemini's.
 _OLLAMA_RETRY_ATTEMPTS = 3
 _OLLAMA_RETRY_BASE_SECONDS = 2.0
-# CPU vision inference on a local model is slow - minutes, not seconds,
-# for a single image on modest hardware. Gemini's timeout is whatever
-# httpx defaults to; Ollama needs an explicit, generous one.
+# CPU vision inference on a local model may take minutes. Gemini has an
+# explicit 60-second per-request timeout below; Ollama uses this local limit.
 _OLLAMA_TIMEOUT_SECONDS = 180.0
 
 
@@ -308,6 +307,10 @@ class GeminiProvider(LLMProvider):
         self._genai = genai
         self._clients: dict[str, Any] = {}
         self.model = model
+        # Compatibility correction, separate from historical research policy.
+        # Old perception_records remain legitimate reusable observations; raw
+        # request caches for a changed sampling configuration need distinct keys.
+        self._request_cache_suffix = '_gemini3_defaults_v2' if model.startswith('gemini-3') else ''
 
     def close(self):
         for client in self._clients.values():
@@ -412,13 +415,14 @@ class GeminiProvider(LLMProvider):
     def _config(self, tools: Optional[list[dict]] = None):
         from google.genai import types
 
-        # Temperature 0: determinism matters more than creativity for a
-        # fraud-check reasoning step that has to be reproducible and
-        # explainable in a report. tools lives on the config object in
+        # Google recommends default sampling for Gemini 3.x. This is a request
+        # compatibility correction, not evidence that temperature caused 503.
+        # tools lives on the config object in
         # this SDK (there's no separate `tools=` kwarg on
         # generate_content), so a fresh config is built per call rather
         # than cached on self the way the old GenerationConfig was.
-        return types.GenerateContentConfig(temperature=0, tools=tools or None,
+        sampling = {} if self.model.startswith('gemini-3') else {'temperature': 0}
+        return types.GenerateContentConfig(**sampling, tools=tools or None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
 
     # -- chat -----------------------------------------------------------
@@ -433,7 +437,7 @@ class GeminiProvider(LLMProvider):
 
         if conn is not None:
             lookup_start = time.monotonic()
-            hit = db.cache_get(conn, _CHAT_NAMESPACE, key)
+            hit = db.cache_get(conn, _CHAT_NAMESPACE + self._request_cache_suffix, key)
             if hit is not None:
                 latency_ms = int((time.monotonic() - lookup_start) * 1000)
                 _record_usage(cache_hit=True, latency_ms=latency_ms)
@@ -461,7 +465,7 @@ class GeminiProvider(LLMProvider):
         )
 
         if conn is not None:
-            db.cache_set(conn, _CHAT_NAMESPACE, key, _response_to_cache_entry(result))
+            db.cache_set(conn, _CHAT_NAMESPACE + self._request_cache_suffix, key, _response_to_cache_entry(result))
         _record_usage(cache_hit=False, latency_ms=latency_ms)
 
         return result
@@ -486,7 +490,7 @@ class GeminiProvider(LLMProvider):
 
         if conn is not None:
             lookup_start = time.monotonic()
-            hit = db.cache_get(conn, _VISION_NAMESPACE, key)
+            hit = db.cache_get(conn, _VISION_NAMESPACE + self._request_cache_suffix, key)
             if hit is not None:
                 latency_ms = int((time.monotonic() - lookup_start) * 1000)
                 _record_usage(cache_hit=True, latency_ms=latency_ms)
@@ -517,7 +521,7 @@ class GeminiProvider(LLMProvider):
         )
 
         if conn is not None:
-            db.cache_set(conn, _VISION_NAMESPACE, key, _response_to_cache_entry(result))
+            db.cache_set(conn, _VISION_NAMESPACE + self._request_cache_suffix, key, _response_to_cache_entry(result))
         _record_usage(cache_hit=False, latency_ms=latency_ms)
 
         return result

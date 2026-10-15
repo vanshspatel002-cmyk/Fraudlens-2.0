@@ -92,6 +92,7 @@ def process_case(
     use_agent: bool = True,
     persist: bool = True,
     run_id: Optional[str] = None,
+    on_stage=None,
 ) -> AgentDecision:
     """
     Run one case end to end and return its decision.
@@ -109,7 +110,16 @@ def process_case(
 
     started = time.monotonic()
     check_options = {'config': {'cache_ocr': True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
-    findings = run_checks(conn, case, check_ids=list(policy.check_ids), **check_options)
+    from src.timing import span
+    def check_started(check_id, index, total):
+        # Only optional observations/cache writes exist at this point. Release
+        # them before another connection updates durable progress (SQLite too).
+        conn.commit()
+        on_stage('check: ' + check_id, 0.6 + 0.25 * index / max(1, total))
+    if on_stage:
+        check_options['on_check'] = check_started
+    with span('pipeline.checks'):
+        findings = run_checks(conn, case, check_ids=list(policy.check_ids), **check_options)
     if run_id and policy.policy_version.startswith('agent-production-'):
         from src.checks import REGISTRY
         from src.models import Verdict
@@ -135,7 +145,10 @@ def process_case(
     if use_agent:
         if provider is None:
             provider = get_provider()
-        result = adjudicate(conn, case, findings, policy, provider)
+        if on_stage:
+            on_stage('agent adjudication', 0.9)
+        with span('pipeline.adjudication'):
+            result = adjudicate(conn, case, findings, policy, provider)
         decision = result.decision
         trace = result.trace_dicts()
         converged = result.converged

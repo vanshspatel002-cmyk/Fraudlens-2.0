@@ -97,6 +97,10 @@ def classify_image(
     )
 
 
+from .timing import measured
+
+
+@measured('admission.vehicle_gate')
 def classify_uploads(
     paths: Sequence[Union[str, Path]],
     filenames: Sequence[str],

@@ -71,19 +71,30 @@ _NON_ALNUM = re.compile(r"[^A-Za-z0-9]")
 _reader: Any = None
 _reader_error: Optional[str] = None
 _reader_attempted = False
+import threading
+_reader_lock = threading.Lock()
 
 
 def get_reader() -> Any:
     """Returns the EasyOCR reader, or None if it could not be loaded."""
     global _reader, _reader_error, _reader_attempted
-    if not _reader_attempted:
-        _reader_attempted = True
-        try:
-            import easyocr
+    with _reader_lock:
+        if not _reader_attempted:
+            _reader_attempted = True
+            try:
+                import os
+                import torch
+                import easyocr
+                from ..timing import span
 
-            _reader = easyocr.Reader(["en"], gpu=False)
-        except Exception as e:  # noqa: BLE001 - missing weights, no network, torch mismatch
-            _reader_error = f"{type(e).__name__}: {e}"
+                # A dedicated worker does not load CLIP first. Bound its CPU
+                # threads too; changing scheduling does not change OCR inputs.
+                torch.set_num_threads(max(1, min(8, int(os.getenv('FRAUDLENS_TORCH_THREADS', '2')))))
+                with span('ocr.initialize'):
+                    _reader = easyocr.Reader(["en"], gpu=False,
+                        download_enabled=os.getenv('HF_HUB_OFFLINE') != '1')
+            except Exception as e:  # noqa: BLE001 - explicit unavailable finding
+                _reader_error = f"{type(e).__name__}: {e}"
     return _reader
 
 
@@ -202,7 +213,7 @@ class PlateOCRCheck(Check):
             return finding(
                 Verdict.INCONCLUSIVE, 0.0,
                 "Licence plate reading unavailable - the OCR engine could not be loaded.",
-                {"reason": _reader_error or "easyocr unavailable"},
+                {"reason": _reader_error or "easyocr unavailable", "ocr_status": "engine_unavailable"},
             )
 
         try:
@@ -215,7 +226,9 @@ class PlateOCRCheck(Check):
             if cached is not None:
                 raw_results=cached['observations'];cache_reused=True
             else:
-                raw_results=reader.readtext(image.path)
+                from ..timing import span
+                with span('ocr.readtext'):
+                    raw_results=reader.readtext(image.path)
                 if cache_key:
                     observations=[]
                     for box,text,confidence in raw_results:
@@ -235,7 +248,7 @@ class PlateOCRCheck(Check):
             return finding(
                 Verdict.INCONCLUSIVE, 0.0,
                 "Licence plate reading could not run on this image.",
-                {"error": f"{type(e).__name__}: {e}"},
+                {"error": f"{type(e).__name__}: {e}", "ocr_status": "execution_failed"},
             )
 
         raw_strings = []
@@ -257,7 +270,9 @@ class PlateOCRCheck(Check):
                 0.0,
                 "No licence-plate-shaped text could be read from this image - expected at this resolution, "
                 "not itself suspicious.",
-                {"raw_ocr_strings": raw_strings, "plate_candidate": None},
+                {"raw_ocr_strings": raw_strings, "plate_candidate": None,
+                 "ocr_status": "no_plate_candidate" if raw_strings else "no_text_detected",
+                 "legibility": "unverified; no readable plate established"},
             )
 
         plate, ocr_confidence, source_text = max(candidates, key=lambda c: c[1])
@@ -265,6 +280,7 @@ class PlateOCRCheck(Check):
         distance = edit_distance(plate, policy_normalised) if policy_normalised else None
 
         evidence = {
+            "ocr_status": "candidate_read",
             "raw_ocr_strings": raw_strings,
             "plate_candidate": plate,
             "plate_candidate_source_text": source_text,
@@ -273,6 +289,7 @@ class PlateOCRCheck(Check):
         }
 
         if not policy_normalised:
+            evidence['comparison_status'] = 'declaration_missing'
             return finding(
                 Verdict.INCONCLUSIVE,
                 0.0,
@@ -281,6 +298,7 @@ class PlateOCRCheck(Check):
             )
 
         if plate == policy_normalised:
+            evidence['comparison_status'] = 'match'
             return finding(
                 Verdict.PASS,
                 min(0.9, 0.5 + ocr_confidence / 2),
@@ -289,6 +307,7 @@ class PlateOCRCheck(Check):
             )
 
         if ocr_confidence >= threshold:
+            evidence['comparison_status'] = 'mismatch'
             return finding(
                 Verdict.CONCERN,
                 min(0.85, 0.4 + ocr_confidence / 2),
@@ -297,6 +316,7 @@ class PlateOCRCheck(Check):
                 evidence,
             )
 
+        evidence['comparison_status'] = 'low_confidence_mismatch'
         return finding(
             Verdict.INCONCLUSIVE,
             0.2,

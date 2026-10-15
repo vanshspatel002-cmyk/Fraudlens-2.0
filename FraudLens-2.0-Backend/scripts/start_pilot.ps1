@@ -2,6 +2,7 @@ param(
     [ValidateSet('sqlite','postgresql')][string]$Database = 'postgresql',
     [int]$Port = 8001,
     [string]$Schema = 'fraudlens_pilot',
+    [string]$SqlitePath,
     [switch]$NoWarmup,
     [switch]$NoWorker,
     [switch]$WorkerOnly
@@ -19,10 +20,20 @@ $env:FRAUDLENS_SQLITE_ROLLBACK = Join-Path $pilotDirectory 'demo.db'
 if (-not (Test-Path -LiteralPath $env:FRAUDLENS_SQLITE_ROLLBACK)) {
     throw 'The preserved SQLite demo is missing. Restore a copy before starting.'
 }
-$env:FRAUDLENS_DB = if ($Database -eq 'postgresql') { 'postgresql' } else { $env:FRAUDLENS_SQLITE_ROLLBACK }
+if ($SqlitePath -and $Database -ne 'sqlite') { throw 'SqlitePath requires -Database sqlite.' }
+if ($SqlitePath) {
+    $resolvedSqlite = (Resolve-Path -LiteralPath $SqlitePath).Path
+    if (-not (Test-Path -LiteralPath $resolvedSqlite -PathType Leaf)) { throw 'Use an existing isolated SQLite copy.' }
+}
+$env:FRAUDLENS_DB = if ($Database -eq 'postgresql') { 'postgresql' } elseif ($SqlitePath) { $resolvedSqlite } else { $env:FRAUDLENS_SQLITE_ROLLBACK }
 $env:FRAUDLENS_PG_SCHEMA = $Schema
 $env:FRAUDLENS_UPLOAD_DIR = Join-Path $pilotDirectory 'uploads'
 $env:FRAUDLENS_THUMB_DIR = Join-Path $pilotDirectory 'thumbnails'
+if ($SqlitePath) {
+    $isolatedDirectory = Split-Path -Parent $resolvedSqlite
+    $env:FRAUDLENS_UPLOAD_DIR = Join-Path $isolatedDirectory 'uploads'
+    $env:FRAUDLENS_THUMB_DIR = Join-Path $isolatedDirectory 'thumbnails'
+}
 $env:FRAUDLENS_LIVE_LEDGER = $ledgerPath
 $env:FRAUDLENS_LIVE_LIMIT = '15'
 $env:GEMINI_QUOTA_BUDGET = Join-Path $pilotDirectory 'quota_budget.json'

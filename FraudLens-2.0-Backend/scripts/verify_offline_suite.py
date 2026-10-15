@@ -17,7 +17,7 @@ COMMANDS=[
     ['test_models.py'],['test_baseline.py'],['test_agent.py'],['test_llm.py'],
     ['test_perception.py'],['test_ingest.py'],['test_checks.py'],['test_api.py'],
     ['scripts/verify_integration.py'],
-    ['-m','pytest','-q','test_pilot_workflow.py','test_durable_pilot.py'],
+    ['-m','pytest','-q','test_pilot_workflow.py','test_durable_pilot.py','test_demo_readiness.py'],
 ]
 
 

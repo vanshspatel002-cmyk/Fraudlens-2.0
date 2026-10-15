@@ -328,6 +328,33 @@ def test_pipeline_preserves_later_cached_vision_after_stop(client,monkeypatch):
     assert calls==[images[0].image_id] and closed==[True]
 
 
+def test_pipeline_progress_releases_ocr_cache_and_records_sources(client,monkeypatch):
+    from dataclasses import replace
+    from src import llm,perception
+    from src.agent import production_policy as policies
+    from src.checks import plate_ocr
+    from src.quota_budget import QuotaBudgetExhausted
+    receipt=submit(client).json()
+    monkeypatch.setattr(llm,'get_provider',lambda:SimpleNamespace(close=lambda:None))
+    def stopped(*a,**kw):raise QuotaBudgetExhausted('Offline test stop')
+    monkeypatch.setattr(perception,'perceive_image',stopped)
+    policy=replace(policies.production_policy('claims'),check_ids=('plate_ocr','exif_metadata'))
+    monkeypatch.setattr(policies,'production_policy',lambda kind:policy)
+    monkeypatch.setattr(plate_ocr,'get_reader',lambda:SimpleNamespace(readtext=lambda path:[(None,'MH12AB1234',.95)]))
+    with runtime_store.connection(api.DB_PATH) as conn:claimed=runtime_store.claim_next(conn)
+    with runtime_store.execution(claimed):REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
+    with runtime_store.connection(api.DB_PATH) as conn:
+        job=runtime_store.get_job(conn,receipt['job_id'])
+        assert job['status']=='failed' and job['stage']=='needs_review'
+        assert job['perception_sources']=={'perception_cache':0,'request_cache':0,'fresh_provider':0,'unavailable':1}
+        assert conn.execute("SELECT COUNT(*) FROM cache_entries WHERE namespace='production_plate_ocr'").fetchone()[0]==1
+        result=runtime_store.current_result(conn,receipt['case_id'])
+        assert result and not result['converged']
+        report=api._build_report(conn,receipt['case_id'])
+        assert any('unavailable=1' in limitation for limitation in report.limitations)
+        assert any('legal applicability' in limitation for limitation in report.limitations)
+
+
 def test_job_order_does_not_depend_on_wall_clock(client,monkeypatch):
     first=submit(client).json();finish(first['case_id'])
     monkeypatch.setattr(runtime_store.time,'time',lambda:1)

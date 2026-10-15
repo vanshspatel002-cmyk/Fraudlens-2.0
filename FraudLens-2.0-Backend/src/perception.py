@@ -304,6 +304,7 @@ def perceive_image(
     provider: LLMProvider,
     force: bool = False,
     retry_attempts: Optional[int] = None,
+    provenance: Optional[dict] = None,
 ) -> PerceptionRecord:
     """
     Return the cached PerceptionRecord for image.content_hash, or produce
@@ -325,6 +326,8 @@ def perceive_image(
     if not force:
         cached = db.get_perception(conn, image.content_hash)
         if cached is not None:
+            if provenance is not None:
+                provenance['source'] = 'perception_cache'
             return cached
 
     model = getattr(provider, "model", "unknown")
@@ -346,8 +349,12 @@ def perceive_image(
         parsed, error = _try_parse(response.text)
 
     if parsed is not None:
+        if provenance is not None:
+            provenance['source'] = 'request_cache' if getattr(response, 'cached', False) else 'fresh_provider'
         record = _record_from_parsed(image.content_hash, model, parsed, response.text)
     else:
+        if provenance is not None:
+            provenance['source'] = 'unavailable'
         # Never crash a batch job over one unparseable response - save what
         # we know (the failure itself) and move on. anomaly_notes carries
         # the parse error so it's visible to a human, not silently dropped.

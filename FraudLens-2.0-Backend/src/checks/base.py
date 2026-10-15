@@ -262,7 +262,7 @@ def _run_one(check: Check, ctx: CheckContext) -> list[Finding]:
 
 
 def run_checks(conn: sqlite3.Connection, case: Case, check_ids: Optional[list[str]] = None,
-               config: Optional[dict[str, Any]] = None) -> list[Finding]:
+               config: Optional[dict[str, Any]] = None, on_check=None) -> list[Finding]:
     """
     Load this case's images and whatever perception records already
     exist for them, build one CheckContext, and run every check in
@@ -284,8 +284,12 @@ def run_checks(conn: sqlite3.Connection, case: Case, check_ids: Optional[list[st
 
     ids = check_ids if check_ids is not None else list(REGISTRY.keys())
     findings: list[Finding] = []
-    for check_id in ids:
+    from ..timing import span
+    for index, check_id in enumerate(ids):
         if check_id not in REGISTRY:
             raise KeyError(f"unknown check_id {check_id!r} - registered checks: {sorted(REGISTRY)}")
-        findings.extend(_run_one(REGISTRY[check_id], ctx))
+        if on_check:
+            on_check(check_id, index, len(ids))
+        with span('check.' + check_id):
+            findings.extend(_run_one(REGISTRY[check_id], ctx))
     return findings

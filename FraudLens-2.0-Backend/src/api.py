@@ -60,6 +60,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from src import db, runtime_store
+from src.timing import measured, span
 from src.agent.policy import CLAIMS_POLICY, UNDERWRITING_POLICY
 from src.models import AdminAction, AdminActionRecord, AuditEvent, Case, CheckCategory, Recommendation, RiskBand
 
@@ -120,8 +121,9 @@ async def lifespan(_app):
     if os.environ.get('FRAUDLENS_WARM_MODELS') == '1':
         from src.ingest import _default_embedder
         from src.vehicle_gate import _text_embeddings
-        _default_embedder._ensure_loaded()
-        _text_embeddings(_default_embedder)
+        with span('startup.admission_warmup'):
+            _default_embedder._ensure_loaded()
+            _text_embeddings(_default_embedder)
     from src.durable_worker import DurableWorker
     worker = DurableWorker(DB_PATH, _run_pipeline)
     _app.state.worker = worker
@@ -1345,6 +1347,17 @@ def _build_report(conn,case_id):
     result=runtime_store.current_result(conn,case_id); job=runtime_store.latest_job(conn,case_id)
     human=_admin_action_out(db.get_latest_admin_action(conn,case_id),conn)
     limitations=['Scores are heuristic; independent detection accuracy and claimant intent are not established.']
+    limitations.append('INR 50,000 is a preserved research billing benchmark; current legal applicability and insurer procedures are unverified.')
+    limitations.append('Check findings use local computations and recorded observations; they do not establish successful fresh model adjudication.')
+    sources = (job or {}).get('perception_sources')
+    if sources:
+        limitations.append('Vision sources for this run: ' + ', '.join(f'{name}={count}' for name,count in sources.items()) + '. Cached observations are reused evidence, not new model responses.')
+    else:
+        limitations.append('Vision freshness was not recorded for this historical run; do not describe its observations as fresh model output.')
+    if case.declared_time is None or case.latitude is None or case.longitude is None:
+        limitations.append('Scene time/place comparison lacks declared time or coordinates and cannot verify scene consistency.')
+    if case.agent_type == 'underwriting':
+        limitations.append('Applicant view labels are declarations; same-vehicle identity and six-view coverage have not been independently verified.')
     if not job: limitations.append('Legacy research result: findings and images were not recorded against a processing run.')
     if job and job['status'] not in {'completed','done'}: limitations.append('Current processing is '+job['status']+'. Saved findings do not establish successful model completion.')
     if decision and decision.provider_unavailable: limitations.append('Agent did not converge. Recorded recommendation is a fallback requiring human review.')
@@ -1884,6 +1897,7 @@ def _set_job(job_id: str, **fields: Any) -> None:
     # The selected database is authoritative; do not retain a job cache.
 
 
+@measured('pipeline.total')
 def _run_pipeline(job_id: str, case_id: str) -> None:
     provider = None
     try:
@@ -1908,6 +1922,7 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             images = db.get_images_for_case(conn, case_id)
             if not images: raise ValueError('No indexed evidence available')
             perception_errors = 0
+            perception_sources = {'perception_cache': 0, 'request_cache': 0, 'fresh_provider': 0, 'unavailable': 0}
             network_stopped = False
             for index, image in enumerate(images):
                 _set_job(job_id, stage='perception', progress=0.1+0.4*index/len(images))
@@ -1915,18 +1930,25 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                     cached = db.get_perception(conn, image.content_hash)
                     if cached is None or cached.raw_response.get('error'):
                         perception_errors += 1
+                        perception_sources['unavailable'] += 1
+                    else:
+                        perception_sources['perception_cache'] += 1
                     continue
                 try:
-                    record = perceive_image(conn, image, provider, retry_attempts=1)
+                    provenance = {}
+                    with span('pipeline.perception_image'):
+                        record = perceive_image(conn, image, provider, retry_attempts=1, provenance=provenance)
+                    perception_sources[provenance.get('source', 'unavailable')] += 1
                     conn.commit()
                     if record.raw_response.get('error'):
                         perception_errors += 1
                 except Exception as exc:
                     conn.rollback(); perception_errors += 1
+                    perception_sources['unavailable'] += 1
                     access_log.error('Vision unavailable: image=%s error_type=%s', image.image_id, type(exc).__name__)
                     if is_rate_limit_error(exc) or is_quota_budget_error(exc):
                         network_stopped = True
-            _set_job(job_id, stage='checks_and_adjudication', progress=0.6)
+            _set_job(job_id, stage='checks_and_adjudication', progress=0.6, perception_sources=perception_sources)
             adjudicator = provider
             if perception_errors:
                 class UnavailableVision:
@@ -1935,7 +1957,8 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                 adjudicator = UnavailableVision()
             case = db.get_case(conn, case_id)
             decision = process_case(conn, case_id, provider=adjudicator,
-                                    policy=production_policy(case.agent_type), run_id=job_id)
+                                    policy=production_policy(case.agent_type), run_id=job_id,
+                                    on_stage=lambda stage,progress: _set_job(job_id,stage=stage,progress=progress))
             unavailable = _decision_out(decision, conn).provider_unavailable
             _set_job(job_id, status='failed' if unavailable or perception_errors else 'completed',
                 stage='needs_review' if unavailable or perception_errors else 'complete', progress=1.0,
@@ -2163,10 +2186,12 @@ def submit_case(
 
         fingerprint = runtime_store.digest(json.dumps({'fields': submission_fields,
             'images': [hashlib.sha256(path.read_bytes()).hexdigest() for path, _ in staged]}, sort_keys=True, default=str))
-        conn.execute('BEGIN IMMEDIATE')
+        with span('admission.begin_transaction'):
+            conn.execute('BEGIN IMMEDIATE')
         receipt_key = runtime_store.digest('submission:' + idempotency_key) if idempotency_key else None
         if receipt_key:
-            db.lock_key(conn, 'submission:' + receipt_key)
+            with span('admission.idempotency_lock'):
+                db.lock_key(conn, 'submission:' + receipt_key)
             old = conn.execute('SELECT * FROM submission_receipts WHERE receipt_key=?', (receipt_key,)).fetchone()
             if old:
                 if old['fingerprint'] != fingerprint:

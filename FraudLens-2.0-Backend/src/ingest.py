@@ -104,9 +104,11 @@ class CLIPEmbedder:
         import os, torch
         torch.set_num_threads(max(1,int(os.environ.get('FRAUDLENS_TORCH_THREADS','2'))))
 
-        model, _, preprocess = open_clip.create_model_and_transforms(
-            self._MODEL_NAME, pretrained=self._PRETRAINED, device="cpu"
-        )
+        from .timing import span
+        with span('clip.initialize'):
+            model, _, preprocess = open_clip.create_model_and_transforms(
+                self._MODEL_NAME, pretrained=self._PRETRAINED, device="cpu"
+            )
         model.eval()
         self._model = model
         self._preprocess = preprocess
@@ -213,6 +215,10 @@ def extract_exif(path: Union[str, Path]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+from .timing import measured
+
+
+@measured('admission.index_image')
 def ingest_image(
     conn: sqlite3.Connection,
     case_id: str,
