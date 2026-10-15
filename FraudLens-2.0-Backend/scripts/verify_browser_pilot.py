@@ -113,6 +113,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--post-review-only',action='store_true',help='Finish expiry/mobile verification after a preserved completed two-tab flow')
     parser.add_argument('--workflow',choices=['both','claims','underwriting'],default='both')
+    parser.add_argument('--resume-review',help='Finish human review/tracking on an already submitted case; no new upload or reprocessing')
     args=parser.parse_args()
     if args.post_review_only:
         observations=json.loads((OUT/'browser_verification.json').read_text())
@@ -141,8 +142,30 @@ def main():
             assert login.value.status==200,login.value.text()
             expect(admin.get_by_role('button',name='Sign out',exact=True)).to_be_visible(timeout=45000)
             record('admin authenticated in separate tab',browser=browser.version,ui=UI,api=API)
+            if args.resume_review:
+                case_id=args.resume_review
+                token=admin.evaluate("sessionStorage.getItem('fraudlens_admin_token')")
+                detail=httpx.get(API+'/v1/cases/'+case_id,headers={'Authorization':'Bearer '+token},timeout=90).json()
+                kind=detail['agent_type']
+                job=poll_job(admin,detail['processing']['job_id'])
+                open_case(admin,case_id)
+                # Trigger a manual refresh near the automatic refresh boundary.
+                # The human-action loading state must recover after cloud I/O.
+                admin.wait_for_timeout(9000)
+                admin.get_by_role('button',name='Refresh case',exact=True).click()
+                expect(admin.get_by_role('button',name='Refresh case',exact=True)).to_be_enabled(timeout=120000)
+                expect(admin.locator('.recommendation-panel')).to_contain_text('Analysis: '+job['status'],timeout=45000)
+                admin.get_by_role('button',name='Report',exact=True).click()
+                expect(admin.get_by_role('button',name='Record human decision',exact=True)).to_be_enabled(timeout=45000)
+                record(kind+' manual refresh recovers human-action controls',case_id=case_id,status=job['status'])
+                admin_action(admin,'Approve','Local demonstration completed; independent accuracy validation remains outstanding.',
+                             'The local demonstration review is complete.')
+                track(applicant,case_id,detail['vehicle_registration'])
+                expect(applicant.get_by_role('heading',name='closed approved',exact=True)).to_be_visible(timeout=45000)
+                assert 'Independent accuracy' not in applicant.locator('.tracker-result').inner_text()
+                record(kind+' resumed human decision and public tracking verified',case_id=case_id)
             workflows=('claims','underwriting') if args.workflow=='both' else (args.workflow,)
-            for kind in (() if args.post_review_only else workflows):
+            for kind in (() if args.post_review_only or args.resume_review else workflows):
                 submitted=fill_intake(applicant,kind,photos[:1] if kind=='claims' else photos[1:7])
                 case_id=submitted['case_id'];open_case(admin,case_id)
                 record(kind+' queue refresh and case detail')

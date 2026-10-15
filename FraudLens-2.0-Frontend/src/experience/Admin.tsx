@@ -114,6 +114,8 @@ const money = (n: number) =>
 export default function Admin() {
   const queueRequest = useRef(0);
   const detailRequest = useRef(0);
+  const queueInFlight = useRef(0);
+  const detailLoading = useRef(false);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
   const [historicalReportText, setHistoricalReport] = useState('');
@@ -143,6 +145,7 @@ export default function Admin() {
   useEffect(() => {
     const expired = () => {
       queueRequest.current++; detailRequest.current++;
+      detailLoading.current = false;
       setUser(null); setUserRole('viewer'); setRows([]); setDetail(null);
       setLightbox(null); setHistoricalReport(''); setLoading(false);
       setError('Your reviewer session expired or was revoked. Sign in again.');
@@ -172,7 +175,7 @@ export default function Admin() {
     let cancelled = false;
     let timer: number;
     const refresh = async () => {
-      if (!document.hidden) {
+      if (!document.hidden && !detailLoading.current) {
         const request = ++detailRequest.current;
         try {
           const value = await api('case?id=' + encodeURIComponent(id));
@@ -188,6 +191,8 @@ export default function Admin() {
     return () => { cancelled = true; window.clearTimeout(timer); detailRequest.current++; };
   }, [detail?.id, user]);
   async function load(showLoading = true) {
+    if (!showLoading && queueInFlight.current > 0) return;
+    queueInFlight.current++;
     const request = ++queueRequest.current;
     if (showLoading) setLoading(true);
     try {
@@ -245,6 +250,7 @@ export default function Admin() {
     } catch (e) {
       if (request === queueRequest.current) setError((e as Error).message);
     } finally {
+      queueInFlight.current--;
       if (request === queueRequest.current) setLoading(false);
     }
   }
@@ -267,6 +273,7 @@ export default function Admin() {
   }
   async function open(id: string) {
     const request = ++detailRequest.current;
+    detailLoading.current = true;
     setError("");
     setLoading(true);
     try {
@@ -278,7 +285,10 @@ export default function Admin() {
     } catch (e) {
       if (request === detailRequest.current) setError((e as Error).message);
     } finally {
-      if (request === detailRequest.current) setLoading(false);
+      if (request === detailRequest.current) {
+        detailLoading.current = false;
+        setLoading(false);
+      }
     }
   }
   async function retryAnalysis() {
