@@ -63,6 +63,7 @@ in the same way `entity_graph` was measured against an injected ring.
 from __future__ import annotations
 
 import sqlite3
+from .. import db
 from datetime import datetime
 from typing import Any, Optional
 
@@ -188,7 +189,7 @@ class SeverityProgressionCheck(Check):
                 "WHERE vehicle_registration = ? AND agent_type = 'claims'",
                 (case.vehicle_registration,),
             ).fetchall()
-        except sqlite3.Error:
+        except db.DatabaseError:
             return []
 
         out: list[dict[str, Any]] = []
@@ -211,7 +212,7 @@ class SeverityProgressionCheck(Check):
                 "FROM perception_records p JOIN images i ON i.content_hash = p.content_hash "
                 "WHERE i.case_id = ?", (case_id,),
             ).fetchall()
-        except sqlite3.Error:
+        except db.DatabaseError:
             return None, None
         worst, worst_rank, description = None, -1, None
         for severity, desc in rows:
@@ -264,7 +265,7 @@ class SeverityProgressionCheck(Check):
                 "WHERE c.vehicle_registration = ?",
                 (registration,),
             ).fetchall()
-        except sqlite3.Error:
+        except db.DatabaseError:
             return False
         for event_type, created in rows:
             if event_type in REPAIR_EVENT_TYPES:

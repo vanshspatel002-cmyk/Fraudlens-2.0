@@ -1,40 +1,28 @@
-"""
-fraudlens.db
-============
+"""Domain storage shared by SQLite research/rollback and PostgreSQL pilot.
 
-Thin sqlite3 storage layer. Plain sqlite3, not SQLAlchemy: it's stdlib
-so there's zero dependency risk, the schema below is readable SQL you
-can paste straight into a report, and there's no ORM magic to debug at
-2am in week 4.
-
-No check, agent, or UI code ever imports sqlite3 directly - it only
-calls the functions in this file. That's what makes the migration note
-below actually true.
-
---------------------------------------------------------------------
-Migrating to PostgreSQL + pgvector later
---------------------------------------------------------------------
-1. Swap `sqlite3.connect(...)` in `connect()` for a `psycopg` connect,
-   and change every `?` placeholder in this file to `%s`.
-2. Add `embedding vector(N)` to `images` (via the pgvector extension)
-   instead of storing the embedding as a JSON blob, and add an
-   ivfflat/hnsw index for nearest-neighbour search. That index is what
-   turns src/ingest.py's find_similar() from a brute-force numpy scan
-   into an actual index lookup - see the comment there.
-3. Everything else - Finding/Case/Claimant/PerceptionRecord/ImageArtifact/
-   Image/AuditEvent/AgentDecision, every check, the agent, the UI - is
-   unchanged, because none of it imports sqlite3; it only calls the
-   functions below.
+Explicit file paths always select SQLite. The symbolic target ``postgresql``
+uses the server-only DATABASE_URL. SQL stays parameterized; PostgreSQL's
+small DB-API bridge translates markers, never user values. See migrations/
+and POSTGRES_MIGRATION.md for the versioned schema and compatibility choices.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+import os
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Optional, Union
+
+try:
+    import psycopg
+    DatabaseError = (sqlite3.Error, psycopg.Error)
+    IntegrityError = (sqlite3.IntegrityError, psycopg.IntegrityError)
+except ImportError:  # SQLite rollback/research does not require psycopg.
+    DatabaseError = (sqlite3.Error,)
+    IntegrityError = (sqlite3.IntegrityError,)
 
 from .models import (
     AgentDecision,
@@ -230,10 +218,47 @@ CREATE TABLE IF NOT EXISTS cache_entries (
 
 
 def connect(db_path: Union[str, Path] = "fraudlens.db") -> sqlite3.Connection:
+    if str(db_path) == 'postgresql':
+        from .postgres import connect as pg_connect
+        return pg_connect()
     conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def configured_target():
+    # An explicit file path is the rollback override, even with DATABASE_URL.
+    return os.environ.get('FRAUDLENS_DB') or ('postgresql' if os.environ.get('DATABASE_URL') else 'fraudlens.db')
+
+
+def is_postgres(conn):
+    return getattr(conn, 'dialect', None) == 'postgresql'
+
+
+def columns(conn, table):
+    if is_postgres(conn):
+        return {r[0] for r in conn.execute('SELECT column_name FROM information_schema.columns WHERE table_schema=? AND table_name=?', (conn.schema, table))}
+    if not table.replace('_', '').isalnum():
+        raise ValueError('Invalid table identifier')
+    return {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}
+
+
+def lock_case(conn, case_id):
+    """Serialize case mutations across hosts (SQLite uses BEGIN IMMEDIATE)."""
+    if is_postgres(conn):
+        conn.execute('SELECT case_id FROM cases WHERE case_id=? FOR UPDATE', (case_id,)).fetchone()
+
+
+def lock_key(conn, value):
+    """Serialize idempotency keys, including keys not yet inserted."""
+    if is_postgres(conn):
+        conn.execute('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', (value,))
+
+
+def json_text(conn, column, key):
+    # All callers provide static identifiers/keys, never applicant input.
+    return f"({column}::jsonb ->> '{key}')" if is_postgres(conn) else f"json_extract({column}, '$.{key}')"
 
 
 # Columns added to agent_decisions after the first databases were
@@ -306,6 +331,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
+    if is_postgres(conn):
+        from .postgres import verify_schema
+        verify_schema(conn)
+        return
     conn.executescript(SCHEMA)
     _migrate(conn)
     conn.commit()
@@ -723,6 +752,10 @@ def get_decisions_for_case(conn: sqlite3.Connection, case_id: str) -> list[Agent
     rows = conn.execute(
         "SELECT * FROM agent_decisions WHERE case_id = ? ORDER BY rowid", (case_id,)
     ).fetchall()
+    return decisions_from_rows(rows)
+
+
+def decisions_from_rows(rows):
     return [
         AgentDecision(
             decision_id=r["decision_id"],

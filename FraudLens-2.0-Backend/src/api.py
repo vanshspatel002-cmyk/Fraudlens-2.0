@@ -79,7 +79,7 @@ def _load_dotenv(paths: list[Path]) -> None:
 _load_dotenv([Path(".env"), Path("../FraudLens-2.0-Frontend/.env")])
 
 DATA_DIR = Path(os.environ.get("FRAUDLENS_DATA_DIR", "data"))
-DB_PATH = os.environ.get("FRAUDLENS_DB", "fraudlens.db")
+DB_PATH = db.configured_target()
 GROUND_TRUTH = Path("data/generated/ground_truth.csv")
 UPLOAD_DIR = Path(os.environ.get("FRAUDLENS_UPLOAD_DIR", str(DATA_DIR / "uploads")))
 THUMB_DIR = Path(os.environ.get("FRAUDLENS_THUMB_DIR", "outputs/.thumbnails"))
@@ -102,11 +102,13 @@ SURVEY_THRESHOLD_INR = 50_000.0
 
 @asynccontextmanager
 async def lifespan(_app):
-    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    if DB_PATH != 'postgresql':
+        Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = db.connect(DB_PATH)
     try:
         db.init_db(conn)
-        conn.execute('PRAGMA journal_mode=WAL')
+        if not db.is_postgres(conn):
+            conn.execute('PRAGMA journal_mode=WAL')
         runtime_store.init(conn)
         conn.commit()
     finally:
@@ -295,6 +297,9 @@ async def _validation_handler(_request: Request, exc: RequestValidationError) ->
 @app.exception_handler(Exception)
 async def _unhandled_handler(_request: Request, exc: Exception) -> JSONResponse:
     # A stack trace in a browser console helps nobody and leaks internals.
+    if isinstance(exc, db.DatabaseError):
+        access_log.error('Database operation unavailable: error_type=%s',type(exc).__name__)
+        return error(503,'DATABASE_UNAVAILABLE','The database is temporarily unavailable. Keep your submission key and retry; previously accepted evidence is preserved.')
     return error(500, "INTERNAL_ERROR",
                  f"An unexpected error occurred: {type(exc).__name__}")
 
@@ -457,8 +462,15 @@ CURRENT_FINDINGS = """SELECT f.* FROM findings f WHERE
             ORDER BY latest.rowid DESC LIMIT 1))"""
 
 
+def current_findings_sql(conn):
+    if db.is_postgres(conn):
+        return CURRENT_FINDINGS.replace('json_each(r.finding_ids) ids',
+            'jsonb_array_elements_text(r.finding_ids::jsonb) ids(value)')
+    return CURRENT_FINDINGS
+
+
 def concerns_by_check(conn):
-    return dict(conn.execute('SELECT check_id,COUNT(*) FROM ('+CURRENT_FINDINGS+") WHERE verdict='concern' GROUP BY check_id").fetchall())
+    return dict(conn.execute('SELECT check_id,COUNT(*) FROM ('+current_findings_sql(conn)+") current_findings WHERE verdict='concern' GROUP BY check_id").fetchall())
 
 
 def get_conn(request: Request) -> Iterator[sqlite3.Connection]:
@@ -466,7 +478,8 @@ def get_conn(request: Request) -> Iterator[sqlite3.Connection]:
     db.init_db(conn)
     runtime_store.init(conn)
     conn.commit()
-    if request.method == 'GET':conn.execute('BEGIN')
+    if request.method == 'GET':
+        conn.execute('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' if db.is_postgres(conn) else 'BEGIN')
     try:
         yield conn
     except BaseException:
@@ -793,6 +806,7 @@ class ActionOut(BaseModel):
 
 
 class HealthOut(BaseModel):
+    ablation_verification_status: str = 'not_checked'
     status: Literal["ok", "degraded"]
     database: str
     database_reachable: bool
@@ -961,9 +975,9 @@ def _admin_action_out(action: Optional[AdminActionRecord], conn=None) -> Optiona
         return None
     context = None
     if conn is not None:
-        row=conn.execute("""SELECT details FROM audit_log WHERE case_id=? AND event_type='admin_action'
-            AND json_extract(details,'$.recorded_at')=? AND json_extract(details,'$.admin_id')=?
-            ORDER BY rowid DESC LIMIT 1""",(action.case_id,action.timestamp.isoformat(),action.admin_id)).fetchone()
+        row=conn.execute("SELECT details FROM audit_log WHERE case_id=? AND event_type='admin_action' AND "
+            + db.json_text(conn,'details','recorded_at') + '=? AND ' + db.json_text(conn,'details','admin_id')
+            + '=? ORDER BY rowid DESC LIMIT 1',(action.case_id,action.timestamp.isoformat(),action.admin_id)).fetchone()
         context=json.loads(row[0]) if row else None
     return AdminActionOut(
         case_id=action.case_id,
@@ -1042,13 +1056,41 @@ def _current_decision(conn,case_id):
     return _best_decision(decisions)
 
 
-def _summary_for(conn: sqlite3.Connection, case: Case) -> CaseSummary:
-    decisions = db.get_decisions_for_case(conn, case.case_id)
-    best = _current_decision(conn,case.case_id)
-    concerns = sum(f.verdict.value == 'concern' for f in _current_findings(conn,case.case_id))
-    images = conn.execute(
-        "SELECT image_id FROM images WHERE case_id = ? ORDER BY image_id",
-        (case.case_id,)).fetchall()
+def _summaries_for(conn, cases):
+    """Four batched reads instead of per-case network round trips.
+
+    Selection matches _current_decision/_current_findings, including legacy
+    cases and newly queued runs without results. GET holds one read snapshot.
+    """
+    if not cases:
+        return []
+    identifiers=[c.case_id for c in cases]
+    marks=','.join('?' for _ in identifiers)
+    decisions=defaultdict(list)
+    for decision in db.decisions_from_rows(conn.execute('SELECT * FROM agent_decisions WHERE case_id IN ('+marks+') ORDER BY rowid',identifiers).fetchall()):
+        decisions[decision.case_id].append(decision)
+    latest={r['case_id']:r for r in conn.execute('''SELECT j.case_id,r.decision_id FROM api_jobs j
+        LEFT JOIN processing_results r ON r.run_id=j.job_id
+        WHERE j.case_id IN ('''+marks+''') AND j.rowid=(SELECT MAX(x.rowid) FROM api_jobs x WHERE x.case_id=j.case_id)''',identifiers)}
+    concerns={r[0]:r[1] for r in conn.execute('SELECT case_id,COUNT(*) FROM ('+current_findings_sql(conn)
+        +") cf WHERE verdict='concern' AND case_id IN ("+marks+') GROUP BY case_id',identifiers)}
+    images=defaultdict(list)
+    for row in conn.execute('SELECT case_id,image_id FROM images WHERE case_id IN ('+marks+') ORDER BY image_id',identifiers):
+        images[row[0]].append((row[1],))
+    output=[]
+    for case in cases:
+        history=decisions[case.case_id]
+        job=latest.get(case.case_id)
+        best=next((d for d in history if d.decision_id==job['decision_id']),None) if job is not None else _best_decision(history)
+        output.append(_summary_for(conn,case,{'best':best,'concerns':concerns.get(case.case_id,0),'images':images[case.case_id]}))
+    return output
+
+
+def _summary_for(conn: sqlite3.Connection, case: Case, facts=None) -> CaseSummary:
+    best = facts['best'] if facts is not None else _current_decision(conn,case.case_id)
+    concerns = facts['concerns'] if facts is not None else sum(f.verdict.value == 'concern' for f in _current_findings(conn,case.case_id))
+    images = facts['images'] if facts is not None else conn.execute(
+        'SELECT image_id FROM images WHERE case_id=? ORDER BY image_id',(case.case_id,)).fetchall()
     return CaseSummary(
         case_id=case.case_id, agent_type=case.agent_type, claim_type=case.claim_type,
         status=case.status, vehicle_registration=case.vehicle_registration,
@@ -1149,9 +1191,9 @@ def list_cases(
         if sort_by=='claim_amount':cases.sort(key=lambda c:(c.claim_amount is None,c.claim_amount or 0),reverse=reverse)
         else:cases.sort(key=lambda c:(c.created_at is None,c.created_at or datetime.min.replace(tzinfo=timezone.utc)),reverse=reverse)
         total=len(cases);start=(page-1)*page_size
-        items=[_summary_for(conn,c) for c in cases[start:start+page_size]]
+        items=_summaries_for(conn,cases[start:start+page_size])
         return CaseListOut(total=total,page=page,page_size=page_size,has_more=start+len(items)<total,items=items)
-    summaries = [_summary_for(conn, c) for c in cases]
+    summaries = _summaries_for(conn,cases)
     if risk_band:
         bands = set(risk_band.split(','))
         summaries = [s for s in summaries if (s.risk_band or 'unrated') in bands]
@@ -1233,7 +1275,7 @@ def get_case_detail(case_id: str,
                 "actor": e.details.get("admin_id", "system"), "detail": e.details}
                for e in db.get_audit_events_for_case(conn, case_id)
                ],
-        processing=runtime_store.latest_job(conn, case_id),
+        processing=runtime_store.job_view(runtime_store.latest_job(conn, case_id)),
         evidence_request=runtime_store.open_request(conn,case_id),
         report_history=[dict(row) for row in conn.execute('SELECT snapshot_id,run_id,created_at FROM report_snapshots WHERE case_id=? ORDER BY rowid DESC',(case_id,))],
     )
@@ -1316,14 +1358,14 @@ def _build_report(conn,case_id):
         agent_narrative=decision.summary if decision else None,
         admin_action=human,
         run_id=job['job_id'] if job else None,policy_version=decision.policy_version if decision else None,
-        processing=job,evidence_ids=evidence_ids,limitations=list(dict.fromkeys(limitations)))
+        processing=runtime_store.job_view(job),evidence_ids=evidence_ids,limitations=list(dict.fromkeys(limitations)))
 
 
 def _snapshot_report(conn,case_id):
     report=_build_report(conn,case_id)
     payload=report.model_dump_json()
     snapshot_id=runtime_store.digest(payload)
-    conn.execute('INSERT OR IGNORE INTO report_snapshots VALUES (?,?,?,?,?)',(snapshot_id,case_id,report.run_id,payload,time.time()))
+    conn.execute('INSERT INTO report_snapshots(snapshot_id,case_id,run_id,payload,created_at) VALUES (?,?,?,?,?) ON CONFLICT(snapshot_id) DO NOTHING',(snapshot_id,case_id,report.run_id,payload,time.time()))
 
 
 @app.get("/v1/cases/{case_id}/trace", response_model=TraceOut, tags=["cases"],
@@ -1651,7 +1693,7 @@ class FindingCountsOut(BaseModel):
 @app.get("/v1/finding-counts", response_model=FindingCountsOut, tags=["stats"])
 def finding_counts(_admin: str = Depends(require_admin), conn: sqlite3.Connection = Depends(get_conn)):
     return FindingCountsOut(counts=[FindingCount(name=r[0], verdict=r[1], count=r[2])
-        for r in conn.execute("SELECT check_id, verdict, COUNT(*) FROM ("+CURRENT_FINDINGS+") GROUP BY check_id, verdict")])
+        for r in conn.execute("SELECT check_id, verdict, COUNT(*) FROM ("+current_findings_sql(conn)+") current_findings GROUP BY check_id, verdict")])
 
 
 @app.get("/v1/stats", response_model=StatsOut, tags=["dashboard"])
@@ -1709,7 +1751,7 @@ def get_stats(_admin: str = Depends(require_admin),
         by_risk_band=by_band,
         by_recommendation=counts(f"SELECT recommendation, COUNT(*) FROM ({latest_decisions}) GROUP BY recommendation"),
         decided_cases=decided, undecided_cases=max(0, total_cases - decided),
-        total_findings=conn.execute('SELECT COUNT(*) FROM ('+CURRENT_FINDINGS+')').fetchone()[0],
+        total_findings=conn.execute('SELECT COUNT(*) FROM ('+current_findings_sql(conn)+') current_findings').fetchone()[0],
         concern_findings=sum(concerns.values()),
         concerns_by_check=concerns, concerns_by_attribution=dict(by_attribution),
         images=conn.execute("SELECT COUNT(*) FROM images").fetchone()[0],
@@ -1760,7 +1802,7 @@ def ready() -> ReadyOut:
     try:
         with runtime_store.connection(DB_PATH) as conn:
             conn.execute("SELECT 1 FROM cases LIMIT 1")
-    except sqlite3.Error as exc:
+    except db.DatabaseError as exc:
         raise ApiError(503, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
     return ReadyOut(status="ok")
 
@@ -1787,9 +1829,10 @@ def health() -> HealthOut:
     total = 0
     try:
         from scripts.drive_ablation import total_cases, verify_agent_integrity
-        integrity = verify_agent_integrity(DB_PATH)
-        verified_agent_cases = integrity.verified
         total = total_cases()
+        if DB_PATH != 'postgresql':
+            integrity = verify_agent_integrity(DB_PATH)
+            verified_agent_cases = integrity.verified
     except Exception:  # noqa: BLE001
         total = 0
 
@@ -1805,13 +1848,14 @@ def health() -> HealthOut:
 
     return HealthOut(
         status="degraded" if degraded else "ok",
-        database=Path(DB_PATH).name, database_reachable=reachable, cases=cases,
+        database='postgresql' if DB_PATH == 'postgresql' else Path(DB_PATH).name, database_reachable=reachable, cases=cases,
         provider_configured=provider_configured,
         provider_reachable=provider_reachable,
         provider_status=provider_status,
         provider_checked_at=provider_checked_at,
         quota_remaining_estimate=None,
         ablation_verified_agent_cases=verified_agent_cases,
+        ablation_verification_status='offline_research_verifier_required' if DB_PATH=='postgresql' else 'checked',
         ablation_total_cases=total,
         ablation_complete=bool(total and verified_agent_cases >= total),
         ablation_driver_status=_background_status("outputs/.drive_ablation.session.log"),
@@ -1827,10 +1871,13 @@ def health() -> HealthOut:
 
 def _set_job(job_id: str, **fields: Any) -> None:
     with runtime_store.connection(DB_PATH) as conn:
+        if db.is_postgres(conn):
+            conn.execute('BEGIN')
+            runtime_store.fence(conn, job_id)
         job = runtime_store.get_job(conn, job_id) or {"job_id": job_id}
         job.update(fields)
         runtime_store.save_job(conn, job)
-    # SQLite is the source of truth; do not retain an unbounded job cache.
+    # The selected database is authoritative; do not retain a job cache.
 
 
 def _run_pipeline(job_id: str, case_id: str) -> None:
@@ -1891,14 +1938,21 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                 provider_unavailable=unavailable,
                 detail='Automated analysis incomplete. Evidence is saved; fallback requires human review.' if unavailable or perception_errors else None,
                 failed_images=perception_errors)
+            conn.execute('BEGIN IMMEDIATE')
+            db.lock_case(conn, case_id)
             _snapshot_report(conn, case_id)
             conn.commit()
         finally:
             conn.close()
+    except runtime_store.ExecutionLost:
+        access_log.warning('Stale processing attempt discarded: case=%s', case_id)
     except Exception as exc:
         access_log.error('Analysis failed: case=%s error_type=%s', case_id, type(exc).__name__)
-        _set_job(job_id, status='failed', stage='failed', progress=1.0,
-                 error_type=type(exc).__name__, detail='Analysis could not complete. Evidence is saved. A reviewer can retry after resolving the cause.')
+        try:
+            _set_job(job_id, status='failed', stage='failed', progress=1.0,
+                     error_type=type(exc).__name__, detail='Analysis could not complete. Evidence is saved. A reviewer can retry after resolving the cause.')
+        except runtime_store.ExecutionLost:
+            access_log.warning('Recovered job retained its newer state: case=%s', case_id)
     finally:
         if provider and hasattr(provider, 'close'):
             provider.close()
@@ -2108,6 +2162,7 @@ def submit_case(
         conn.execute('BEGIN IMMEDIATE')
         receipt_key = runtime_store.digest('submission:' + idempotency_key) if idempotency_key else None
         if receipt_key:
+            db.lock_key(conn, 'submission:' + receipt_key)
             old = conn.execute('SELECT * FROM submission_receipts WHERE receipt_key=?', (receipt_key,)).fetchone()
             if old:
                 if old['fingerprint'] != fingerprint:
@@ -2142,13 +2197,13 @@ def submit_case(
                 indexed = ingest.ingest_image(conn, case_id, target,embedding=getattr(score,'embedding',None))
                 image_ids.append(indexed.image_id); saved += 1
             token = secrets.token_urlsafe(48)
-            conn.execute('INSERT INTO applicant_grants VALUES (?,?,?)', (runtime_store.digest(token),case_id,time.time()+30*86400))
+            conn.execute('INSERT INTO applicant_grants(token_hash,case_id,expires_at) VALUES (?,?,?)', (runtime_store.digest(token),case_id,time.time()+30*86400))
             runtime_store.enqueue(conn, case_id, job_id)
-            conn.execute('INSERT INTO evidence_batches VALUES (?,?,?,?,?)', (uuid.uuid4().hex,case_id,None,json.dumps(image_ids),time.time()))
+            conn.execute('INSERT INTO evidence_batches(batch_id,case_id,request_id,image_ids,created_at) VALUES (?,?,?,?,?)', (uuid.uuid4().hex,case_id,None,json.dumps(image_ids),time.time()))
             response = SubmitCaseOut(case_id=case_id,job_id=job_id,status='queued',images_received=saved,applicant_token=token)
             if receipt_key:
                 # The grant is a high-entropy capability returned only to its submission-key holder.
-                conn.execute('INSERT INTO submission_receipts VALUES (?,?,?,?)', (receipt_key,fingerprint,response.model_dump_json(),time.time()))
+                conn.execute('INSERT INTO submission_receipts(receipt_key,fingerprint,response,created_at) VALUES (?,?,?,?)', (receipt_key,fingerprint,response.model_dump_json(),time.time()))
             conn.commit()
         except Exception as exc:
             conn.rollback()
@@ -2168,12 +2223,13 @@ def reprocess_case(case_id: str, background: BackgroundTasks,
         raise ApiError(404, 'CASE_NOT_FOUND', 'Case not found.')
     try:
         conn.execute('BEGIN IMMEDIATE')
+        db.lock_case(conn, case_id)
         _snapshot_report(conn, case_id)
         job = runtime_store.enqueue(conn, case_id)
         db.log_audit_event(conn, AuditEvent(event_type='analysis_requested',case_id=case_id,
             details={'admin_id':_admin,'run_id':job['job_id']}))
         conn.commit()
-    except sqlite3.IntegrityError as exc:
+    except db.IntegrityError as exc:
         conn.rollback()
         raise ApiError(409,'ANALYSIS_RUNNING','Analysis is already queued or running.') from exc
     return SubmitCaseOut(case_id=case_id,job_id=job['job_id'],status='queued',images_received=len(db.get_images_for_case(conn,case_id)))
@@ -2230,13 +2286,14 @@ def record_action(case_id: str, payload: ActionIn,
         if not artifacts or len(artifacts)>12 or any(len(a)>500 for a in artifacts):
             raise ApiError(422,'SPECIFIC_EVIDENCE_REQUIRED','Name 1-12 specific photographs needed, one per item.')
     conn.execute('BEGIN IMMEDIATE')
+    db.lock_case(conn, case_id)
     revision=conn.execute('SELECT COUNT(*) FROM admin_actions WHERE case_id=?',(case_id,)).fetchone()[0]
     if payload.expected_revision is not None and payload.expected_revision != revision:
         raise ApiError(409,'REVIEW_CHANGED','Another reviewer changed this case. Refresh before recording a decision.')
     _snapshot_report(conn, case_id)
     conn.execute("UPDATE evidence_requests SET status='superseded' WHERE case_id=? AND status='open'",(case_id,))
     if payload.action == AdminAction.REQUEST_MORE_EVIDENCE:
-        conn.execute('INSERT INTO evidence_requests VALUES (?,?,?,?,?,?,NULL)',
+        conn.execute('INSERT INTO evidence_requests(request_id,case_id,artifacts,actor,status,created_at,fulfilled_at) VALUES (?,?,?,?,?,?,NULL)',
             (uuid.uuid4().hex,case_id,json.dumps(artifacts),_admin,'open',time.time()))
     db.insert_admin_action(conn, record)
     reviewed_job=runtime_store.latest_job(conn,case_id)
@@ -2267,10 +2324,15 @@ _install_pilot_extensions(app)
 @app.get('/v1/operations',tags=['config'])
 def operations(_admin: str=Depends(require_admin),conn: sqlite3.Connection=Depends(get_conn)):
     jobs=[json.loads(row[0]) for row in conn.execute("SELECT payload FROM api_jobs WHERE status IN ('failed','interrupted') ORDER BY rowid DESC LIMIT 10")]
-    oldest=conn.execute("SELECT MIN(COALESCE(json_extract(payload,'$.created_at'),updated_at)) FROM api_jobs WHERE status='queued'").fetchone()[0]
+    created = db.json_text(conn,'payload','created_at')
+    if db.is_postgres(conn):
+        created = '(' + created + ')::double precision'
+    oldest=conn.execute('SELECT MIN(COALESCE('+created+",updated_at)) FROM api_jobs WHERE status='queued'").fetchone()[0]
     worker=getattr(app.state,'worker',None)
     return {'organization_id':'local','tenant_isolation':False,
+        'database_backend':'postgresql' if db.is_postgres(conn) else 'sqlite',
         'worker_active_in_this_process':bool(worker and worker.thread and worker.thread.is_alive()),
+        'worker_leader_in_this_process':bool(worker and worker.lock),
         'jobs_by_status':dict(conn.execute('SELECT status,COUNT(*) FROM api_jobs GROUP BY status').fetchall()),
         'recent_failures':[{k:v for k,v in job.items() if k in {'job_id','case_id','status','stage','error_type','detail','attempts','updated_at'}} for job in jobs if job['status'] in {'failed','interrupted'}][:10],
         'oldest_queued_age_seconds':max(0,time.time()-oldest) if oldest is not None else 0}

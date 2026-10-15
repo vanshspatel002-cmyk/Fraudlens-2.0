@@ -4,10 +4,39 @@ import hashlib
 import json
 import secrets
 import time
+import threading
 from . import db
+
+_execution = threading.local()
+
+
+class ExecutionLost(RuntimeError):
+    """A recovered attempt must never persist results from its old worker."""
+
+
+@contextmanager
+def execution(job):
+    _execution.job = job
+    try:
+        yield
+    finally:
+        _execution.job = None
+
+
+def fence(conn, job_id):
+    if not db.is_postgres(conn):
+        return
+    owner = getattr(_execution, 'job', None)
+    row = conn.execute('SELECT payload FROM api_jobs WHERE job_id=? FOR UPDATE', (job_id,)).fetchone()
+    current = json.loads(row[0]) if row else {}
+    if not owner or owner['job_id'] != job_id or current.get('status') != 'running' or not owner.get('execution_token') or current.get('execution_token') != owner['execution_token']:
+        raise ExecutionLost('Processing ownership changed; stale results were discarded.')
 
 
 def init(conn):
+    if db.is_postgres(conn):
+        db.init_db(conn)
+        return
     statements = [
         '''CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, actor TEXT NOT NULL,
             credential_hash TEXT NOT NULL, expires_at REAL NOT NULL)''',
@@ -88,7 +117,7 @@ def password_matches(password, stored):
 
 def create_session(conn, token, actor, credential_hash, expires_at):
     conn.execute('DELETE FROM admin_sessions WHERE expires_at<=?', (time.time(),))
-    conn.execute('INSERT INTO admin_sessions VALUES (?,?,?,?)', (digest(token), actor, credential_hash, expires_at))
+    conn.execute('INSERT INTO admin_sessions(token_hash,actor,credential_hash,expires_at) VALUES (?,?,?,?)', (digest(token), actor, credential_hash, expires_at))
 
 
 def session_record(conn, token, credential_hash):
@@ -137,11 +166,19 @@ def latest_job(conn, case_id):
     return json.loads(row[0]) if row else None
 
 
+def job_view(job):
+    """Execution fencing belongs in storage, never in UI/report payloads."""
+    return {k:v for k,v in job.items() if k != 'execution_token'} if job else None
+
+
 def claim_next(conn):
-    conn.execute('BEGIN IMMEDIATE')
-    row=conn.execute("SELECT payload FROM api_jobs WHERE status='queued' ORDER BY rowid LIMIT 1").fetchone()
+    if not conn.in_transaction:
+        conn.execute('BEGIN IMMEDIATE')
+    suffix = ' FOR UPDATE SKIP LOCKED' if db.is_postgres(conn) else ''
+    row=conn.execute("SELECT payload FROM api_jobs WHERE status='queued' ORDER BY rowid LIMIT 1" + suffix).fetchone()
     if not row: conn.commit(); return None
     job=json.loads(row[0]); job.update(status='running',stage='starting',attempts=job.get('attempts',0)+1,started_at=time.time())
+    job['execution_token'] = secrets.token_hex(24)
     from .models import AuditEvent
     db.log_audit_event(conn,AuditEvent(event_type='processing_started',case_id=job['case_id'],
         details={'run_id':job['job_id'],'attempt':job['attempts']}))
@@ -150,12 +187,16 @@ def claim_next(conn):
 
 
 def interrupt_jobs(conn):
-    """Only call while holding the exclusive worker lock. Queued work survives."""
-    for row in conn.execute("SELECT payload FROM api_jobs WHERE status='running'").fetchall():
+    """Only call under the cluster advisory lock or SQLite OS lock."""
+    if db.is_postgres(conn) and not conn.in_transaction:
+        conn.execute('BEGIN')
+    suffix = ' FOR UPDATE' if db.is_postgres(conn) else ''
+    for row in conn.execute("SELECT payload FROM api_jobs WHERE status='running'" + suffix).fetchall():
         job=json.loads(row[0])
         completed=conn.execute('SELECT converged FROM processing_results WHERE run_id=?',(job['job_id'],)).fetchone()
         if completed: job.update(status='completed' if completed[0] else 'failed',stage='complete' if completed[0] else 'needs_review',progress=1.0,provider_unavailable=not bool(completed[0]))
         else:
+            job.pop('execution_token', None)
             job.setdefault('interruptions',[]).append(time.time())
             retry=job.get('attempts',0)<job.get('max_attempts',3)
             job.update(status='queued' if retry else 'interrupted',stage='restart_recovery',detail='Previous attempt interrupted; recovery queued.' if retry else 'Restart retry limit reached. Reviewer action required.')

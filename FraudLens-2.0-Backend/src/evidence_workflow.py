@@ -57,6 +57,9 @@ def install(app):
                 # vehicle. Decode and index them; do not apply the intake gate.
                 embeddings=[ingest._default_embedder.embed(source) for source,_,_ in staged]
                 conn.execute('BEGIN IMMEDIATE')
+                db.lock_case(conn, case_id)
+                if not runtime_store.applicant_authorized(conn,x_applicant_token,case_id):
+                    raise ApiError(401,'APPLICANT_UNAUTHORISED','The applicant receipt expired; no evidence was accepted.')
                 request=runtime_store.open_request(conn,case_id)
                 if not request or request['request_id']!=request_id:
                     raise ApiError(409,'EVIDENCE_REQUEST_CLOSED','The evidence request changed; refresh the tracker.')
@@ -75,7 +78,7 @@ def install(app):
                 job=runtime_store.enqueue(conn,case_id)
                 now=time.time()
                 conn.execute("UPDATE evidence_requests SET status='fulfilled',fulfilled_at=? WHERE request_id=?",(now,request_id))
-                conn.execute('INSERT INTO evidence_batches VALUES (?,?,?,?,?)',(batch_dir.name,case_id,request_id,json.dumps(image_ids),now))
+                conn.execute('INSERT INTO evidence_batches(batch_id,case_id,request_id,image_ids,created_at) VALUES (?,?,?,?,?)',(batch_dir.name,case_id,request_id,json.dumps(image_ids),now))
                 conn.execute("UPDATE cases SET status='evidence_received' WHERE case_id=?",(case_id,))
                 db.log_audit_event(conn,AuditEvent(event_type='additional_evidence_received',case_id=case_id,
                     details={'actor':'authorized_applicant','request_id':request_id,'image_ids':image_ids,

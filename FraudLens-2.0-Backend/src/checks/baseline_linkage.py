@@ -57,6 +57,7 @@ rather than assuming the worse case.
 from __future__ import annotations
 
 import sqlite3
+from .. import db
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -181,8 +182,8 @@ class BaselineLinkageCheck(Check):
     @staticmethod
     def _columns(conn: sqlite3.Connection) -> set[str]:
         try:
-            return {r[1] for r in conn.execute("PRAGMA table_info(cases)")}
-        except sqlite3.Error:
+            return db.columns(conn, 'cases')
+        except db.DatabaseError:
             return set()
 
     def _prior_inspections(self, conn: sqlite3.Connection, case: Any) -> list[dict[str, Any]]:
@@ -206,7 +207,7 @@ class BaselineLinkageCheck(Check):
                 f"AND ({' OR '.join(clauses)})",
                 (case.case_id, *params),
             ).fetchall()
-        except sqlite3.Error:
+        except db.DatabaseError:
             return []
 
         out: list[dict[str, Any]] = []

@@ -149,6 +149,11 @@ def process_case(
         converged = True
 
     if persist:
+        if run_id and db.is_postgres(conn):
+            from . import runtime_store
+            conn.execute('BEGIN')
+            db.lock_case(conn, case_id)
+            runtime_store.fence(conn, run_id)
         for finding in findings:
             db.insert_finding(conn, finding)
         db.insert_agent_decision(conn, decision)
@@ -156,7 +161,7 @@ def process_case(
                                    policy.policy_version, decision, converged, trace)
         if run_id:
             event.details['run_id'] = run_id
-            conn.execute('INSERT INTO processing_results VALUES (?,?,?,?,?,?,?,?)',
+            conn.execute('INSERT INTO processing_results(run_id,case_id,decision_id,finding_ids,image_ids,policy_version,converged,created_at) VALUES (?,?,?,?,?,?,?,?)',
                 (run_id, case_id, decision.decision_id,
                  __import__('json').dumps([f.finding_id for f in findings]),
                  __import__('json').dumps([i.image_id for i in db.get_images_for_case(conn, case_id)]),

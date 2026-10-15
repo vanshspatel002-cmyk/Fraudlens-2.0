@@ -210,7 +210,10 @@ def test_processing_runs_never_mix(client,monkeypatch):
     monkeypatch.setattr(orchestrator,'adjudicate',adjudicate)
     def process(run_id):
         with runtime_store.connection(api.DB_PATH) as conn:
-            orchestrator.process_case(conn,case_id,policy=production_policy('claims'),provider=object(),run_id=run_id)
+            job=runtime_store.claim_next(conn)
+            assert job['job_id']==run_id
+            with runtime_store.execution(job):
+                orchestrator.process_case(conn,case_id,policy=production_policy('claims'),provider=object(),run_id=run_id)
             job=runtime_store.get_job(conn,run_id);job['status']='completed';runtime_store.save_job(conn,job)
             api._snapshot_report(conn,case_id)
     process(receipt['job_id'])
@@ -280,8 +283,9 @@ def test_pipeline_persists_run_and_closes_provider(client,monkeypatch,provider_f
         category=CheckCategory.PROVENANCE,verdict=Verdict.INCONCLUSIVE,confidence=0,explanation='Isolated mocked finding'),
         Finding(check_id='ai_generation',case_id=case.case_id,category=CheckCategory.PROVENANCE,
         verdict=Verdict.CONCERN,confidence=0.9,explanation='Isolated mocked experimental observation')])
-    with runtime_store.connection(api.DB_PATH) as conn:runtime_store.claim_next(conn)
-    REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
+    with runtime_store.connection(api.DB_PATH) as conn: claimed=runtime_store.claim_next(conn)
+    with runtime_store.execution(claimed):
+        REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
     with runtime_store.connection(api.DB_PATH) as conn:
         job=runtime_store.get_job(conn,receipt['job_id'])
         assert job['status']==('failed' if provider_failure else 'completed')
@@ -293,7 +297,8 @@ def test_pipeline_persists_run_and_closes_provider(client,monkeypatch,provider_f
     assert closed==[True]
     with runtime_store.connection(api.DB_PATH) as conn:
         job=runtime_store.get_job(conn,receipt['job_id']);job['status']='running';runtime_store.save_job(conn,job)
-    REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
+    with runtime_store.execution(claimed):
+        REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
     with runtime_store.connection(api.DB_PATH) as conn:
         assert runtime_store.get_job(conn,receipt['job_id'])['status']==('failed' if provider_failure else 'completed')
         assert conn.execute('SELECT count(*) FROM processing_results').fetchone()[0]==1
@@ -306,7 +311,7 @@ def test_pipeline_preserves_later_cached_vision_after_stop(client,monkeypatch):
     receipt=submit(client,files=[('images',('one.png',photo('red'),'image/png')),
         ('images',('two.png',photo('blue'),'image/png'))]).json()
     with runtime_store.connection(api.DB_PATH) as conn:
-        images=db.get_images_for_case(conn,receipt['case_id']);runtime_store.claim_next(conn)
+        images=db.get_images_for_case(conn,receipt['case_id']);claimed=runtime_store.claim_next(conn)
     monkeypatch.setattr(db,'get_perception',lambda conn,h:SimpleNamespace(raw_response={}) if h==images[1].content_hash else None)
     calls=[];closed=[]
     def stop(conn,image,*a,**kw):
@@ -314,7 +319,8 @@ def test_pipeline_preserves_later_cached_vision_after_stop(client,monkeypatch):
     monkeypatch.setattr(perception,'perceive_image',stop)
     monkeypatch.setattr(llm,'get_provider',lambda:SimpleNamespace(close=lambda:closed.append(True)))
     monkeypatch.setattr(orchestrator,'run_checks',lambda *a,**kw:[])
-    REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
+    with runtime_store.execution(claimed):
+        REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
     with runtime_store.connection(api.DB_PATH) as conn:
         job=runtime_store.get_job(conn,receipt['job_id'])
         assert job['failed_images']==1 and job['status']=='failed'

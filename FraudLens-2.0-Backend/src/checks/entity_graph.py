@@ -55,6 +55,7 @@ than by measurement on the production corpus, and says so.
 from __future__ import annotations
 
 import sqlite3
+from .. import db
 from collections import defaultdict
 from typing import Any, Optional
 
@@ -179,8 +180,8 @@ class EntityGraphCheck(Check):
     @staticmethod
     def _available_columns(conn: sqlite3.Connection, table: str) -> set[str]:
         try:
-            return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
-        except sqlite3.Error:
+            return db.columns(conn, table)
+        except db.DatabaseError:
             return set()
 
     def _identifiers_for(self, conn: sqlite3.Connection, case_id: str) -> dict[str, str]:
@@ -243,7 +244,7 @@ class EntityGraphCheck(Check):
                 continue
             try:
                 rows = conn.execute(sql, params).fetchall()
-            except sqlite3.Error:
+            except db.DatabaseError:
                 continue
             for other_case, other_claimant in rows:
                 # A claimant sharing details with their own other claims is
@@ -264,7 +265,7 @@ class EntityGraphCheck(Check):
                 "WHERE claimant_id = ? AND garage_id = ? AND vehicle_registration IS NOT NULL",
                 (case.claimant_id, case.garage_id),
             ).fetchall()
-        except sqlite3.Error:
+        except db.DatabaseError:
             return None
         regs = sorted({r[0] for r in rows if r[0]})
         return {"garage_id": case.garage_id, "distinct_registrations": len(regs),

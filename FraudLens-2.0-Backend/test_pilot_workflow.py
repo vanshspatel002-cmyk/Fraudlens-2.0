@@ -130,7 +130,7 @@ def test_private_narrative_and_fallback_disclosure(client):
             supporting_finding_ids=[], requested_artifacts=['original photo'], policy_version='agent-test', llm_calls_count=2)
         db.insert_agent_decision(conn, d)
         db.log_audit_event(conn, adjudication_event(r['case_id'], 'agent', 'agent-test', d, False, []))
-        conn.execute('INSERT INTO processing_results VALUES (?,?,?,?,?,?,?,?)',(r['job_id'],r['case_id'],d.decision_id,'[]','[]','agent-test',0,time.time()))
+        conn.execute('INSERT INTO processing_results(run_id,case_id,decision_id,finding_ids,image_ids,policy_version,converged,created_at) VALUES (?,?,?,?,?,?,?,?)',(r['job_id'],r['case_id'],d.decision_id,'[]','[]','agent-test',0,time.time()))
         conn.commit()
     finally: conn.close()
     tracked = client.get('/v1/track', params={'case_id': r['case_id'], 'policy_number': 'POL-123'})
@@ -150,7 +150,7 @@ def test_statistics_count_latest_decision_only(client):
                 created_at=datetime.now(timezone.utc) + timedelta(seconds=i)))
         decision = db.get_decisions_for_case(conn,case_id)[-1]
         job = runtime_store.latest_job(conn,case_id)
-        conn.execute('INSERT INTO processing_results VALUES (?,?,?,?,?,?,?,?)',(job['job_id'],case_id,decision.decision_id,'[]','[]','agent-test',1,time.time()))
+        conn.execute('INSERT INTO processing_results(run_id,case_id,decision_id,finding_ids,image_ids,policy_version,converged,created_at) VALUES (?,?,?,?,?,?,?,?)',(job['job_id'],case_id,decision.decision_id,'[]','[]','agent-test',1,time.time()))
         conn.commit()
     finally: conn.close()
     stats = client.get('/v1/stats', headers=auth(client)).json()

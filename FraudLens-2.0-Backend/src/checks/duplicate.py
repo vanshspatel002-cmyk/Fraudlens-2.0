@@ -46,7 +46,7 @@ unflagged reuse is the more expensive error.
 
 from __future__ import annotations
 
-from .. import ingest
+from .. import db, ingest
 from ..models import CheckCategory, Finding, Image, Verdict
 from .base import Check, CheckContext, register_check
 
@@ -252,8 +252,9 @@ class InternalDuplicateCheck(Check):
     def _compared_count(ctx: CheckContext) -> int:
         # This metric needs neither decoded embeddings nor hydrated Image
         # objects. Keep the comparison pool identical to find_similar().
+        nonnull = "jsonb_typeof(embedding::jsonb)<>'null'" if db.is_postgres(ctx.conn) else "json_type(embedding)<>'null'"
         return ctx.conn.execute("""SELECT COUNT(*) FROM images
-            WHERE case_id<>? AND embedding IS NOT NULL AND json_type(embedding)<>'null'""",
+            WHERE case_id<>? AND embedding IS NOT NULL AND """ + nonnull,
             (ctx.case.case_id,)).fetchone()[0]
 
     def _verdict_for(
