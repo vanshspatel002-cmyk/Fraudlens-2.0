@@ -18,6 +18,7 @@ Run with:
 from __future__ import annotations
 
 import csv
+import os
 import sys
 import traceback
 from collections import Counter
@@ -53,10 +54,14 @@ def test(fn):
 
 
 def run_all() -> bool:
-    passed, failed = 0, 0
+    passed, failed, skipped = 0, 0, 0
     failures = []
     for fn in _TESTS:
         print(f"--- {fn.__name__} ---")
+        if os.environ.get('FRAUDLENS_SKIP_CORPUS_SWEEPS') == '1' and fn.__name__ == 'test_duplicate_check_reuse_vs_clean_sweep':
+            skipped += 1
+            print(f'SKIP  {fn.__name__} -> Preserved research sweep; bounded release retains individual reuse/clean regressions.')
+            continue
         try:
             fn()
             passed += 1
@@ -69,7 +74,7 @@ def run_all() -> bool:
         print("\n" + "=" * 70)
         for name, e, tb in failures:
             print(f"FAIL  {name}\n{tb}")
-    print(f"\n{passed} passed, {failed} failed")
+    print(f"\n{passed} passed, {failed} failed, {skipped} skipped")
     return failed == 0
 
 

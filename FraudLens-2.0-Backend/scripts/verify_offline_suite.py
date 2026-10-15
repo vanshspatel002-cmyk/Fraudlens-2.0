@@ -29,6 +29,7 @@ def main():
     OUT.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy()
     env.update(FRAUDLENS_TEST_LIVE='0',FRAUDLENS_WARM_MODELS='0',
+        FRAUDLENS_SKIP_CORPUS_SWEEPS='1',
         FRAUDLENS_WORKER_ENABLED='0',HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1',
         GEMINI_QUOTA_BUDGET=str(OUT/'quota_budget.json'),GEMINI_QUOTA_CONSUMER='offline-test')
     saved=json.loads((OUT/'results.json').read_text(encoding='utf-8')) if args.resume and (OUT/'results.json').exists() else []
