@@ -1,6 +1,80 @@
 # Two-tab local demonstration
 
-Use the exact PowerShell setup/startup commands in [PILOT_HANDOVER.md](PILOT_HANDOVER.md). Keep the backend on 8001, frontend on 5173, a copied demo database, separate uploads and the existing stopped live ledger. Wait for CLIP warmup and `/ready` before presenting. Do not run a build or ML test suite alongside the demonstration.
+## PostgreSQL pilot — 15 October 2026
+
+Use the migrated private `fraudlens_pilot` schema and unchanged local evidence.
+The original SQLite demo remains the rollback source. Read
+[POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) for migration scope, validation,
+backup/restore and rollback. DATABASE_URL stays privately in backend `.env`.
+Do not use Supabase Auth, a browser database key or direct database access.
+
+Start the API first and wait for **Application startup complete**:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+.\scripts\start_pilot.ps1 -Database postgresql -Port 8002 -NoWorker
+```
+
+In a second backend terminal, start processing and wait for **Worker OCR warmup:
+ready** (or its explicit unavailable limitation), then **Durable worker started**:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+.\scripts\start_pilot.ps1 -Database postgresql -WorkerOnly
+```
+
+The separate process uses the existing durable queue/pipeline. It prevents cold
+native checks from stalling HTTP/evidence requests. Authenticated
+`/v1/operations` exposes `database_worker_leader_present`; the API's own worker
+thread is intentionally inactive in this setup. Run model warmups, builds and
+heavy tests sequentially on this 8 GB Windows host.
+
+In the frontend terminal:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Frontend
+$env:VITE_API_BASE_URL = 'http://127.0.0.1:8002'
+npm.cmd run dev
+```
+
+Open `http://127.0.0.1:5173` in both Chrome tabs. Follow the claims and underwriting
+steps below. Keep the applicant tab unauthenticated and preserve its private
+receipt. Reviewer credentials are unchanged by migration; the ignored local
+fixture is `outputs/pilot_validation/demo_credentials.json`. No credential is
+included in this document. Both helper modes retain the original stopped live
+ledger, rollback path, uploads and thumbnail directory.
+
+For a new recorded automated rehearsal (backend directory):
+
+```powershell
+$env:PILOT_UI = 'http://127.0.0.1:5173'
+$env:PILOT_API = 'http://127.0.0.1:8002'
+$env:PILOT_DB = 'postgresql'
+$env:FRAUDLENS_PG_SCHEMA = 'fraudlens_pilot'
+$env:PILOT_EXPIRE_SESSION = '1'
+$env:PILOT_OUTPUT_DIR = Join-Path (Get-Location).Path ('outputs\pilot_validation\postgres\browser-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+.\venv\Scripts\python.exe -u -X utf8 scripts/verify_browser_pilot.py --workflow both
+```
+
+The expiry opt-in modifies only the exact session this rehearsal created. A new
+output directory preserves earlier observations/PDFs. `--workflow claims` or
+`--workflow underwriting` allows independent runs. `--resume-review <case-id>`
+finishes human review/tracking on an already submitted case without reuploading
+or reprocessing. Do not use it to claim previously unobserved intake steps.
+All demonstrations below concern fictional submissions using existing stock
+research photographs, not real eligibility decisions or detection accuracy.
+
+Current observed PostgreSQL outcomes and earlier failures are recorded in
+[AUTONOMOUS_PROGRESS.md](AUTONOMOUS_PROGRESS.md). Gemini remains stopped at the
+same two prior HTTP 503 failures; no new successful live adjudication is implied.
+
+## Preserved flow instructions and earlier SQLite rehearsal
+
+The flow steps below apply to both backends. For the qualified PostgreSQL pilot,
+use API 8002 and the separate worker commands above; the earlier SQLite startup
+in [PILOT_HANDOVER.md](PILOT_HANDOVER.md) remains historical. Wait for CLIP/OCR
+warmup and `/ready` before presenting. Do not run a build or ML suite alongside
+the demonstration.
 
 This session made two actual Gemini vision attempts; both returned HTTP 503. Further live requests are stopped. The demonstration therefore shows accepted evidence, deterministic/cached checks, incomplete automated analysis and a disclosed human-review fallback. It must not be presented as successful live Gemini adjudication or validated fraud detection.
 
@@ -34,7 +108,10 @@ Repeat the same two-tab flow at `http://127.0.0.1:5173/apply/underwriting`, with
 
 Slots/labels are applicant declarations; this pilot does not validate six actual views of the same vehicle. The automated rehearsal used six distinct existing research photographs, rather than inventing consistent same-vehicle evidence. Selecting “Unsure; inspection needed” must not become an invented undamaged declaration. Production v2 and current v3 preserve actual notes and mark zero-weight experimental baseline findings inconclusive.
 
-## Automated replay and observed results
+## Earlier SQLite automated replay and observations — 14 October
+
+This section preserves the earlier port-8001 rehearsal. For the qualified
+PostgreSQL pilot, use the new port-8002/output-directory commands above.
 
 The private demo account fixture exists at `outputs/pilot_validation/demo_credentials.json` and must remain ignored/unshared. The script uses two pages in one installed headless Chrome browser, actual HTTP uploads and actual local checks; it does not intercept/fake provider responses. It writes logs, screenshots, PDFs and incremental observations to the ignored `outputs/pilot_validation` directory. It creates new cases and preserves old ones.
 

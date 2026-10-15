@@ -1,4 +1,101 @@
-# FraudLens 2.0 pilot handover — 14 October 2026
+# FraudLens 2.0 pilot handover — 15 October 2026
+
+The local pilot now uses **Supabase PostgreSQL**, qualified through actual claims
+and underwriting browser workflows. React still calls FastAPI; authentication,
+applicant receipts and local image storage are unchanged. The frozen 812-case
+SQLite demo and all research databases remain available. Nothing was pushed or
+deployed externally.
+
+Read [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) for the complete SQL inventory,
+private schema, import/validation results, backup/restore and exact rollback.
+Read [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) for the two-tab flow. Both workflows
+verified acceptance, queue/detail, processing failure disclosure, findings,
+evidence, trace, PDF, secure additional evidence, controlled reprocessing,
+historical reports, human decision and public tracking. Claims finished across
+a preserved rehearsal and continuation; underwriting completed in one run.
+Logout, expiry and the mobile tracker were checked. Earlier failures remain
+documented in [AUTONOMOUS_PROGRESS.md](AUTONOMOUS_PROGRESS.md).
+
+Final database-specific verification: **72 passed**, plus **1 external-worker
+monitor test passed**; 0 final failures/skips. The full offline SQLite/backend
+release passed **241**, failed 0, skipped 10 intentional live tests. Tests that
+mock models do not prove AI reliability. Actual headless Chrome PDFs contained
+9 pages/11,129 text characters for claims and 22 pages/33,015 for underwriting.
+Manual OS print dialogs and screen-reader behavior remain unverified.
+
+**Gemini remains stopped:** two prior actual vision requests, both HTTP 503;
+zero additional provider requests during migration. No new successful live
+vision or agent adjudication is claimed. Browser processing truthfully failed
+with saved evidence and disclosed fallback, followed by fictional human reviews.
+Scores remain heuristic and independent detection accuracy is unestablished.
+
+## Current Windows startup
+
+Existing backend `.env` contains the server-only DATABASE_URL. Install/update
+dependencies with the commands below; `requirements.txt` now also pins psycopg
+3.3.6 and psycopg-pool 3.3.3. Do not replace configuration or the stopped ledger.
+
+Backend/API terminal:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+.\scripts\start_pilot.ps1 -Database postgresql -Port 8002 -NoWorker
+```
+
+After **Application startup complete**, another backend terminal:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+.\scripts\start_pilot.ps1 -Database postgresql -WorkerOnly
+```
+
+Wait for OCR warmup and worker startup before presenting. The worker uses the
+existing queue/checks/pipeline in a separate process, avoiding API stalls from
+cold native models. `/v1/operations` reports a database-visible worker leader;
+an API-local worker thread is intentionally absent. Each helper sets the same
+absolute rollback/evidence/ledger paths and retains the provider stop.
+
+Frontend terminal:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Frontend
+$env:VITE_API_BASE_URL = 'http://127.0.0.1:8002'
+npm.cmd run dev
+```
+
+Open `http://127.0.0.1:5173`. API and worker must both remain running. Run builds
+and model warmup sequentially on this 8 GB host. Node 24 was used successfully
+here despite the package's Node-22 engine requirement; use Node 22 for a fresh
+reproduction. Existing model caches are required for the offline startup.
+
+PostgreSQL tests allocate and remove their own new schemas:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+$env:FRAUDLENS_TEST_POSTGRES = '1'
+$env:FRAUDLENS_TEST_LIVE = '0'
+$env:FRAUDLENS_WORKER_ENABLED = '0'
+$env:FRAUDLENS_WARM_MODELS = '0'
+.\venv\Scripts\python.exe -u -X utf8 -m pytest -q test_postgres.py
+```
+
+The current source has 73 PostgreSQL tests; the recorded verification was a
+72-test full run and the later one-test external-leader regression. Supabase
+Storage, verified applicant accounts/MFA, complete tenancy, distributed rate/
+provider budgets, least-privilege service credentials, security/load review and
+successful live AI validation remain production work. This remains one local
+organization and reports `tenant_isolation: false`.
+
+Final private preservation: `20261015-postgresql-qualified` (logical backup),
+fully restored/verified as `fraudlens_restore_qualified_20261015`;
+`20261015-qualified-files` (5,134 files); and `20261015-frontend-config`.
+These are under `D:\projects\FraudLens-2.0-preservation`, outside Git. The final
+pilot has 816 cases/1,443 verified image files/23 run results/39 reports; the
+rollback remains at 812 cases. Reimport now correctly refuses to merge those
+new records into the frozen source. API readiness, public-field privacy,
+anonymous denial and external worker leadership passed the final HTTP smoke.
+
+## Preserved SQLite handover — 14 October 2026
 
 This continues the existing FastAPI/SQLite and React/TanStack implementation on `autonomous-pilot-hardening-20261014`. The inherited staged patch and audit dossier were preserved in local commit `09d06e8`. No rebuild, external deployment, paid service or push was performed. No applicable `AGENTS.md` was found. The original audit remains historical; this document records subsequent behavior.
 

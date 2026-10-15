@@ -27,7 +27,9 @@ $env:FRAUDLENS_LIVE_LEDGER = $ledgerPath
 $env:FRAUDLENS_LIVE_LIMIT = '15'
 $env:GEMINI_QUOTA_BUDGET = Join-Path $pilotDirectory 'quota_budget.json'
 $env:GEMINI_QUOTA_CONSUMER = 'pilot'
-$env:FRAUDLENS_WORKER_ENABLED = if ($NoWorker) { '0' } else { '1' }
+# PostgreSQL defaults to the qualified dedicated-worker setup; SQLite retains
+# its original in-process option. WorkerOnly runs the same pipeline separately.
+$env:FRAUDLENS_WORKER_ENABLED = if ($NoWorker -or ($Database -eq 'postgresql' -and -not $WorkerOnly)) { '0' } else { '1' }
 $env:FRAUDLENS_WARM_MODELS = if ($NoWarmup) { '0' } else { '1' }
 $env:HF_HUB_OFFLINE = '1'
 $env:TRANSFORMERS_OFFLINE = '1'

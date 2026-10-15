@@ -1,5 +1,31 @@
 # Check and archetype verification — 14 October 2026
 
+PostgreSQL continuation (15 October): the original inventory/accuracy limits
+below remain historical and unchanged. The selected demo's cached perception,
+findings, decisions and report bytes were verified during import. On isolated
+`fraudlens_restore_20261015a`, `verify_postgres_checks.py` compared
+`internal_duplicate`, `entity_graph`, `baseline_linkage`, `severity_progression`
+and `threshold_gaming` against the same read-only SQLite demo. All ten original
+workflow/archetype representatives produced identical findings, confidences,
+explanations and evidence. Labels selected samples only; no label was passed to
+a detector. Provider requests: zero. Private output:
+`outputs/pilot_validation/postgres/check-equivalence.json`.
+This covers PostgreSQL execution equivalence for those five checks. It does not
+repeat the 367-case inventory on PostgreSQL or establish new detection accuracy;
+the other ten registered checks, retired check and uncovered archetypes retain
+the limitations below. No weight, threshold, research policy or prompt changed.
+
+Real PostgreSQL browser processing also executed the unchanged production
+policies on the fictional claims/underwriting submissions: 13 first-run claims
+findings and 50 first-run underwriting findings were visible, with 21/58 on
+their supplementary-evidence runs. Gemini was stopped, so both analyses and
+their reprocessing runs truthfully failed with disclosed fallback. Claims and
+underwriting reports remained readable in headless Chrome PDFs (9/22 pages),
+and historical reports retained their earlier runs/evidence. These observations
+exercise integration and do not expand archetype accuracy coverage or establish
+successful new live vision/adjudication. Retired/zero-weight checks remain as
+documented; no verdict was derived from labels, filenames or desired outcomes.
+
 This records execution and coverage, not a deployment accuracy certificate. The audit dossier, existing ablation, policies, scenario labels and stored evidence were inspected before changes. Every database was copied with SQLite backup; originals and historical research outputs were preserved. No verdict was derived from filenames, case IDs, archetype names or expected demonstration outcomes. Labels selected evaluation samples and were used only afterward to count outcomes.
 
 ## Method and boundaries
