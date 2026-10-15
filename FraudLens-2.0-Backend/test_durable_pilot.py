@@ -353,6 +353,32 @@ def test_pipeline_progress_releases_ocr_cache_and_records_sources(client,monkeyp
         report=api._build_report(conn,receipt['case_id'])
         assert any('unavailable=1' in limitation for limitation in report.limitations)
         assert any('legal applicability' in limitation for limitation in report.limitations)
+        assert job['adjudication_sources']==[]
+
+
+@pytest.mark.parametrize('cached',[True,False])
+def test_run_audit_records_adjudication_response_source(client,monkeypatch,cached):
+    from src import orchestrator
+    from src.agent.engine import AdjudicationResult
+    from src.agent.production_policy import production_policy
+    receipt=submit(client).json();case_id=receipt['case_id']
+    monkeypatch.setattr(orchestrator,'run_checks',lambda *a,**kw:[])
+    def adjudicate(conn,case,findings,policy,provider):
+        provider.chat([])
+        decision=AgentDecision(case_id=case.case_id,recommendation=Recommendation.ESCALATE,
+            risk_band=RiskBand.DESK_REVIEW,confidence=.3,summary='Explicit offline response fixture',
+            supporting_finding_ids=[],requested_artifacts=[],policy_version=policy.policy_version,llm_calls_count=1)
+        return AdjudicationResult(decision,[],converged=True)
+    monkeypatch.setattr(orchestrator,'adjudicate',adjudicate)
+    provider=SimpleNamespace(chat=lambda *a,**kw:SimpleNamespace(cached=cached,model='offline-fixture'))
+    with runtime_store.connection(api.DB_PATH) as conn:
+        claimed=runtime_store.claim_next(conn)
+        with runtime_store.execution(claimed):
+            decision=orchestrator.process_case(conn,case_id,provider=provider,policy=production_policy('claims'),run_id=receipt['job_id'])
+        sources=[{'source':'request_cache' if cached else 'fresh_provider','model':'offline-fixture'}]
+        assert decision._model_response_sources==sources
+        event=next(e for e in db.get_audit_events_for_case(conn,case_id) if e.event_type=='case_adjudicated')
+        assert event.details['run_id']==receipt['job_id'] and event.details['model_response_sources']==sources
 
 
 def test_job_order_does_not_depend_on_wall_clock(client,monkeypatch):

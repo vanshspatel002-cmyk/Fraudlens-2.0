@@ -142,13 +142,27 @@ def process_case(
     if run_id:
         conn.commit()  # release optional check-cache writes before the provider call
     trace: list[dict[str, Any]] = []
+    response_sources = []
     if use_agent:
         if provider is None:
             provider = get_provider()
+        adjudicator = provider
+        if run_id and policy.policy_version.startswith('agent-production-'):
+            class RecordedProvider:
+                def chat(self, *args, **kwargs):
+                    response = provider.chat(*args, **kwargs)
+                    cached = getattr(response, 'cached', None)
+                    response_sources.append({'source': 'request_cache' if cached is True else (
+                        'fresh_provider' if cached is False else 'unrecorded'),
+                        'model': getattr(response, 'model', 'unrecorded')})
+                    return response
+                def __getattr__(self, name):
+                    return getattr(provider, name)
+            adjudicator = RecordedProvider()
         if on_stage:
             on_stage('agent adjudication', 0.9)
         with span('pipeline.adjudication'):
-            result = adjudicate(conn, case, findings, policy, provider)
+            result = adjudicate(conn, case, findings, policy, adjudicator)
         decision = result.decision
         trace = result.trace_dicts()
         converged = result.converged
@@ -174,6 +188,7 @@ def process_case(
                                    policy.policy_version, decision, converged, trace)
         if run_id:
             event.details['run_id'] = run_id
+            event.details['model_response_sources'] = response_sources
             conn.execute('INSERT INTO processing_results(run_id,case_id,decision_id,finding_ids,image_ids,policy_version,converged,created_at) VALUES (?,?,?,?,?,?,?,?)',
                 (run_id, case_id, decision.decision_id,
                  __import__('json').dumps([f.finding_id for f in findings]),
@@ -182,6 +197,9 @@ def process_case(
         db.log_audit_event(conn, event)
         conn.commit()
 
+    # Ephemeral handoff to the existing durable job payload, with an immutable
+    # copy in the adjudication audit above. No research model/schema change.
+    decision._model_response_sources = response_sources
     return decision
 
 

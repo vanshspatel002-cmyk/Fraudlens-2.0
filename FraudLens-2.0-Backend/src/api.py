@@ -1356,6 +1356,12 @@ def _build_report(conn,case_id):
         limitations.append('Vision sources for this run: ' + ', '.join(f'{name}={count}' for name,count in sources.items()) + '. Cached observations are reused evidence, not new model responses.')
     else:
         limitations.append('Vision freshness was not recorded for this historical run; do not describe its observations as fresh model output.')
+    adjudication_sources = (job or {}).get('adjudication_sources')
+    if adjudication_sources is None:
+        limitations.append('Agent response freshness was not recorded for this run; do not infer fresh model execution from the stored recommendation.')
+    else:
+        counts = Counter(item.get('source','unrecorded') for item in adjudication_sources)
+        limitations.append('Agent response sources for this run: ' + (', '.join(f'{name}={count}' for name,count in counts.items()) or 'no model responses returned') + '. Returned responses alone do not establish completed adjudication; consult processing status.')
     if case.declared_time is None or case.latitude is None or case.longitude is None:
         limitations.append('Scene time/place comparison lacks declared time or coordinates and cannot verify scene consistency.')
     if case.agent_type == 'underwriting':
@@ -1982,6 +1988,7 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             _set_job(job_id, status='failed' if unavailable or perception_errors else 'completed',
                 stage='needs_review' if unavailable or perception_errors else 'complete', progress=1.0,
                 provider_unavailable=unavailable,
+                adjudication_sources=getattr(decision,'_model_response_sources',None),
                 detail='Automated analysis incomplete. Evidence is saved; fallback requires human review.' if unavailable or perception_errors else None,
                 failed_images=perception_errors)
             conn.execute('BEGIN IMMEDIATE')
