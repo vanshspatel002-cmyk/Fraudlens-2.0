@@ -352,6 +352,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
                 <p className="help">
                   Images are decoded and indexed. A local classifier requires at least one likely vehicle view; it cannot establish authenticity.
                   Missing EXIF metadata is neutral.
+                  {!claims && " View labels are your declarations; this system does not verify six views of the same vehicle."}
                 </p>
                 <div className="upload-grid">
                   {(claims

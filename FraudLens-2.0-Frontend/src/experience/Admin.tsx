@@ -273,6 +273,10 @@ export default function Admin() {
   }
   async function open(id: string) {
     const request = ++detailRequest.current;
+    if (detail?.id !== id) {
+      setDetailTab(tab === "Reports" ? "Report" : "Evidence");
+      setHumanAction("Approve");
+    }
     detailLoading.current = true;
     setError("");
     setLoading(true);
@@ -280,8 +284,6 @@ export default function Admin() {
       const value = (await api("case?id=" + encodeURIComponent(id))) as CaseDetail;
       if (request !== detailRequest.current) return;
       setDetail(value);
-      setDetailTab(tab === "Reports" ? "Report" : "Evidence");
-      setHumanAction("Approve");
     } catch (e) {
       if (request === detailRequest.current) setError((e as Error).message);
     } finally {
@@ -334,6 +336,7 @@ export default function Admin() {
         publicNarrative: f.get("publicNarrative"),
         requestedArtifacts: String(f.get('requestedArtifacts') || '').split('\n').map(s => s.trim()).filter(Boolean),
       });
+      setHumanAction("Approve");
       await open(detail.id);
       await load();
     } catch (e) {

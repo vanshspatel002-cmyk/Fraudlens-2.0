@@ -12,6 +12,7 @@ import sys
 import time
 import traceback
 import argparse
+import subprocess
 import hashlib
 import httpx
 from playwright.sync_api import sync_playwright, expect
@@ -34,10 +35,17 @@ def poll_job(admin,job_id):
     token=admin.evaluate("sessionStorage.getItem('fraudlens_admin_token')")
     started=time.monotonic()
     with httpx.Client(timeout=30) as client:
+        stages=[]
         while time.monotonic()-started<600:
             response=client.get(API+'/v1/jobs/'+job_id,headers={'Authorization':'Bearer '+token})
             response.raise_for_status();job=response.json()
-            if job['status'] in {'completed','done','failed','interrupted'}:return job
+            stage=job.get('stage')
+            if not stages or stages[-1]['stage']!=stage:
+                stages.append({'stage':stage,'seconds':round(time.monotonic()-started,3)})
+            if job['status'] in {'completed','done','failed','interrupted'}:
+                record('job observed terminal',job_id=job_id,status=job['status'],
+                    poll_seconds=round(time.monotonic()-started,3),stages=stages)
+                return job
             time.sleep(1)
     raise AssertionError('Processing did not finish within ten minutes; last state '+job['status'])
 
@@ -79,13 +87,15 @@ def fill_intake(page,kind,photos):
     else:
         for role,path in zip(['Front left','Front right','Rear left','Rear right','Odometer','Registration plate'],photos):
             page.get_by_label('Upload '+role,exact=True).set_input_files(str(path))
+    started=time.monotonic()
     with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/v1/cases'),timeout=120000) as response:
         page.get_by_role('button',name='Submit claim' if kind=='claims' else 'Submit application',exact=True).click()
     assert response.value.status==201,response.value.text()
     submitted=response.value.json()
     expect(page.get_by_role('heading',name='Your case has been received.')).to_be_visible(timeout=30000)
     assert page.evaluate("sessionStorage.getItem('fraudlens_admin_token')") is None
-    record(kind+' immediate confirmation',case_id=submitted['case_id'],image_count=submitted['images_received'])
+    record(kind+' immediate confirmation',case_id=submitted['case_id'],image_count=submitted['images_received'],
+        submission_seconds=round(time.monotonic()-started,3))
     return submitted
 
 
@@ -108,6 +118,26 @@ def track(page,case_id,registration):
     expect(page.locator('.tracker-result')).to_be_visible(timeout=45000)
 
 
+def verify_recorded_report(admin,case_id,run_id,image_count,human=False):
+    token=admin.evaluate("sessionStorage.getItem('fraudlens_admin_token')")
+    response=httpx.get(API+'/v1/cases/'+case_id+'/report',headers={'Authorization':'Bearer '+token},timeout=60)
+    response.raise_for_status();report=response.json()
+    kind=report['declaration']['agent_type']
+    assert report['policy_version']=='agent-production-'+kind+'-2026-10-14-v3'
+    assert report['run_id']==run_id and len(report['evidence_ids'])==image_count
+    assert 'research billing benchmark' in ' '.join(report['limitations'])
+    assert report['declaration'].get('declaration_notes'), 'Actual declaration missing'
+    if report['processing']['status']=='failed':
+        assert report['agent_recommendation']['provider_unavailable']
+    if human:
+        action=report['admin_action']
+        assert action['reviewed_run_id']==run_id
+        assert sorted(action['reviewed_evidence_ids'])==sorted(report['evidence_ids'])
+    record(kind+' v3 report and human-review basis' if human else kind+' v3 report sources',
+        run_id=run_id,evidence_count=image_count,processing=report['processing']['status'],
+        perception_sources=report['processing'].get('perception_sources'))
+
+
 def main():
     global observations
     parser=argparse.ArgumentParser()
@@ -126,12 +156,15 @@ def main():
     with sync_playwright() as p:
         browser=p.chromium.launch(channel='chrome',headless=True)
         context=browser.new_context(viewport={'width':1365,'height':900})
-        admin=context.new_page();applicant=context.new_page()
         errors=[]
-        for page in (admin,applicant):page.on('pageerror',lambda e:errors.append(str(e)))
-        for page in (admin,applicant):
+        console_errors=[]
+        def observe(page):
+            page.on('pageerror',lambda e:errors.append(str(e)))
+            page.on('console',lambda m:console_errors.append(m.text[:800]) if m.type=='error' else None)
             page.on('requestfailed',lambda r:print('Browser network failure',r.method,r.url.split('?')[0],r.failure,flush=True))
             page.on('console',lambda m:print('Browser policy error',m.text[:500],flush=True) if m.type=='error' and ('Content Security Policy' in m.text or 'CORS' in m.text) else None)
+        context.on('page',observe)
+        admin=context.new_page();applicant=context.new_page()
         try:
             admin.goto(UI+'/admin',wait_until='domcontentloaded',timeout=120000)
             expect(admin.get_by_role('button',name='Sign in',exact=True)).to_be_enabled(timeout=120000)
@@ -141,7 +174,8 @@ def main():
                 admin.get_by_role('button',name='Sign in',exact=True).click()
             assert login.value.status==200,login.value.text()
             expect(admin.get_by_role('button',name='Sign out',exact=True)).to_be_visible(timeout=45000)
-            record('admin authenticated in separate tab',browser=browser.version,ui=UI,api=API)
+            record('admin authenticated in separate tab',browser=browser.version,ui=UI,api=API,
+                source_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip())
             if args.resume_review:
                 case_id=args.resume_review
                 token=admin.evaluate("sessionStorage.getItem('fraudlens_admin_token')")
@@ -173,6 +207,7 @@ def main():
                 admin.get_by_role('button',name='Refresh case',exact=True).click()
                 expect(admin.locator('.recommendation-panel')).to_contain_text('Analysis: '+job['status'],timeout=45000)
                 record(kind+' processing terminal state',status=job['status'],provider_unavailable=job['provider_unavailable'])
+                verify_recorded_report(admin,case_id,submitted['job_id'],1 if kind=='claims' else 6)
                 assert admin.locator('.finding-group article').count()>0, 'Recorded findings are missing from the interface'
                 record(kind+' recorded findings visible',count=admin.locator('.finding-group article').count())
                 admin.locator('.image-gallery button').first.click()
@@ -194,6 +229,8 @@ def main():
                 record(kind+' readable PDF',pages=len(PdfReader(pdf).pages),text_characters=len(extracted))
                 admin_action(admin,'Request More Evidence','Local demonstration request; no inference of claimant guilt.',
                              'Please upload the original additional vehicle photograph.','Original rear view including the registration plate')
+                expect(admin.locator('.action-panel')).to_contain_text('Human reviewed processing run: '+submitted['job_id'])
+                verify_recorded_report(admin,case_id,submitted['job_id'],1 if kind=='claims' else 6,human=True)
                 track(applicant,case_id,'MH12DE1001' if kind=='claims' else 'MH12DE1002')
                 expect(applicant.get_by_role('heading',name='Requested photographs',exact=True)).to_be_visible()
                 receipt=applicant.get_by_label('Private evidence access receipt').input_value()
@@ -208,6 +245,8 @@ def main():
                 admin.bring_to_front();admin.get_by_role('button',name='Refresh case',exact=True).click()
                 expect(admin.locator('.image-gallery button')).to_have_count(2 if kind=='claims' else 7,timeout=45000)
                 admin.get_by_role('button',name='Report',exact=True).click()
+                expect(admin.get_by_role('button',name='Refresh case',exact=True)).to_be_enabled(timeout=45000)
+                expect(admin.get_by_role('button',name='Report',exact=True)).to_have_class('selected')
                 history=admin.get_by_label('Report history')
                 saved_id=history.locator('option').filter(has_text=submitted['job_id']).first.get_attribute('value')
                 assert saved_id
@@ -217,15 +256,26 @@ def main():
                 expect(saved).to_contain_text(submitted['job_id'])
                 expect(saved).to_contain_text('Declaration at this report version')
                 admin.keyboard.press('Escape');expect(saved).not_to_be_visible()
+                history.select_option(saved_id)
+                expect(saved).to_be_visible(timeout=45000)
+                expect(saved).to_contain_text(submitted['job_id'])
+                admin.keyboard.press('Escape');expect(saved).not_to_be_visible()
                 record(kind+' originals preserved and saved report opened with keyboard dismissal',analysis_status=job['status'])
                 admin_action(admin,'Approve','Local demonstration completed; independent accuracy validation remains outstanding.',
                              'The local demonstration review is complete.')
+                expect(admin.locator('.action-panel')).to_contain_text('Human reviewed processing run: '+job['job_id'])
+                verify_recorded_report(admin,case_id,job['job_id'],2 if kind=='claims' else 7,human=True)
                 track(applicant,case_id,'MH12DE1001' if kind=='claims' else 'MH12DE1002')
                 expect(applicant.get_by_role('heading',name='closed approved',exact=True)).to_be_visible(timeout=45000)
                 expect(applicant.locator('.tracker-result')).to_contain_text('The local demonstration review is complete.')
                 assert 'Independent accuracy' not in applicant.locator('.tracker-result').inner_text()
                 record(kind+' human decision and public tracking verified')
                 applicant.screenshot(path=str(OUT/(kind+'-tracking.png')),full_page=True)
+            admin.set_viewport_size({'width':390,'height':844})
+            assert admin.evaluate('document.documentElement.scrollWidth')<=391
+            admin.screenshot(path=str(OUT/'mobile-admin.png'),full_page=True)
+            record('mobile authenticated reviewer no horizontal overflow',width=390)
+            admin.set_viewport_size({'width':1365,'height':900})
             admin.get_by_role('button',name='Sign out',exact=True).click()
             expect(admin.get_by_role('button',name='Sign in',exact=True)).to_be_visible(timeout=30000)
             record('logout verified')
@@ -258,7 +308,13 @@ def main():
             assert mobile.evaluate('document.documentElement.scrollWidth')<=391
             mobile.screenshot(path=str(OUT/'mobile-tracker.png'),full_page=True)
             record('mobile tracker no horizontal overflow',width=390)
-            record('browser post-review completed' if args.post_review_only else 'browser script completed',javascript_errors=errors)
+            for kind in ('claims','underwriting'):
+                mobile.goto(UI+'/apply/'+kind,wait_until='domcontentloaded',timeout=60000)
+                expect(mobile.get_by_role('button',name='Submit claim' if kind=='claims' else 'Submit application',exact=True)).to_be_enabled(timeout=60000)
+                assert mobile.evaluate('document.documentElement.scrollWidth')<=391
+                mobile.screenshot(path=str(OUT/('mobile-'+kind+'.png')),full_page=True)
+                record('mobile '+kind+' form no horizontal overflow',width=390)
+            record('browser post-review completed' if args.post_review_only else 'browser script completed',javascript_errors=errors,console_errors=console_errors)
             if errors:raise AssertionError('Browser JavaScript errors: '+str(errors))
         except Exception as exc:
             record('browser blocker',error_type=type(exc).__name__,message=str(exc)[:800])
@@ -266,7 +322,9 @@ def main():
                 try:page.screenshot(path=str(OUT/(name+'-failure.png')),full_page=True)
                 except Exception:pass
             raise
-        finally:browser.close()
+        finally:
+            record('complete browser error collection',javascript_errors=errors,console_errors=console_errors)
+            browser.close()
 
 
 if __name__=='__main__':main()
