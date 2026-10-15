@@ -372,3 +372,20 @@ def test_database_initialization_failure_always_closes_connection(monkeypatch):
     with pytest.raises(RuntimeError,match='initialization failure'):
         next(api.get_conn(Request({'type':'http','method':'GET'})))
     assert calls==['rollback','close']
+
+
+def test_postgres_operations_observes_external_database_leader(client):
+    headers=auth(client)
+    guard=db.connect('postgresql')
+    try:
+        guard.execute('BEGIN')
+        acquired=guard.execute('SELECT pg_try_advisory_xact_lock(hashtextextended(?,0))',
+            ('fraudlens-worker:'+guard.schema,)).fetchone()[0]
+        assert acquired
+        info=client.get('/v1/operations',headers=headers).json()
+        assert info['worker_leader_in_this_process'] is False
+        assert info['database_worker_leader_present'] is True
+        guard.rollback()
+        assert client.get('/v1/operations',headers=headers).json()['database_worker_leader_present'] is False
+    finally:
+        guard.close()

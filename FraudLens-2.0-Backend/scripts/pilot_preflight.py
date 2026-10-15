@@ -25,7 +25,8 @@ def main():
         configured = bool(os.environ.get(name))
         print(f'{name}: {"configured" if configured else "MISSING"}')
         if not configured: errors.append(name)
-    Path(api.DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    if api.DB_PATH != 'postgresql':
+        Path(api.DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = db.connect(api.DB_PATH)
     try:
         db.init_db(conn)

@@ -176,6 +176,17 @@ def job_view(job):
     return {k:v for k,v in job.items() if k not in {'execution_token','leader_epoch'}} if job else None
 
 
+def worker_leader_present(conn):
+    if not db.is_postgres(conn):
+        return None  # SQLite leadership is an OS lock, not visible in SQL.
+    return bool(conn.execute('''WITH key AS (SELECT hashtextextended(?,0) AS value)
+        SELECT EXISTS (SELECT 1 FROM pg_locks l,key WHERE l.locktype='advisory'
+            AND l.database=(SELECT oid FROM pg_database WHERE datname=current_database())
+            AND l.classid=((key.value >> 32) & 4294967295)::oid
+            AND l.objid=(key.value & 4294967295)::oid AND l.objsubid=1
+            AND l.mode='ExclusiveLock' AND l.granted)''',('fraudlens-worker:'+conn.schema,)).fetchone()[0])
+
+
 def claim_next(conn, leader_epoch=None):
     if not conn.in_transaction:
         conn.execute('BEGIN IMMEDIATE')

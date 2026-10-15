@@ -2340,6 +2340,7 @@ def operations(_admin: str=Depends(require_admin),conn: sqlite3.Connection=Depen
         'database_backend':'postgresql' if db.is_postgres(conn) else 'sqlite',
         'worker_active_in_this_process':bool(worker and worker.thread and worker.thread.is_alive()),
         'worker_leader_in_this_process':bool(worker and worker.lock),
+        'database_worker_leader_present':runtime_store.worker_leader_present(conn),
         'jobs_by_status':dict(conn.execute('SELECT status,COUNT(*) FROM api_jobs GROUP BY status').fetchall()),
         'recent_failures':[{k:v for k,v in job.items() if k in {'job_id','case_id','status','stage','error_type','detail','attempts','updated_at'}} for job in jobs if job['status'] in {'failed','interrupted'}][:10],
         'oldest_queued_age_seconds':max(0,time.time()-oldest) if oldest is not None else 0}

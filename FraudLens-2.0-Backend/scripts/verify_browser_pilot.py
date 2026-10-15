@@ -13,12 +13,12 @@ import time
 import traceback
 import argparse
 import hashlib
-import sqlite3
 import httpx
 from playwright.sync_api import sync_playwright, expect
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'outputs/pilot_validation'
+sys.path.insert(0,str(ROOT))
+OUT=Path(os.environ.get('PILOT_OUTPUT_DIR',str(ROOT/'outputs/pilot_validation')))
 UI=os.environ.get('PILOT_UI','http://127.0.0.1:5173')
 API=os.environ.get('PILOT_API','http://127.0.0.1:8001')
 observations=[]
@@ -112,10 +112,14 @@ def main():
     global observations
     parser=argparse.ArgumentParser()
     parser.add_argument('--post-review-only',action='store_true',help='Finish expiry/mobile verification after a preserved completed two-tab flow')
+    parser.add_argument('--workflow',choices=['both','claims','underwriting'],default='both')
     args=parser.parse_args()
     if args.post_review_only:
         observations=json.loads((OUT/'browser_verification.json').read_text())
-    credentials=json.loads((OUT/'demo_credentials.json').read_text())
+    OUT.mkdir(parents=True,exist_ok=True)
+    if not args.post_review_only and (OUT/'browser_verification.json').exists():
+        raise SystemExit('Use a new PILOT_OUTPUT_DIR; previous browser observations are preserved.')
+    credentials=json.loads(Path(os.environ.get('PILOT_CREDENTIALS_FILE',str(ROOT/'outputs/pilot_validation/demo_credentials.json'))).read_text())
     photos=sorted((ROOT/'data/curated/whole').glob('*.jpg'))
     if len(photos)<9:raise RuntimeError('Need existing genuine corpus photographs; no replacements are generated.')
     with sync_playwright() as p:
@@ -137,7 +141,8 @@ def main():
             assert login.value.status==200,login.value.text()
             expect(admin.get_by_role('button',name='Sign out',exact=True)).to_be_visible(timeout=45000)
             record('admin authenticated in separate tab',browser=browser.version,ui=UI,api=API)
-            for kind in (() if args.post_review_only else ('claims','underwriting')):
+            workflows=('claims','underwriting') if args.workflow=='both' else (args.workflow,)
+            for kind in (() if args.post_review_only else workflows):
                 submitted=fill_intake(applicant,kind,photos[:1] if kind=='claims' else photos[1:7])
                 case_id=submitted['case_id'];open_case(admin,case_id)
                 record(kind+' queue refresh and case detail')
@@ -201,14 +206,19 @@ def main():
             admin.get_by_role('button',name='Sign out',exact=True).click()
             expect(admin.get_by_role('button',name='Sign in',exact=True)).to_be_visible(timeout=30000)
             record('logout verified')
-            # Only expire this automation session in its known isolated DB.
-            if API=='http://127.0.0.1:8001':
+            # Explicitly opt into expiring only this exact automation token.
+            # PILOT_DB and schema must match the API; never guess a database.
+            if os.environ.get('PILOT_EXPIRE_SESSION')=='1':
                 admin.locator('input[name=email]').fill(credentials['email'])
                 admin.locator('input[name=password]').fill(credentials['password'])
                 admin.get_by_role('button',name='Sign in',exact=True).click()
                 expect(admin.get_by_role('button',name='Sign out',exact=True)).to_be_visible(timeout=45000)
                 token=admin.evaluate("sessionStorage.getItem('fraudlens_admin_token')")
-                conn=sqlite3.connect(OUT/'demo.db')
+                from src import db
+                target=os.environ['PILOT_DB']
+                expected='postgresql' if target=='postgresql' else Path(target).name
+                assert httpx.get(API+'/health',timeout=60).json()['database']==expected
+                conn=db.connect(target)
                 try:
                     updated=conn.execute('UPDATE admin_sessions SET expires_at=0 WHERE token_hash=?',
                         (hashlib.sha256(token.encode()).hexdigest(),)).rowcount

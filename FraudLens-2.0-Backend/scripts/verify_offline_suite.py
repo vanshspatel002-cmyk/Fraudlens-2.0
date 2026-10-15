@@ -12,7 +12,7 @@ import sys
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'outputs/pilot_validation/offline_release'
+OUT=Path(os.environ.get('FRAUDLENS_OFFLINE_OUTPUT_DIR',str(ROOT/'outputs/pilot_validation/offline_release')))
 COMMANDS=[
     ['test_models.py'],['test_baseline.py'],['test_agent.py'],['test_llm.py'],
     ['test_perception.py'],['test_ingest.py'],['test_checks.py'],['test_api.py'],
