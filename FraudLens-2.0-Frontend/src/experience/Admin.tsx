@@ -338,7 +338,8 @@ export default function Admin() {
       });
       setHumanAction("Approve");
       await open(detail.id);
-      await load();
+      // The queue effect reloads on return to the queue. Fetching its hidden
+      // page here keeps human review busy for another cloud round trip.
     } catch (e) {
       setError((e as Error).message);
     } finally {

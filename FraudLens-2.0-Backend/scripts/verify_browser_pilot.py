@@ -58,6 +58,7 @@ def admin_action(page,action,reason,public,requested=None):
     with page.expect_response(lambda r:r.request.method=='POST' and r.url.endswith('/action'),timeout=60000) as response:
         page.get_by_role('button',name='Record human decision',exact=True).click()
     assert response.value.status==200,response.value.text()
+    expect(page.get_by_role('button',name='Record human decision',exact=True)).to_be_enabled(timeout=45000)
 
 
 def fill_intake(page,kind,photos):

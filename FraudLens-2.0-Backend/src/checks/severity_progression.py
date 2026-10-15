@@ -99,7 +99,7 @@ class SeverityProgressionCheck(Check):
     weight = 1.0
     attributed_to = "vehicle"
     limitation = (
-        "Every case carries a unique registration, so no vehicle claims twice; verified 8/8 on expanded injected oscillating sequences with 0/12 monotone/repaired controls flagged."
+        "The original unaugmented research corpus used unique registrations. In authored scenarios, 8/8 oscillating sequences were flagged with 0/12 monotone/repaired controls flagged; this does not establish prospective accuracy."
     )
 
     def run(self, ctx: CheckContext) -> list[Finding]:
