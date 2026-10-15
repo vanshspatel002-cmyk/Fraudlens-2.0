@@ -46,7 +46,7 @@ unflagged reuse is the more expensive error.
 
 from __future__ import annotations
 
-from .. import ingest
+from .. import db, ingest
 from ..models import CheckCategory, Finding, Image, Verdict
 from .base import Check, CheckContext, register_check
 
@@ -248,6 +248,18 @@ class InternalDuplicateCheck(Check):
         if mine > other.created_at:
             return "later"
         return "unknown"  # exact tie: cannot apportion, so fall through to CONCERN
+
+    @staticmethod
+    def _compared_count(ctx: CheckContext) -> int:
+        """Retain a count-only query for callers that do not run a search.
+
+        The check itself counts its loaded snapshot to avoid another query;
+        count-only callers must not hydrate the corpus just to get this metric.
+        """
+        nonnull = "jsonb_typeof(embedding::jsonb)<>'null'" if db.is_postgres(ctx.conn) else "json_type(embedding)<>'null'"
+        return ctx.conn.execute("""SELECT COUNT(*) FROM images
+            WHERE case_id<>? AND embedding IS NOT NULL AND """ + nonnull,
+            (ctx.case.case_id,)).fetchone()[0]
 
     def _verdict_for(
         self,
