@@ -212,3 +212,38 @@ def test_concurrent_reader_initialization_never_returns_half_loaded_state(monkey
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         results=list(pool.map(lambda _:plate_ocr.get_reader(),range(4)))
     assert calls==[1] and all(value is reader for value in results)
+
+
+@pytest.mark.parametrize('query', [[1.,0.],[0.,1.],[0.,0.]])
+def test_similarity_snapshot_preserves_original_order_scores_and_null_semantics(query):
+    import numpy as np
+    from src.ingest import SimilarityIndex
+    images=[SimpleNamespace(image_id=str(i),case_id=case,embedding=embedding)
+        for i,(case,embedding) in enumerate([
+            ('own',[1.,0.]),('other',[1.,0.]),('other',[1.,0.]),
+            ('other',[0.,0.]),('other',None),('other',[0.,1.])])]
+    candidates=[image for image in images if image.case_id!='own' and image.embedding is not None]
+    matrix=np.asarray([image.embedding for image in candidates],dtype=np.float64)
+    denom=np.linalg.norm(matrix,axis=1)*np.linalg.norm(query)
+    scores=np.divide(matrix@query,denom,out=np.zeros_like(denom),where=denom!=0)
+    expected=[] if not np.linalg.norm(query) else [(candidates[i],float(scores[i])) for i in np.argsort(-scores)[:3]]
+    assert SimilarityIndex(images,'own').search(query,3)==expected
+    assert SimilarityIndex([],'own').search(query)==[]
+
+
+def test_duplicate_snapshot_loads_once_per_invocation_and_sees_new_evidence(monkeypatch):
+    from datetime import timedelta
+    from src.checks.duplicate import InternalDuplicateCheck
+    case=SimpleNamespace(case_id='own',created_at=datetime(2026,1,2,tzinfo=timezone.utc))
+    own=[SimpleNamespace(image_id='own-'+str(i),case_id='own',embedding=[1.,0.],phash='00') for i in range(2)]
+    pool=[SimpleNamespace(image_id='unrelated',case_id='other',embedding=[0.,1.],phash='ff')]
+    loads=[]
+    monkeypatch.setattr(db,'get_all_images',lambda conn:loads.append(1) or list(pool))
+    monkeypatch.setattr(db,'get_case',lambda *args:SimpleNamespace(created_at=case.created_at-timedelta(days=1)))
+    ctx=CheckContext(None,case,own,{})
+    first=InternalDuplicateCheck().run(ctx)
+    assert len(loads)==1 and all(f.verdict is Verdict.PASS for f in first)
+    pool.append(SimpleNamespace(image_id='new',case_id='earlier',embedding=[1.,0.],phash='00'))
+    second=InternalDuplicateCheck().run(ctx)
+    assert len(loads)==2 and all(f.verdict is Verdict.CONCERN for f in second)
+    assert all(f.evidence['images_compared']==2 and f.evidence['matched_image_id']=='new' for f in second)

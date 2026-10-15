@@ -389,3 +389,29 @@ def test_postgres_operations_observes_external_database_leader(client):
         assert client.get('/v1/operations',headers=headers).json()['database_worker_leader_present'] is False
     finally:
         guard.close()
+
+
+def test_postgres_duplicate_snapshot_reads_fresh_evidence_once(client,monkeypatch):
+    from src.checks.base import CheckContext
+    from src.checks.duplicate import InternalDuplicateCheck
+    from src.models import Verdict
+    first=submit(client).json()
+    second=submit(client).json()
+    original=db.get_all_images;loads=[]
+    def load(conn):
+        loads.append(1)
+        return original(conn)
+    monkeypatch.setattr(db,'get_all_images',load)
+    with runtime_store.connection('postgresql') as conn:
+        case=db.get_case(conn,second['case_id'])
+        images=db.get_images_for_case(conn,case.case_id)
+        check=InternalDuplicateCheck()
+        initial=check.run(CheckContext(conn,case,images+images,{}))
+        assert len(loads)==1 and len(initial)==2
+        assert all(f.verdict is Verdict.CONCERN and f.evidence['images_compared']==1 for f in initial)
+    third=submit(client).json()
+    with runtime_store.connection('postgresql') as conn:
+        case=db.get_case(conn,third['case_id'])
+        current=check.run(CheckContext(conn,case,db.get_images_for_case(conn,case.case_id),{}))
+        assert len(loads)==2 and current[0].evidence['images_compared']==2
+        assert current[0].verdict is Verdict.CONCERN

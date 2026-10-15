@@ -28,6 +28,7 @@ from PIL import Image as PILImage
 
 from . import db
 from .models import AuditEvent, Case, Image
+from .timing import span
 
 # ---------------------------------------------------------------------------
 # Hashing
@@ -273,38 +274,51 @@ def ingest_case(
 # ---------------------------------------------------------------------------
 
 
+class SimilarityIndex:
+    """A single check's complete comparison snapshot, never a global cache.
+
+    Preserve the original float64 cosine calculation, candidate ordering and
+    top-k selection. Reusing the matrix within a case avoids downloading and
+    decoding every cloud-stored embedding again for each submitted image.
+    Construct a new snapshot for every check invocation so later submissions
+    and reprocessing cannot inherit a stale corpus.
+    """
+
+    def __init__(self, images: Sequence[Image], exclude_case: str):
+        self.candidates = [img for img in images if img.case_id != exclude_case and img.embedding is not None]
+        with span('similarity.prepare_matrix'):
+            self.matrix = np.asarray([c.embedding for c in self.candidates], dtype=np.float64)
+            self.norms = np.linalg.norm(self.matrix, axis=1) if self.candidates else None
+
+    @classmethod
+    def from_database(cls, conn, exclude_case: str):
+        with span('similarity.load_corpus'):
+            images = db.get_all_images(conn)
+        return cls(images, exclude_case)
+
+    def search(self, embedding: Sequence[float], top_k: int = 10) -> list[tuple[Image, float]]:
+        if not self.candidates:
+            return []
+        with span('similarity.search'):
+            query = np.asarray(embedding, dtype=np.float64)
+            query_norm = np.linalg.norm(query)
+            if query_norm == 0.0:
+                return []
+            denom = self.norms * query_norm
+            sims = np.divide(self.matrix @ query, denom, out=np.zeros_like(denom), where=denom != 0)
+            order = np.argsort(-sims)[:top_k]
+            return [(self.candidates[i], float(sims[i])) for i in order]
+
+
 def find_similar(
     conn: sqlite3.Connection,
     embedding: Sequence[float],
     exclude_case: str,
     top_k: int = 10,
 ) -> list[tuple[Image, float]]:
+    """Search the full corpus; callers may reuse SimilarityIndex within a run.
+
+    Database transfer and JSON decoding can dominate cloud-backed searches;
+    this remains an exact numpy search, with no sampling or threshold change.
     """
-    Brute-force cosine-similarity search over every embedding ever
-    ingested, excluding the querying case's own images. Done in numpy
-    because sqlite has no vector type: at 800 cases and a handful of
-    photos each, this is a few thousand 512-dim dot products end to
-    end, sub-millisecond, not worth indexing yet. The pgvector
-    migration note in db.py's module docstring is exactly for the day
-    that stops being true - swap this function's body for an
-    `ORDER BY embedding <=> query LIMIT top_k` ivfflat/hnsw query and
-    every caller of find_similar() is unaffected.
-    """
-    candidates = [
-        img for img in db.get_all_images(conn) if img.case_id != exclude_case and img.embedding is not None
-    ]
-    if not candidates:
-        return []
-
-    matrix = np.asarray([c.embedding for c in candidates], dtype=np.float64)
-    query = np.asarray(embedding, dtype=np.float64)
-    query_norm = np.linalg.norm(query)
-    if query_norm == 0.0:
-        return []
-
-    matrix_norms = np.linalg.norm(matrix, axis=1)
-    denom = matrix_norms * query_norm
-    sims = np.divide(matrix @ query, denom, out=np.zeros_like(denom), where=denom != 0)
-
-    order = np.argsort(-sims)[:top_k]
-    return [(candidates[i], float(sims[i])) for i in order]
+    return SimilarityIndex.from_database(conn, exclude_case).search(embedding, top_k)

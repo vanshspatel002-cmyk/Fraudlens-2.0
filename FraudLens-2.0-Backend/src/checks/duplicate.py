@@ -46,7 +46,7 @@ unflagged reuse is the more expensive error.
 
 from __future__ import annotations
 
-from .. import db, ingest
+from .. import ingest
 from ..models import CheckCategory, Finding, Image, Verdict
 from .base import Check, CheckContext, register_check
 
@@ -118,19 +118,18 @@ class InternalDuplicateCheck(Check):
         cosine_inconclusive = cfg.get("duplicate_cosine_inconclusive", self.COSINE_INCONCLUSIVE)
         top_k = cfg.get("duplicate_top_k", self.TOP_K)
 
-        # Computed once per case, not once per image: it depends only on
-        # ctx.case.case_id (the exclusion), which every image in this
-        # run() call shares. find_similar() already re-scans the whole
-        # images table internally on every call it makes (one per image);
-        # doing this same scan again per image on top of that would
-        # double this check's cost against the corpus for no reason.
-        compared = self._compared_count(ctx)
+        # A run-local snapshot avoids repeating the entire cloud transfer,
+        # JSON decoding and matrix construction for each image. It is rebuilt
+        # on every invocation, including after additional evidence arrives.
+        comparison = ingest.SimilarityIndex.from_database(ctx.conn, ctx.case.case_id)
+        compared = len(comparison.candidates)
 
         findings: list[Finding] = []
         for image in ctx.images:
             findings.append(
                 self._check_one_image(
-                    ctx, image, compared, hamming_concern, cosine_concern, cosine_floor, cosine_inconclusive, top_k
+                    ctx, image, compared, hamming_concern, cosine_concern, cosine_floor, cosine_inconclusive, top_k,
+                    comparison
                 )
             )
         return findings
@@ -145,6 +144,7 @@ class InternalDuplicateCheck(Check):
         cosine_floor: float,
         cosine_inconclusive: float,
         top_k: int,
+        comparison: ingest.SimilarityIndex | None = None,
     ) -> Finding:
         if image.embedding is None:
             return Finding(
@@ -157,7 +157,8 @@ class InternalDuplicateCheck(Check):
                 evidence={"image_id": image.image_id},
             )
 
-        matches = ingest.find_similar(ctx.conn, image.embedding, exclude_case=ctx.case.case_id, top_k=top_k)
+        matches = (comparison.search(image.embedding, top_k) if comparison is not None else
+                   ingest.find_similar(ctx.conn, image.embedding, exclude_case=ctx.case.case_id, top_k=top_k))
 
         if not matches:
             return Finding(
@@ -247,15 +248,6 @@ class InternalDuplicateCheck(Check):
         if mine > other.created_at:
             return "later"
         return "unknown"  # exact tie: cannot apportion, so fall through to CONCERN
-
-    @staticmethod
-    def _compared_count(ctx: CheckContext) -> int:
-        # This metric needs neither decoded embeddings nor hydrated Image
-        # objects. Keep the comparison pool identical to find_similar().
-        nonnull = "jsonb_typeof(embedding::jsonb)<>'null'" if db.is_postgres(ctx.conn) else "json_type(embedding)<>'null'"
-        return ctx.conn.execute("""SELECT COUNT(*) FROM images
-            WHERE case_id<>? AND embedding IS NOT NULL AND """ + nonnull,
-            (ctx.case.case_id,)).fetchone()[0]
 
     def _verdict_for(
         self,
