@@ -110,6 +110,13 @@ def process_case(
 
     started = time.monotonic()
     check_options = {'config': {'cache_ocr': True, 'plate_ocr_observed_prefix': True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
+    if check_options:
+        # New intake records this in a server-written audit, never applicant
+        # narrative text. Legacy generated UTC tags are local wall-clock values.
+        gate = next((e for e in db.get_audit_events_for_case(conn, case_id)
+                     if e.event_type == 'vehicle_image_gate'), None)
+        check_options['config']['scene_time_basis'] = (gate.details.get('declared_time_basis', 'unverified')
+                                                     if gate else 'unverified')
     from src.timing import span
     def check_started(check_id, index, total):
         # Only optional observations/cache writes exist at this point. Release

@@ -25,6 +25,7 @@ COMMANDS=[
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--resume',action='store_true',help='Keep verified completed runners; use new logs for interrupted/failed attempts.')
+    parser.add_argument('--rerun',nargs='*',default=[],help='Runner names to repeat after relevant source changes; preserves earlier logs.')
     args=parser.parse_args()
     OUT.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy()
@@ -38,7 +39,7 @@ def main():
         name=command[0] if command[0]!='-m' else 'focused-pytest'
         logfile=OUT/(Path(name).stem+'.log')
         previous=next((r for r in saved if r['runner']==name),None)
-        if previous and previous['exit_code']==0 and previous['counts']['failed']==0:
+        if previous and previous['exit_code']==0 and previous['counts']['failed']==0 and name not in args.rerun:
             if previous['command'] != [sys.executable,*command] or not (ROOT/previous['log']).is_file():
                 raise SystemExit('Saved runner does not match this command/log: '+name)
             results.append(previous)

@@ -41,6 +41,28 @@ def test_selected_context_pattern_does_not_invent_a_contradiction():
     assert not result.evidence['subchecks_fired']
 
 
+def test_production_scene_uses_recorded_instant_without_second_timezone_shift(monkeypatch):
+    from src.checks import scene_consistency as scene
+    case,image,record=scene_inputs();captured=[]
+    monkeypatch.setattr(scene,'solar_position',lambda instant,*a:captured.append(instant) or None)
+    monkeypatch.setattr(scene,'fetch_weather',lambda *a:None)
+    ctx=CheckContext(None,case,[image],{image.content_hash:record},config={'scene_time_basis':'aware_instant'})
+    finding=scene.SceneConsistencyCheck().run(ctx)[0]
+    assert captured==[case.declared_time]
+    assert finding.evidence['declared_utc_instant']==case.declared_time.isoformat()
+    assert finding.evidence['declared_local_time'] is None
+    assert scene.local_wallclock_to_utc(case.declared_time,case.latitude,case.longitude)!=case.declared_time
+
+
+def test_production_unverified_time_basis_abstains_without_lookups(monkeypatch):
+    from src.checks import scene_consistency as scene
+    case,image,record=scene_inputs()
+    monkeypatch.setattr(scene,'solar_position',lambda *a:pytest.fail('Unverified time sent to solar calculation'))
+    monkeypatch.setattr(scene,'fetch_weather',lambda *a:pytest.fail('Unverified time sent to weather lookup'))
+    ctx=CheckContext(None,case,[image],{image.content_hash:record},config={'scene_time_basis':'unverified'})
+    assert scene.SceneConsistencyCheck().run(ctx)[0].verdict is Verdict.INCONCLUSIVE
+
+
 @pytest.mark.parametrize('observations,registration,status,comparison,verdict',[
     ([], 'MH12AB1234', 'no_text_detected', None, Verdict.INCONCLUSIVE),
     ([(None,'unreadable lettering',.9)], 'MH12AB1234', 'no_plate_candidate', None, Verdict.INCONCLUSIVE),

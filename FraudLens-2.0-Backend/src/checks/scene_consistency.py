@@ -429,7 +429,14 @@ class SceneConsistencyCheck(Check):
             # INCONCLUSIVE for these images.
             return []
 
-        when_utc = local_wallclock_to_utc(case.declared_time, case.latitude, case.longitude)
+        basis = ctx.config.get('scene_time_basis', 'legacy_local_wallclock')
+        if basis == 'unverified' or (basis == 'aware_instant' and case.declared_time.utcoffset() is None):
+            return [Finding(check_id=self.check_id,case_id=case.case_id,category=self.category,
+                verdict=Verdict.INCONCLUSIVE,confidence=0.0,
+                explanation='The declared timestamp basis was not verified; scene time/place comparison could not run.',
+                evidence={'image_id':image.image_id,'declared_time_basis':'unverified'}) for image in perceived]
+        when_utc = (case.declared_time.astimezone(timezone.utc) if basis == 'aware_instant' else
+                    local_wallclock_to_utc(case.declared_time, case.latitude, case.longitude))
         solar = solar_position(when_utc, case.latitude, case.longitude)
         weather = fetch_weather(ctx.conn, case.latitude, case.longitude, when_utc.date().isoformat())
 
@@ -641,12 +648,17 @@ class SceneConsistencyCheck(Check):
 
         evidence: dict[str, Any] = {
             "image_id": image.image_id,
-            "declared_local_time": case.declared_time.replace(tzinfo=None).isoformat(),
+            "declared_local_time": (None if ctx.config.get('scene_time_basis') == 'aware_instant'
+                                    else case.declared_time.replace(tzinfo=None).isoformat()),
             "declared_utc_instant": when_utc.isoformat(),
             "latitude": case.latitude,
             "longitude": case.longitude,
             "declared_location": case.declared_location,
         }
+
+        if 'scene_time_basis' in ctx.config:
+            evidence.update(recorded_declared_time=case.declared_time.isoformat(),
+                            declared_time_basis=ctx.config['scene_time_basis'])
 
         shadow_issues = self._shadow_subcheck(perception, solar, evidence)
         weather_issues = self._weather_subcheck(perception, weather, evidence, when_utc.hour)
@@ -692,6 +704,8 @@ class SceneConsistencyCheck(Check):
             # misreading.
             confidence = min(0.9, 0.55 + 0.15 * (len(evidence["subchecks_fired"]) - 1))
             local = case.declared_time.replace(tzinfo=None).strftime("%H:%M on %d %b %Y")
+            if ctx.config.get('scene_time_basis') == 'aware_instant':
+                local = when_utc.strftime('%H:%M UTC on %d %b %Y')
             where = case.declared_location or f"{case.latitude:.3f}, {case.longitude:.3f}"
             joined = "; and ".join(contradictions)
             return finding(

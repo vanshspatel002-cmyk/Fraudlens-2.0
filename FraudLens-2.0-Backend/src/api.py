@@ -1963,7 +1963,7 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                         network_stopped = True
             _set_job(job_id, stage='evidence checks', progress=0.6, perception_sources=perception_sources,
                      provider_request_profile=getattr(provider,'request_profile','unrecorded'),
-                     checks_revision='plate-ocr-observed-prefix-v2')
+                     checks_revision='production-checks-2026-10-15-v2')
             adjudicator = provider
             if perception_errors:
                 class UnavailableVision:
@@ -2229,6 +2229,7 @@ def submit_case(
             event_type="vehicle_image_gate",
             case_id=case_id,
             details={"vehicle_score_threshold": vehicle_gate.VEHICLE_SCORE_THRESHOLD,
+                     "declared_time_basis": 'aware_instant' if declared_time is not None and declared_time.utcoffset() is not None else 'unverified',
                      "margin_floor": vehicle_gate.VEHICLE_MARGIN_FLOOR,
                      "scores": [score.to_dict() for score in scores]},
         ))

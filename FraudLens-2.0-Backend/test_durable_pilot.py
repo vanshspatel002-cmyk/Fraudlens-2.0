@@ -381,6 +381,31 @@ def test_run_audit_records_adjudication_response_source(client,monkeypatch,cache
         assert event.details['run_id']==receipt['job_id'] and event.details['model_response_sources']==sources
 
 
+@pytest.mark.parametrize('timestamp,basis',[
+    ('2026-10-13T06:30:00Z','aware_instant'),('2026-10-13T12:00:00','unverified')])
+def test_intake_records_trusted_time_basis_for_production_checks(client,monkeypatch,timestamp,basis):
+    from src import orchestrator
+    from src.agent.engine import AdjudicationResult
+    from src.agent.production_policy import production_policy
+    receipt=client.post('/v1/cases',data={'agent_type':'claims','vehicle_registration':'MH12AB1234',
+        'declared_time':timestamp,'latitude':'22.3','longitude':'73.2'},
+        files={'images':('vehicle.png',photo(),'image/png')}).json()
+    captured=[]
+    monkeypatch.setattr(orchestrator,'run_checks',lambda *a,**kw:captured.append(kw['config']) or [])
+    def adjudicate(conn,case,findings,policy,provider):
+        decision=AgentDecision(case_id=case.case_id,recommendation=Recommendation.ESCALATE,
+            risk_band=RiskBand.DESK_REVIEW,confidence=.3,summary='Offline time-basis fixture',
+            supporting_finding_ids=[],requested_artifacts=[],policy_version=policy.policy_version)
+        return AdjudicationResult(decision,[],converged=False)
+    monkeypatch.setattr(orchestrator,'adjudicate',adjudicate)
+    with runtime_store.connection(api.DB_PATH) as conn:
+        orchestrator.process_case(conn,receipt['case_id'],provider=object(),
+            policy=production_policy('claims'),run_id=receipt['job_id'],persist=False)
+        gate=next(e for e in db.get_audit_events_for_case(conn,receipt['case_id']) if e.event_type=='vehicle_image_gate')
+        assert gate.details['declared_time_basis']==basis
+        assert captured[0]['scene_time_basis']==basis
+
+
 def test_job_order_does_not_depend_on_wall_clock(client,monkeypatch):
     first=submit(client).json();finish(first['case_id'])
     monkeypatch.setattr(runtime_store.time,'time',lambda:1)
