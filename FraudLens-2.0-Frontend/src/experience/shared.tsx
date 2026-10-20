@@ -1,4 +1,5 @@
 import { useState, useEffect, type ReactNode } from "react";
+import { customerToken, clearCustomerSession } from './customer-api';
 export const categories = ["Identity", "History", "Provenance", "Context", "Economic"];
 export const recommendations = [
   "Clear",
@@ -355,12 +356,15 @@ const authHeaders = (): Record<string, string> =>
   adminToken() ? { Authorization: "Bearer " + adminToken() } : {};
 type ApiRecord = Record<string, unknown>;
 const stringValue = (value: unknown) => String(value || "");
-async function request(path: string, options: RequestInit = {}): Promise<ApiRecord> {
+async function request(path: string, options: RequestInit = {}, scope: 'reviewer'|'customer'|'public' = 'reviewer'): Promise<ApiRecord> {
   const headers = new Headers(options.headers);
-  for (const [k, v] of Object.entries(authHeaders())) headers.set(k, v);
+  if (scope === 'reviewer') for (const [k, v] of Object.entries(authHeaders())) headers.set(k, v);
+  if (scope === 'customer' && customerToken()) headers.set('Authorization', 'Bearer ' + customerToken());
+  const sentAuthorization = headers.get('Authorization') || '';
   let r: Response;
   try {
-    r = await fetch(API_BASE + path, { ...options, headers });
+    r = await fetch(API_BASE + path, { ...options, headers,
+      signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000) });
   } catch {
     throw new Error("The FraudLens API is unreachable. Check the backend service and try again.");
   }
@@ -386,7 +390,14 @@ async function request(path: string, options: RequestInit = {}): Promise<ApiReco
         .filter(Boolean)
         .join("; ")
     : "";
-  if (r.status === 401 && path !== '/v1/auth/login' && headers.has('Authorization')) {
+  if (path !== '/v1/auth/login' && scope !== 'public' && sentAuthorization &&
+      sentAuthorization !== 'Bearer ' + (scope === 'customer' ? customerToken() : adminToken())) {
+    throw new Error('Your session changed. Reload this view to continue.');
+  }
+  if (r.status === 401 && scope === 'customer') {
+    clearCustomerSession(); window.dispatchEvent(new Event('fraudlens-customer-session-expired'));
+  }
+  if (r.status === 401 && scope === 'reviewer' && path !== '/v1/auth/login' && headers.has('Authorization')) {
     sessionStorage.removeItem('fraudlens_admin_token');
     sessionStorage.removeItem('fraudlens_admin_email');
     imageUrls.forEach(url => URL.revokeObjectURL(url)); imageUrls.clear();
@@ -431,7 +442,7 @@ function mapFormData(input: FormData) {
   const claims = input.get("kind") !== "underwriting";
   out.set("agent_type", claims ? "claims" : "underwriting");
   out.set("claim_type", claims ? "motor_claim" : "underwriting_inspection");
-  out.set('declaration_notes', [input.get('condition') ? 'Declared vehicle condition: '+String(input.get('condition')) : '', String(input.get('description') || '')].filter(Boolean).join('\n'));
+  out.set('declaration_notes', [input.get('applicationType') ? 'Application type: '+String(input.get('applicationType')) : '', input.get('condition') ? 'Declared vehicle condition: '+String(input.get('condition')) : '', String(input.get('description') || '')].filter(Boolean).join('\n'));
   out.set("person_name", String(input.get("name") || ""));
   out.set("person_contact", [input.get("email"), input.get("phone")].filter(Boolean).join(" / "));
   out.set("person_address", String(input.get("address") || ""));
@@ -557,13 +568,16 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
     return request("/v1/auth/session");
   }
   if (path === "logout") {
+    const logoutToken = adminToken();
     try {
       await request("/v1/auth/logout", { method: "POST" });
     } finally {
-      sessionStorage.removeItem("fraudlens_admin_email");
-      sessionStorage.removeItem("fraudlens_admin_token");
-      imageUrls.forEach((url) => URL.revokeObjectURL(url));
-      imageUrls.clear();
+      if (logoutToken === adminToken()) {
+        sessionStorage.removeItem("fraudlens_admin_email");
+        sessionStorage.removeItem("fraudlens_admin_token");
+        imageUrls.forEach((url) => URL.revokeObjectURL(url));
+        imageUrls.clear();
+      }
     }
     return { ok: true };
   }
@@ -592,6 +606,8 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
           garage: stringValue(r.garage_id),
           amount: Number(r.claim_amount || 0),
           status: stringValue(r.status) || "open",
+          processingStatus: stringValue(r.processing_status) || 'not_started',
+          outcome: stringValue(r.final_admin_action),
           recommendation: recommendation(stringValue(r.recommendation), stringValue(r.risk_band)),
           risk: band(stringValue(r.risk_band)),
           created_at: stringValue(r.created_at) || new Date().toISOString(),
@@ -605,7 +621,7 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
     return caseDetail(new URLSearchParams(path.slice(path.indexOf("?"))).get("id") || "");
   if (path === "submit" && options?.body instanceof FormData) {
     const j = await request('/v1/cases', { method: 'POST', body: mapFormData(options.body),
-      headers: {'Idempotency-Key': String(options.body.get('submissionKey') || crypto.randomUUID())} });
+      headers: {'Idempotency-Key': String(options.body.get('submissionKey') || crypto.randomUUID())} }, 'customer');
     if (j.applicant_token) sessionStorage.setItem('fraudlens_applicant_' + j.case_id, String(j.applicant_token));
     if (j.job_id) sessionStorage.setItem('fraudlens_job_' + j.job_id, String(j.case_id));
     return { id: j.case_id, case_id: j.case_id, job_id: j.job_id, status: j.status, applicant_token: j.applicant_token };
@@ -613,7 +629,7 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
   if (path.startsWith("job?id=")) {
     const jobId = path.slice('job?id='.length);
     const caseId = sessionStorage.getItem('fraudlens_job_' + jobId) || '';
-    return request('/v1/jobs/' + encodeURIComponent(jobId), {headers: {'X-Applicant-Token': applicantToken(caseId)}});
+    return request('/v1/jobs/' + encodeURIComponent(jobId), {headers: {'X-Applicant-Token': applicantToken(caseId)}}, customerToken() ? 'customer' : 'public');
   }
   if (path.startsWith("track") && options?.body) {
     const b = JSON.parse(String(options.body));
@@ -622,7 +638,8 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
       registration_number: b.identifier,
       policy_number: b.identifier,
     });
-    return publicCase(await request("/v1/track?" + qs));
+    return publicCase(await request("/v1/track?" + qs,
+      {headers:{'X-Applicant-Token': String(b.receipt || applicantToken(b.id))}}, customerToken() ? 'customer' : 'public'));
   }
   if (path === "action" && options?.body) {
     const b = JSON.parse(String(options.body));
@@ -642,6 +659,9 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
         public_message: b.publicNarrative || null,
         requested_artifacts: b.requestedArtifacts || [],
         expected_revision: b.version,
+        expected_run_id: b.reviewedRunId || null,
+        expected_evidence_ids: b.reviewedEvidenceIds || null,
+        manual_review_override: !!b.manualReviewOverride,
       }),
     });
   }
@@ -657,7 +677,7 @@ export async function submitAdditionalEvidence(id: string, requestId: string, fi
   files.forEach(file => body.append('images', file));
   const result = await request('/v1/cases/' + encodeURIComponent(id) + '/evidence', {
     method: 'POST', body, headers: {'X-Applicant-Token': token},
-  });
+  }, customerToken() ? 'customer' : 'public');
   sessionStorage.setItem('fraudlens_applicant_' + id, token);
   return result;
 }

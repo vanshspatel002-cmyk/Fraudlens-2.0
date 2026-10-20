@@ -1,5 +1,8 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Shell, Icon, Safety, useConfig, api } from "./shared";
+import Field from "./FieldSuggestions";
+import { sampleSuggestions, todayForInput, vehicleDependencyWarning } from "./sampleSuggestions";
+import { CustomerGate } from "./CustomerSession";
 const angles = [
   "Front left",
   "Front right",
@@ -23,63 +26,22 @@ type JobResult = {
 };
 const registrationPattern = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
 const maxUploadBytes = 5 * 1024 * 1024;
-function Field({
-  name,
-  label,
-  type = "text",
-  required = true,
-  options,
-  min,
-  max,
-}: {
-  name: string;
-  label: string;
-  type?: string;
-  required?: boolean;
-  options?: string[];
-  min?: string;
-  max?: string;
-}) {
-  return (
-    <label className="field">
-      <span>
-        {label}
-        {required ? " *" : ""}
-      </span>
-      {options ? (
-        <select name={name} required={required} defaultValue="">
-          <option value="" disabled>
-            Select an option
-          </option>
-          {options.map((o) => (
-            <option key={o}>{o}</option>
-          ))}
-        </select>
-      ) : (
-        <input
-          name={name}
-          type={type}
-          required={required}
-          maxLength={type === "text" ? 160 : undefined}
-          min={min}
-          max={max}
-        />
-      )}
-    </label>
-  );
-}
-export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
+function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
   const claims = kind === "claims",
     config = useConfig();
+  const [vehicle, setVehicle] = useState({ make: "", model: "", variant: "" });
+  const submissionInFlight = useRef(false);
+  const samples = (name: string) => sampleSuggestions(name, { kind, ...vehicle });
+  const vehicleWarning = vehicleDependencyWarning(vehicle.make, vehicle.model, vehicle.variant);
   const [files, setFiles] = useState<Record<string, File>>({}),
     [previews, setPreviews] = useState<Record<string, string>>({}),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [jobStatus, setJobStatus] = useState(""),
     [result, setResult] = useState<SubmitResult | null>(null),
-    [submissionKey] = useState(() => typeof crypto !== 'undefined' ? crypto.randomUUID() : '');
+    [submissionKey] = useState(() => (typeof crypto !== "undefined" ? crypto.randomUUID() : ""));
   useEffect(() => {
     const urls = Object.fromEntries(
       Object.entries(files).map(([k, f]) => [k, URL.createObjectURL(f)]),
@@ -123,25 +85,47 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
     }
     return "";
   }
-  async function waitForJob(jobId: string) {
+  useEffect(() => {
+    if (!result?.job_id) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
     const delays = [900, 1400, 2200, 3400, 5000, 5000, 5000, 5000];
-    for (let i = 0; i < delays.length; i += 1) {
-      const job = (await api("job?id=" + encodeURIComponent(jobId))) as JobResult;
-      const pct = Math.round(Number(job.progress || 0) * 100);
-      setJobStatus(
-        ['done', 'completed'].includes(job.status || '')
-          ? job.provider_unavailable ? "Automated analysis could not complete. A reviewer will assess your evidence." : "Analysis complete. Awaiting a human decision."
-          : job.status === "failed"
-            ? job.detail || "The background analysis failed."
-            : `${job.stage || job.status || "queued"}${pct ? ` - ${pct}%` : ""}`,
-      );
-      if (['done', 'completed'].includes(job.status || '')) return;
-      if (['failed','interrupted'].includes(job.status || '')) return;
-      await new Promise((resolve) => setTimeout(resolve, delays[i]));
+    async function poll() {
+      try {
+        const job = (await api("job?id=" + encodeURIComponent(result!.job_id!))) as JobResult;
+        if (stopped) return;
+        const pct = Math.round(Number(job.progress || 0) * 100);
+        setJobStatus(
+          ["done", "completed"].includes(job.status || "")
+            ? job.provider_unavailable
+              ? "Automated analysis could not complete. A reviewer will assess your evidence."
+              : "Analysis complete. Awaiting a human decision."
+            : ["failed", "interrupted"].includes(job.status || "")
+              ? "Background analysis is incomplete. Your case is saved; check your dashboard for review and recovery updates."
+              : `${job.stage || job.status || "queued"}${pct ? ` - ${pct}%` : ""}`,
+        );
+        if (["done", "completed", "failed", "interrupted"].includes(job.status || "")) return;
+        attempts += 1;
+        if (attempts < delays.length) timer = setTimeout(poll, delays[attempts]);
+        else
+          setJobStatus(
+            "Your case is saved and processing continues. Follow progress in your dashboard.",
+          );
+      } catch {
+        if (!stopped)
+          setJobStatus("Your case is saved. Open your dashboard to refresh its processing status.");
+      }
     }
-  }
+    timer = setTimeout(poll, delays[0]);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [result]);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submissionInFlight.current || result) return;
     setError("");
     setJobStatus("");
     if (!config?.intake) {
@@ -164,7 +148,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
       return;
     }
     const data = new FormData(e.currentTarget);
-    data.set('submissionKey', submissionKey);
+    data.set("submissionKey", submissionKey);
     data.set("kind", kind);
     data.set(
       "registration",
@@ -173,17 +157,19 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
         .toUpperCase(),
     );
     Object.entries(files).forEach(([label, f]) => data.append("photo:" + label, f));
+    submissionInFlight.current = true;
     setBusy(true);
     try {
       setJobStatus("Uploading and validating vehicle photographs...");
       const submitted = (await api("submit", { method: "POST", body: data })) as SubmitResult;
       setResult(submitted);
-      setJobStatus("Case accepted. Waiting for background analysis...");
-      if (submitted.job_id) await waitForJob(submitted.job_id);
-      setResult(submitted);
+      setJobStatus(
+        "Case accepted and queued for background analysis. A reviewer has not made a decision yet.",
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {
+      submissionInFlight.current = false;
       setBusy(false);
     }
   }
@@ -215,7 +201,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
               <li>JPG, PNG or WebP, up to 5 MB each</li>
               <li>A human makes the final decision</li>
             </ul>
-            <a href="/track">Already applied? Track a case →</a>
+            <a href="/dashboard">Already applied? Open your dashboard →</a>
           </aside>
           {result ? (
             <section className="submitted">
@@ -224,17 +210,35 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
               <p>Save this case ID:</p>
               <code>{result.id}</code>
               <p role="status">{jobStatus}</p>
-              <details><summary>Save your private evidence access receipt</summary>
-                <p>This receipt lets you upload requested photographs for 30 days. Keep it private. It is saved in this tab's session.</p>
-                <textarea aria-label="Applicant access receipt" readOnly value={result.applicant_token || ''} rows={3} />
+              <details>
+                <summary>Save your private evidence access receipt</summary>
+                <p>
+                  This receipt lets you upload requested photographs for 30 days. Keep it private.
+                  It is saved in this tab's session.
+                </p>
+                <textarea
+                  aria-label="Applicant access receipt"
+                  readOnly
+                  value={result.applicant_token || ""}
+                  rows={3}
+                />
               </details>
-              {error && <p role="alert">Your case is saved. Status could not be refreshed: {error}</p>}
+              {error && (
+                <p role="alert">Your case is saved. Status could not be refreshed: {error}</p>
+              )}
               <p>
                 Your vehicle photographs have been accepted. The evidence will be reviewed and an
                 adjuster will record the final decision. A request for additional photographs will
                 name exactly what is needed.
               </p>
-              <a href={"/track?case=" + encodeURIComponent(result.id)}>Track this case →</a>
+              <p>
+                <a href={"/dashboard?case=" + encodeURIComponent(result.id)}>
+                  View this case in your dashboard →
+                </a>
+              </p>
+              <a href={"/track?case=" + encodeURIComponent(result.id)}>
+                Track with a private receipt →
+              </a>
             </section>
           ) : (
             <form className="intake-form" method="post" onSubmit={submit}>
@@ -247,40 +251,94 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
               <fieldset>
                 <legend>01 / {claims ? "Claimant" : "Applicant"} details</legend>
                 <div className="form-grid">
-                  <Field name="name" label="Full name" />
-                  <Field name="email" label="Email address" type="email" />
-                  <Field name="phone" label="Mobile number" type="tel" />
-                  <Field name="license" label="Driving license number" required={claims} />
-                  <label className="field full">
-                    <span>Address *</span>
-                    <textarea name="address" required maxLength={500} />
-                  </label>
+                  <Field suggestions={samples("name")} name="name" label="Full name" />
+                  <Field
+                    suggestions={samples("email")}
+                    name="email"
+                    label="Email address"
+                    type="email"
+                  />
+                  <Field
+                    suggestions={samples("phone")}
+                    name="phone"
+                    label="Mobile number"
+                    type="tel"
+                  />
+                  <Field
+                    suggestions={samples("license")}
+                    name="license"
+                    label="Driving license number"
+                    required={claims}
+                  />
+                  <Field
+                    suggestions={samples("address")}
+                    name="address"
+                    label="Address"
+                    full
+                    multiline
+                    maxLength={500}
+                  />
                 </div>
               </fieldset>
               <fieldset>
                 <legend>02 / Vehicle details</legend>
                 <div className="form-grid">
-                  <Field name="make" label="Make" />
-                  <Field name="model" label="Model" />
-                  <Field name="variant" label="Variant" />
                   <Field
+                    suggestions={samples("make")}
+                    name="make"
+                    label="Make"
+                    onValueChange={(make) => setVehicle((previous) => ({ ...previous, make }))}
+                  />
+                  <Field
+                    suggestions={samples("model")}
+                    name="model"
+                    label="Model"
+                    warning={vehicleWarning}
+                    onValueChange={(model) => setVehicle((previous) => ({ ...previous, model }))}
+                  />
+                  <Field
+                    suggestions={samples("variant")}
+                    name="variant"
+                    label="Variant"
+                    onValueChange={(variant) =>
+                      setVehicle((previous) => ({ ...previous, variant }))
+                    }
+                  />
+                  <Field
+                    suggestions={samples("year")}
                     name="year"
                     label="Manufacturing year"
                     type="number"
                     min="1950"
-                    max="2027"
+                    max={String(new Date().getFullYear() + 1)}
                   />
-                  <Field name="registration" label="Registration number" />
-                  <Field name="engine" label="Engine number" />
-                  <Field name="chassis" label="Chassis number" />
-                  <Field name="idv" label="Insured declared value (₹)" type="number" min="1" />
+                  <Field
+                    suggestions={samples("registration")}
+                    name="registration"
+                    label="Registration number"
+                  />
+                  <Field suggestions={samples("engine")} name="engine" label="Engine number" />
+                  <Field suggestions={samples("chassis")} name="chassis" label="Chassis number" />
+                  <Field
+                    suggestions={samples("idv")}
+                    name="idv"
+                    label="Insured declared value (₹)"
+                    type="number"
+                    min="1"
+                  />
                 </div>
               </fieldset>
               <fieldset>
                 <legend>03 / Policy details</legend>
                 <div className="form-grid">
-                  <Field name="policy" label="Policy number" required={claims} />
                   <Field
+                    suggestions={samples("policy")}
+                    name="policy"
+                    label="Policy number"
+                    required={claims}
+                  />
+                  <Field
+                    suggestions={samples("policyType")}
                     name="policyType"
                     label="Policy type"
                     options={["Comprehensive", "Own damage", "Third party"]}
@@ -288,11 +346,13 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
                   {!claims && (
                     <>
                       <Field
+                        suggestions={samples("applicationType")}
                         name="applicationType"
                         label="Application type"
                         options={["New policy", "Renewal", "Break-in Inspection"]}
                       />
                       <Field
+                        suggestions={samples("previousPolicy")}
                         name="previousPolicy"
                         label="Previous policy number (if renewing)"
                         required={false}
@@ -300,6 +360,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
                     </>
                   )}
                   <Field
+                    suggestions={samples("ncb")}
                     name="ncb"
                     label="No-claim bonus (%)"
                     type="number"
@@ -314,17 +375,45 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
                 <div className="form-grid">
                   {claims ? (
                     <>
-                      <Field name="incidentDate" label="Incident date" type="date" />
-                      <Field name="incidentTime" label="Incident time (IST)" type="time" />
-                      <Field name="location" label="Incident location" />
-                      <Field name="amount" label="Claimed amount (₹)" type="number" min="1" />
-                      <Field name="garage" label="Repair garage" required={false} />
                       <Field
+                        suggestions={samples("incidentDate")}
+                        name="incidentDate"
+                        label="Incident date"
+                        type="date"
+                        max={todayForInput()}
+                      />
+                      <Field
+                        suggestions={samples("incidentTime")}
+                        name="incidentTime"
+                        label="Incident time (IST)"
+                        type="time"
+                      />
+                      <Field
+                        suggestions={samples("location")}
+                        name="location"
+                        label="Incident location"
+                      />
+                      <Field
+                        suggestions={samples("amount")}
+                        name="amount"
+                        label="Claimed amount (₹)"
+                        type="number"
+                        min="1"
+                      />
+                      <Field
+                        suggestions={samples("garage")}
+                        name="garage"
+                        label="Repair garage"
+                        required={false}
+                      />
+                      <Field
+                        suggestions={samples("settlement")}
                         name="settlement"
                         label="Settlement preference"
                         options={["Cashless", "Reimbursement"]}
                       />
                       <Field
+                        suggestions={samples("bankLast4")}
                         name="bankLast4"
                         label="Bank account last four digits only"
                         required={false}
@@ -332,6 +421,7 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
                     </>
                   ) : (
                     <Field
+                      suggestions={samples("condition")}
                       name="condition"
                       label="Declared vehicle condition"
                       options={[
@@ -341,18 +431,24 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
                       ]}
                     />
                   )}
-                  <label className="field full">
-                    <span>{claims ? "Describe the incident" : "Condition notes"} *</span>
-                    <textarea name="description" required maxLength={3000} rows={4} />
-                  </label>
+                  <Field
+                    suggestions={samples("description")}
+                    name="description"
+                    label={claims ? "Describe the incident" : "Condition notes"}
+                    full
+                    multiline
+                    maxLength={3000}
+                    rows={4}
+                  />
                 </div>
               </fieldset>
               <fieldset>
                 <legend>05 / Vehicle photographs</legend>
                 <p className="help">
-                  Images are decoded and indexed. A local classifier requires at least one likely vehicle view; it cannot establish authenticity.
-                  Missing EXIF metadata is neutral.
-                  {!claims && " View labels are your declarations; this system does not verify six views of the same vehicle."}
+                  Images are decoded and indexed. A local classifier requires at least one likely
+                  vehicle view; it cannot establish authenticity. Missing EXIF metadata is neutral.
+                  {!claims &&
+                    " View labels are your declarations; this system does not verify six views of the same vehicle."}
                 </p>
                 <div className="upload-grid">
                   {(claims
@@ -364,21 +460,41 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
                       ]
                     : angles
                   ).map((label) => (
-                    <label className="upload-slot" key={label}>
-                      {previews[label] ? (
-                        <img src={previews[label]} alt={label + " preview"} />
-                      ) : (
-                        <Icon name="upload" size={25} />
+                    <div className="upload-item" key={label}>
+                      <label className="upload-slot">
+                        {previews[label] ? (
+                          <img src={previews[label]} alt={label + " preview"} />
+                        ) : (
+                          <Icon name="upload" size={25} />
+                        )}
+                        <strong>{label}</strong>
+                        <span>{files[label] ? files[label].name : "Choose photograph"}</span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) => {
+                            choose(label, e.target.files?.[0]);
+                            e.currentTarget.value = "";
+                          }}
+                          aria-label={"Upload " + label}
+                        />
+                      </label>
+                      {files[label] && (
+                        <button
+                          className="upload-remove"
+                          type="button"
+                          onClick={() =>
+                            setFiles((previous) => {
+                              const next = { ...previous };
+                              delete next[label];
+                              return next;
+                            })
+                          }
+                        >
+                          Remove {label.toLowerCase()} photograph
+                        </button>
                       )}
-                      <strong>{label}</strong>
-                      <span>{files[label] ? files[label].name : "Choose photograph"}</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        onChange={(e) => choose(label, e.target.files?.[0])}
-                        aria-label={"Upload " + label}
-                      />
-                    </label>
+                    </div>
                   ))}
                 </div>
               </fieldset>
@@ -412,5 +528,13 @@ export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
         </div>
       </div>
     </Shell>
+  );
+}
+
+export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
+  return (
+    <CustomerGate>
+      <IntakeForm kind={kind} />
+    </CustomerGate>
   );
 }

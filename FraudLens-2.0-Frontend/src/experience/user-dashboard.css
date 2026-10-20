@@ -4,6 +4,15 @@
   min-height: 100dvh;
   isolation: isolate;
 }
+.ud-evidence-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px;margin:18px 0}
+.ud-evidence-gallery figure{margin:0;min-width:0}.ud-evidence-gallery img{display:block;width:100%;height:160px;object-fit:contain;background:#101818;border-radius:8px}
+.ud-evidence-gallery figcaption{font-size:12px;margin:8px 0;overflow-wrap:anywhere}.ud-evidence-gallery button{max-width:100%;overflow-wrap:anywhere}
+.ud-application{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:18px}
+.ud-application div{min-width:0}.ud-application dt{font-size:11px;color:var(--muted);text-transform:capitalize}.ud-application dd{margin:5px 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.ud-recorded-timeline{padding-left:20px}.ud-recorded-timeline li{padding:10px 0 14px 8px}.ud-recorded-timeline time{font-size:11px;color:var(--muted)}.ud-recorded-timeline h3{font-size:14px;margin:6px 0}.ud-recorded-timeline p{overflow-wrap:anywhere}
+.ud-customer-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.ud-customer-actions a{display:inline-flex;align-items:center;text-decoration:none;min-height:44px}
+.ud-case-heading h2{overflow-wrap:anywhere}.ud-panel{min-width:0}.ud-panel .field input[type=file]{width:100%;max-width:100%}
+@media(max-width:480px){.ud-header{gap:8px;padding:0 14px}.ud-header .brand{font-size:18px}.ud-header>div{gap:8px}.ud-header>div>a{display:none}.ud-header>div button{font-size:11px;padding:8px;min-height:44px}.ud-customer-actions>*{width:100%;justify-content:center}}
 .user-dashboard * {
   box-sizing: border-box;
 }

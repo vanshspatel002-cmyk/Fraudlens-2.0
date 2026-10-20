@@ -42,7 +42,7 @@ export default function Tracker() {
       return;
     }
     try {
-      setResult((await post("track", { id, identifier })) as TrackResult);
+      setResult((await post("track", { id, identifier, receipt })) as TrackResult);
       setReceipt(old => old || applicantToken(id));
     } catch (err) {
       setError((err as Error).message);
@@ -59,7 +59,7 @@ export default function Tracker() {
     try {
       await submitAdditionalEvidence(id, result.evidenceRequest.request_id, evidenceFiles, receipt.trim());
       setEvidenceFiles([]); setSuccess('Additional evidence accepted. Original evidence and previous decisions are preserved. Analysis is queued.');
-      setResult((await post('track', {id, identifier})) as TrackResult);
+      setResult((await post('track', {id, identifier, receipt})) as TrackResult);
     } catch (err) { setError((err as Error).message); }
     finally { setBusy(false); }
   }
@@ -74,11 +74,14 @@ export default function Tracker() {
             <span>Case ID</span>
             <input
               value={id}
-              onChange={(e) => setId(e.target.value)}
+              onChange={(e) => {setId(e.target.value); setReceipt(applicantToken(e.target.value));}}
               required
               maxLength={64}
               placeholder="Enter your case ID"
             />
+          </label>
+          <label className="field"><span>Private access receipt (or sign in to your account)</span>
+            <input aria-label="Tracking access receipt" value={receipt} onChange={e=>setReceipt(e.target.value)} autoComplete="off" maxLength={256} />
           </label>
           <label className="field">
             <span>Registration or policy number</span>

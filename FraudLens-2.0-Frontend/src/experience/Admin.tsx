@@ -1,4 +1,5 @@
 import HistoricalReport from './HistoricalReport';
+import ReportPanel from './ReportPanel';
 import EvidenceViewer from "./EvidenceViewer";
 import AdminOverview from "./AdminOverview";
 import "./admin-workspace.css";
@@ -53,6 +54,8 @@ type Row = {
   risk: string;
   created_at: string;
   thumbnail: string;
+  processingStatus?: string;
+  outcome?: string;
 };
 type CaseImage = { id: string; src: string; label: string };
 type TraceEntry = {
@@ -274,6 +277,7 @@ export default function Admin() {
   async function open(id: string) {
     const request = ++detailRequest.current;
     if (detail?.id !== id) {
+      setDetail(null);
       setDetailTab(tab === "Reports" ? "Report" : "Evidence");
       setHumanAction("Approve");
     }
@@ -319,10 +323,11 @@ export default function Admin() {
   ];
   async function action(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!detail) return;
+    if (!detail || loading) return;
     setError("");
     const f = new FormData(e.currentTarget);
-    if (f.get("action") !== "Approve" && !String(f.get("reason") || "").trim()) {
+    const manualReview = detail.analysisFallback || ['failed', 'interrupted'].includes(detail.processing?.status || '');
+    if ((f.get("action") !== "Approve" || manualReview) && !String(f.get("reason") || "").trim()) {
       setError("A written reason is required for this decision.");
       return;
     }
@@ -331,6 +336,9 @@ export default function Admin() {
       await post("action", {
         id: detail.id,
         version: detail.version,
+        reviewedRunId: detail.runId,
+        reviewedEvidenceIds: detail.images.map(image => image.id),
+        manualReviewOverride: f.get('manualReviewOverride') === 'on',
         action: f.get("action"),
         reason: f.get("reason"),
         publicNarrative: f.get("publicNarrative"),
@@ -590,9 +598,6 @@ export default function Admin() {
                     <section className="case-panel">
                       <div className="panel-title">
                         <h2>Declaration</h2>
-                        {detailTab === "Report" && (
-                          <button onClick={() => window.print()}>Print report</button>
-                        )}
                       </div>
                       <dl className="declaration">
                         {Object.entries(detail.declaration)
@@ -681,6 +686,7 @@ export default function Admin() {
                       <button type="button" disabled={loading} onClick={() => open(detail.id)}>Refresh case</button>
                       {detail.limitations?.length > 0 && <details open={detailTab==='Report'}><summary>Check and processing limitations</summary><ul>{detail.limitations.map(item => <li key={item}>{item}</li>)}</ul></details>}
                       {detail.evidenceRequest && <p>Reviewer requested: {detail.evidenceRequest.artifacts.join('; ')}</p>}
+                      <ReportPanel key={detail.id} caseId={detail.id} runId={detail.runId} processingStatus={detail.processing?.status} />
                       {detailTab === 'Report' && detail.reportHistory?.length > 0 && <label className="field report-history-selector"><span>Report history</span>
                         <select defaultValue="" onChange={async e => {
                           const snapshotId = e.currentTarget.value;
@@ -688,7 +694,7 @@ export default function Admin() {
                           if (!snapshotId) return;
                           try {
                             const report = await historicalReport(detail.id, snapshotId);
-                            const json = JSON.stringify(report, null, 2);
+                            const json = JSON.stringify({...report as Record<string, unknown>, snapshot_id: snapshotId}, null, 2);
                             setHistoricalReport(json);
                           } catch (err) {setError((err as Error).message);}
                         }}><option value="">Select a saved report</option>{detail.reportHistory.map(item => <option key={item.snapshot_id} value={item.snapshot_id}>{new Date(item.created_at * 1000).toLocaleString()} - {item.run_id || 'legacy'}</option>)}</select>
@@ -714,6 +720,8 @@ export default function Admin() {
                         </p>
                       )}
                       <form onSubmit={action}>
+                        {['queued','running'].includes(detail.processing?.status || '') && <p role="status">Wait for processing to finish before recording a decision.</p>}
+                        {['closed_approved','closed_rejected'].includes(detail.status) && <p role="status">A final decision has been recorded. Its history is preserved; refresh if another reviewer changed this case.</p>}
                         <label className="field">
                           <span>Action</span>
                           <select
@@ -728,29 +736,33 @@ export default function Admin() {
                           </select>
                         </label>
                         <label className="field">
-                          <span>Written reason / requested evidence</span>
+                          <span>Internal reviewer note / decision reason</span>
                           <textarea
                             name="reason"
-                            required={humanAction !== "Approve"}
+                            required={humanAction !== "Approve" || detail.analysisFallback || ['failed','interrupted'].includes(detail.processing?.status || '')}
                             maxLength={3000}
                             rows={4}
                           />
-                          <small>Required for Reject and Request More Evidence.</small>
+                          <small>Private to reviewers. Required for rejection, evidence requests and manual review overrides.</small>
                         </label>
+                        {(detail.analysisFallback || ['failed','interrupted'].includes(detail.processing?.status || '')) && humanAction !== 'Request More Evidence' && <label className="manual-review-consent">
+                          <input type="checkbox" name="manualReviewOverride" required />
+                          <span>Proceed with manual review because automated analysis is unavailable. Explain the evidence reviewed and the reason for this override in the internal note.</span>
+                        </label>}
                         {humanAction === 'Request More Evidence' && <label className="field">
                           <span>Specific photographs required (one per line)</span>
                           <textarea name="requestedArtifacts" required maxLength={3000} rows={3} placeholder="Original rear-left view showing the damaged panel" />
                         </label>}
                         <label className="field">
-                          <span>Public explanation *</span>
+                          <span>Customer-visible explanation *</span>
                           <textarea name="publicNarrative" required maxLength={1500} rows={3} />
                           <small>
                             Visible in the tracker. Do not include private findings, evidence or
                             investigation details.
                           </small>
                         </label>
-                        <button className="record-action" disabled={loading || userRole==='viewer'}>
-                          {loading ? "Recording…" : "Record human decision"}
+                        <button className="record-action" disabled={loading || userRole==='viewer' || ['queued','running'].includes(detail.processing?.status || '') || ['closed_approved','closed_rejected'].includes(detail.status)}>
+                          {loading ? "Recording…" : humanAction === 'Approve' ? 'Approve case' : humanAction === 'Reject' ? 'Reject case' : 'Request more evidence'}
                         </button>
                       </form>
                     </section>
@@ -765,7 +777,7 @@ export default function Admin() {
                   <Icon name="file" />
                   <div>
                     <h3>Case reports</h3>
-                    <p>Open a case to print or save its full report as a PDF.</p>
+                    <p>Open a case to preview or download its saved, private PDF report.</p>
                   </div>
                 </div>
               )}
@@ -865,7 +877,8 @@ export default function Admin() {
                           "Claim amount",
                           "Recommendation",
                           "Risk",
-                          "Status",
+                          "Processing",
+                          "Reviewer decision / submitted",
                         ].map((t) => (
                           <th key={t}>{t}</th>
                         ))}
@@ -906,8 +919,11 @@ export default function Admin() {
                             <span className={"risk risk-" + r.risk.toLowerCase()}>{r.risk}</span>
                           </td>
                           <td>
-                            {r.status}
-                            <small>{new Date(r.created_at).toLocaleDateString()}</small>
+                            {r.processingStatus || 'Not recorded'}
+                          </td>
+                          <td>
+                            {r.outcome || (r.status === 'awaiting_evidence' ? 'More evidence requested' : 'Awaiting review')}
+                            <small>{new Date(r.created_at).toLocaleString()}</small>
                           </td>
                         </tr>
                       ))}

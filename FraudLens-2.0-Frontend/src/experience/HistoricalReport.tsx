@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import ReportPanel from './ReportPanel';
 
 export default function HistoricalReport({ text, close }: {text: string; close: () => void}) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -9,9 +10,10 @@ export default function HistoricalReport({ text, close }: {text: string; close: 
   const declaration = (report.declaration || {}) as Record<string, unknown>;
   const findings = Object.values((report.findings_by_category || {}) as Record<string, Record<string, unknown>[]>).flat();
   return <dialog ref={dialog} aria-label="Historical report" className="report-history-dialog" onCancel={close}>
-    <div className="report-history-controls"><button onClick={close}>Close historical report</button><button onClick={() => window.print()}>Print saved report</button></div>
+    <div className="report-history-controls"><button onClick={close}>Close historical report</button></div>
     <h2>FraudLens saved report</h2>
     <p>Case: {String(report.case_id)} · Processing run: {String(report.run_id || 'legacy')}<br />Policy: {String(report.policy_version || 'unrecorded')}</p>
+    {!!report.snapshot_id && <ReportPanel caseId={String(report.case_id)} runId={String(report.run_id || '')} initialSnapshotId={String(report.snapshot_id)} />}
     <h3>Declaration at this report version</h3>
     <dl>{Object.entries(declaration).filter(([, value]) => value != null && value !== '').map(([key,value]) => <div key={key}><dt>{key.replaceAll('_',' ')}</dt><dd>{String(value)}</dd></div>)}</dl>
     <h3>Agent recommendation</h3><p>{String(agent.recommendation || 'No recorded recommendation')}</p><p>{String(report.agent_narrative || '')}</p>
