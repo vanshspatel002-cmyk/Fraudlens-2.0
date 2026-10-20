@@ -1,3 +1,12 @@
+# Current presentation workflow — 18–20 October 2026
+
+Use [PRESENTATION_HANDOVER.md](PRESENTATION_HANDOVER.md) for current customer
+accounts, ownership, field suggestions, PostgreSQL version 002, stored PDFs,
+review decisions, exact PowerShell startup, configuration names and rollback.
+See [PRESENTATION_VERIFICATION.md](PRESENTATION_VERIFICATION.md) for final-code
+evidence and external blockers. Earlier entries below are retained history;
+their account/storage/receipt limitations and test counts may be superseded.
+
 # FraudLens 2.0 pilot handover — 15 October 2026
 
 The local pilot now uses **Supabase PostgreSQL**, qualified through actual claims

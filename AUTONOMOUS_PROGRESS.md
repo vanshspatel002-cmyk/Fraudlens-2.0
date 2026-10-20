@@ -1,3 +1,24 @@
+# Presentation continuation — 18–20 October 2026
+
+Focused branch: `presentation/customer-workflow-20261018`, from `8e9a10f`.
+The eight pre-existing documentation changes were preserved and privately backed
+up before edits. [PRESENTATION_IMPLEMENTATION.md](PRESENTATION_IMPLEMENTATION.md)
+is the implementation checklist; [PRESENTATION_HANDOVER.md](PRESENTATION_HANDOVER.md)
+describes the final changes and startup; [PRESENTATION_VERIFICATION.md](PRESENTATION_VERIFICATION.md)
+records actual pass/failure evidence and remaining external limitations.
+
+PostgreSQL 002 was applied only after new consistent private backups. All 20
+pre-existing application-table digests remained unchanged. Customer ownership is
+explicit; historical cases are not attached by email. PDFs persist in the private
+database. Evidence remains on private disk with a required persistent-volume
+deployment configuration. No push, deployment, billing change or Gemini reset.
+The final two-tab Chrome rehearsal completed all four claims/underwriting
+outcomes, PDF access, supplementary evidence, privacy, restart, logout/expiry
+and mobile-layout checks. The final standalone API runner passed 25/25 with
+exit 0. Real processing disclosed the stopped provider and required explicit
+human review; no successful Gemini analysis is claimed.
+Earlier dated observations below remain historical and are not new test results.
+
 # Autonomous continuation — 15 October 2026
 
 ## Final PostgreSQL qualification

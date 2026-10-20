@@ -1,3 +1,15 @@
+# Current authenticated two-tab rehearsal — 18–20 October 2026
+
+Follow the current [claims/underwriting walkthrough and startup commands](PRESENTATION_HANDOVER.md).
+Tab 1 signs in at `/dashboard`; tab 2 signs in independently at `/admin`.
+Use individual fictional field suggestions, explicit uploads, queued acceptance,
+saved PDF preview/download, and separate human approval/rejection. Failed analysis
+requires an acknowledged, reasoned manual review. Customers see public explanations
+through dashboard polling. Receipt tracking requires its private receipt or the
+owning account; registration/policy alone no longer grants status access.
+Final rehearsal observations are in [PRESENTATION_VERIFICATION.md](PRESENTATION_VERIFICATION.md).
+Older anonymous-applicant instructions below are historical.
+
 # Two-tab local demonstration
 
 ## PostgreSQL pilot — 15 October 2026

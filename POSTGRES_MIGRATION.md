@@ -341,3 +341,122 @@ Workflow qualification, current test counts and remaining limitations are
 recorded in [AUTONOMOUS_PROGRESS.md](AUTONOMOUS_PROGRESS.md) and
 [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md). The check matrix remains an execution/coverage
 record, not a detection-accuracy certificate.
+
+## 2026-10-18 customer workflow upgrade and storage boundary
+
+The earlier qualification above describes its original snapshot. The current
+pre-upgrade read-only PostgreSQL archive contained **821 cases, 1,462 images,
+32 jobs/run results and 57 report snapshots**. Actual rows, references and
+migration metadata were read from `fraudlens_pilot`; this is stronger evidence
+than a connectivity-only `SELECT 1`. These counts can increase during rehearsals.
+
+Before applying schema changes, the API/worker ports were stopped and a new
+private preservation directory was created outside Git. It holds a consistent
+SQLite/WAL plus evidence/config/ledger filesystem backup (5,496 files), two
+repeatable-read PostgreSQL archives, and copies of eight preexisting modified
+or untracked documents. No prior backup was overwritten. A further 24-table
+archive after upgrade was compared with the original: **all 20 original table
+row/rowid digests matched exactly; zero preexisting tables changed**.
+
+`002_customer_workflow.sql` adds customer accounts, role-specific sessions,
+explicit case ownership and durable PDF artifacts. Historical cases gain no
+owner merely because an email matches. The applied `001` migration is unchanged.
+All 26 application/metadata tables passed the private grants/RLS validation.
+The backend rejects a missing upgrade instead of silently creating tables in
+an HTTP request or falling back to a hidden SQLite database.
+
+For an existing private schema, after stopping writers and making fresh backups:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+# Default invocation inspects migration versions/checksums without writes.
+.\venv\Scripts\python.exe -X utf8 scripts/upgrade_postgres.py --schema fraudlens_pilot
+.\venv\Scripts\python.exe -X utf8 scripts/upgrade_postgres.py --schema fraudlens_pilot --apply
+```
+
+This upgrade has already been applied to the local pilot. Repeating it verifies
+checksums and applies no duplicate migration. Fresh isolated schemas install
+both versions. The historical SQLite importer remains a non-merging importer
+for the original 20-table boundary; it is not a migration of new accounts back
+to SQLite. `postgres_backup.py` now writes format-2 archives including all four
+extension tables and their ordering IDs. Restore accepts original format-1
+archives and compatible format-2 archives, only into a nonexistent schema.
+Keep the matching migration source with private archives.
+
+Evidence remains private filesystem data; the application serves it only through
+authorized API routes. Generated PDF bytes and hashes are stored with immutable
+snapshot IDs in PostgreSQL (`report_artifacts`) and survive backend redeployment
+independently of filesystem caches. A mounted private persistent volume is the
+focused deployment option for the existing image-processing architecture.
+No public bucket, external service, hosting target or billing setting was created.
+
+`railway.json` now uses `python scripts/start_deployment.py --embedded-worker`.
+This runs the API and durable worker within one service sharing its one private
+volume. For a supervisor on one host with the same mounted volume, the separate
+commands are `python scripts/start_deployment.py` and
+`python scripts/start_deployment.py --worker`. Separate Railway services do not
+automatically share a volume; do not deploy that layout with host-local evidence.
+Multi-host processing additionally requires shared private object storage and
+a distributed provider budget, neither of which is claimed here.
+
+Deployment prerequisites, configured only on the backend host:
+
+- `DATABASE_URL` and `FRAUDLENS_PG_SCHEMA`; migrate explicitly before starting.
+- `FRAUDLENS_PERSISTENT_ROOT`: an existing absolute private volume mount.
+- `FRAUDLENS_UPLOAD_DIR`, `FRAUDLENS_THUMB_DIR`, `FRAUDLENS_LIVE_LEDGER` and
+  `GEMINI_QUOTA_BUDGET`: absolute paths inside that mount. If omitted, the
+  deployment entrypoint uses `uploads`, `thumbnails`, `live_calls.json` and
+  `quota_budget.json` inside it. Restore existing ledgers; never reset quotas.
+- `CORS_ORIGINS`: exact HTTPS frontend origins; wildcard origins are refused.
+- Existing reviewer/provider configuration documented in `.env.example`.
+- Frontend `VITE_API_BASE_URL`: the deployed HTTPS API origin at build time.
+
+The entrypoint checks paths and write access, refuses missing persistence or
+ledger configuration, and makes no model call. A declared directory alone does
+not prove the hosting platform actually mounted persistent storage. `/ready`
+checks database and writable evidence/cache storage without AI expenditure,
+returning a recoverable `STORAGE_UNAVAILABLE` response for a missing volume or
+unwritable path. Python remains pinned by
+`runtime.txt`; use the frontend manifest/lockfile for Node tooling. No deployment
+has been performed or verified. Restore evidence onto the volume and verify
+historical database image paths on a restored copy before promotion: Windows
+paths are server filesystem references, never deployable or public URLs.
+
+For local presentation, existing PowerShell startup commands still select the
+original uploads/ledger. `start_pilot.ps1` now checks the virtual environment and
+reports an occupied API port without stopping its owner. Existing explicit
+SQLite rollback commands above remain available; retain PostgreSQL-only accounts,
+ownership, PDF artifacts and new submissions in fresh backups before rollback.
+
+Focused verification for this upgrade used newly allocated PostgreSQL test
+schemas only: migration idempotency/row preservation, checksum stability and
+both browser-role denial contracts passed (4 tests). A full format-2 logical
+backup/restore with nonempty customer account/session/ownership/PDF fixtures
+passed in another isolated schema and refused an overwrite (1 test). Local
+deployment/storage gates passed (3 tests), and an occupied-port rehearsal
+confirmed the startup script refused launch while leaving the listener intact.
+The final read-only image audit passed for all 1,462 recorded images: zero
+missing paths, hash mismatches or unreferenced uploads. The audit now ends its
+PostgreSQL snapshot before slow file hashing; an expired server connection is
+discarded safely during rollback. Both preserved provider ledger files remained
+byte-identical to their pre-edit backups at this verification boundary. These
+checks use real PostgreSQL transactions and filesystem bytes, controlled fixture
+PDF/customer records, and no live model output.
+
+The shared customer/PDF contracts also passed against actual PostgreSQL:
+14 tests in 476 seconds, covering customer sessions, separate reviewer access,
+ownership/privacy, both case types and outcomes, receipt linking/idempotency,
+additional evidence, durable PDF rendering/download/retry, preserved report
+bytes after decisions, and the immutable-history trigger. Image embeddings and
+worker completion states in these contracts are controlled fixtures; PostgreSQL
+storage/transactions and PDF rendering are real. They do not certify live model
+availability or a deployed hosting configuration.
+
+After the final receipt/owner/reviewer tracking guard was installed, eight
+targeted PostgreSQL checks passed again (322 seconds): independent sessions,
+all four case-type/outcome ownership paths, safe rollback after a server idle
+timeout, refusal to merge a changed historical import, and preservation after
+an uncertain supplementary-evidence commit. The additional simultaneous-reviewer
+and changed-run rejection contract passed separately (53 seconds). No application
+schema was truncated by these tests; every test namespace was separately created
+and removed with explicit `fraudlens_test_` guards.

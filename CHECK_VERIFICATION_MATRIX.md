@@ -1,3 +1,13 @@
+# Presentation workflow verification — 18–20 October 2026
+
+The new [workflow checklist](PRESENTATION_IMPLEMENTATION.md) maps requirements to
+existing behavior, code and verification. [PRESENTATION_VERIFICATION.md](PRESENTATION_VERIFICATION.md)
+records final authentication/ownership, two-tab, suggestion, submission, PDF,
+decision, PostgreSQL, restart and mobile checks. The original research check and
+archetype evaluation below is preserved; no new detector-accuracy claim is made.
+Controlled model/embedding fixtures are distinguished from real database, PDF,
+local image processing and browser tests. Gemini stop controls remain intact.
+
 # Check and archetype verification — 14 October 2026
 
 PostgreSQL continuation (15 October): the original inventory/accuracy limits
