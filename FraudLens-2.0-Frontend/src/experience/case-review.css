@@ -1,0 +1,47 @@
+.admin.admin .case-review { display:flex;flex-direction:column;gap:22px;min-width:0;width:100%;max-width:1050px;margin:0 auto; }
+.admin.admin .case-review > .review-section { width:100%;margin:0;min-width:0; }
+.review-case-status { padding:20px 24px;border:1px solid var(--line);border-radius:14px;background:var(--panel); }
+.review-case-status > div { display:flex;align-items:center;flex-wrap:wrap;gap:12px;overflow-wrap:anywhere; }
+.review-case-status strong { font-size:14px; }
+.review-case-status > dl { display:flex;flex-wrap:wrap;gap:18px 32px;margin:18px 0 0; }
+.review-case-status dt { color:var(--muted);font-size:11px;margin-bottom:5px; }
+.review-case-status dd { margin:0;font-size:13px; }
+.review-processing.failed,.review-processing.interrupted { color:#e0ae83; }
+.review-application { display:flex;flex-direction:column;gap:0;margin:0; }
+.review-application > div { display:grid;grid-template-columns:minmax(150px,.4fr) minmax(0,1fr);gap:14px;padding:12px 0;border-bottom:1px solid var(--line); }
+.review-application > div:last-child { border-bottom:0; }
+.review-application dt { margin:0;color:var(--muted);font-size:12px;line-height:1.7; }
+.review-application dd { margin:0;min-width:0;font-size:14px;line-height:1.7;white-space:pre-line;overflow-wrap:anywhere; }
+.admin.admin .case-review .review-photos { grid-template-columns:1fr;gap:16px; }
+.admin.admin .case-review .review-photos button { display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;width:100%;padding:16px;background:var(--bg-secondary); }
+.admin.admin .case-review .review-photos img { width:100%;height:240px;max-height:40vh;object-fit:contain; }
+.admin.admin .case-review .review-photos span { padding-top:12px;font-size:13px; }
+.admin.admin .review-desk .desk-review-summary { margin:0 0 18px;max-width:85ch;font-size:15px;line-height:1.9; }
+.review-history { margin-top:18px;padding-top:16px;border-top:1px solid var(--line); }
+.review-history > summary,.review-diagnostics > summary { cursor:pointer;font-size:13px;min-height:30px; }
+.review-history .field { margin-top:14px; }
+.admin.admin .case-review .action-panel { border-top:1px solid var(--line);background:var(--panel); }
+.admin.admin .case-review .action-panel form { max-width:none; }
+.review-evidence-request { padding:14px 18px;background:var(--surface-raised);border:1px solid var(--line);border-radius:8px;margin:16px 0; }
+.review-evidence-request h3 { margin:0 0 8px;font-size:14px; }
+.review-recorded-outcome { margin-bottom:18px; }
+.review-timeline { margin:0;padding:0;list-style:none; }
+.review-timeline > li { position:relative;margin-left:7px;padding:0 0 25px 25px;border-left:1px solid var(--line-strong); }
+.review-timeline > li:last-child { padding-bottom:0; }
+.review-timeline > li::before { content:'';position:absolute;top:5px;left:-4px;width:7px;height:7px;border-radius:50%;background:var(--accent); }
+.review-timeline time,.review-timeline > li > span { font-size:11px;color:var(--muted);overflow-wrap:anywhere; }
+.review-timeline h3 { margin:7px 0;font-size:15px; }
+.review-timeline p,.review-timeline details { margin-top:10px;font-size:13px;line-height:1.8;overflow-wrap:anywhere; }
+.review-timeline summary { cursor:pointer; }
+.review-diagnostics { padding:18px 24px;border:1px solid var(--line);border-radius:12px;background:var(--surface-raised); }
+.review-diagnostics[open] > summary { margin-bottom:12px; }
+.review-diagnostics h3 { font-size:14px;margin-top:20px; }
+.review-diagnostics p,.review-diagnostics li { font-size:12px;line-height:1.8;overflow-wrap:anywhere; }
+.review-diagnostic-actions { display:flex;gap:12px;flex-wrap:wrap;margin-top:20px; }
+.review-diagnostic-actions button { min-height:44px;padding:10px 16px; }
+@media(max-width:600px) {
+  .admin.admin .case-review > .review-section { padding:22px 18px; }
+  .review-case-status,.review-diagnostics { padding:18px; }
+  .review-application > div { grid-template-columns:1fr;gap:4px; }
+  .admin.admin .case-review .review-photos img { height:200px; }
+}

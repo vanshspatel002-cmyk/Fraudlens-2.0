@@ -13,4 +13,11 @@
 .pdf-mobile-help { font-size: .8rem; margin: .65rem 0; }
 .manual-review-consent { display: flex; align-items: flex-start; gap: .6rem; margin: 1rem 0; }
 .manual-review-consent input { flex: 0 0 auto; width: 20px; height: 20px; margin-top: .15rem; }
+.pdf-report-panel.compact { padding:0;border:0;margin:0; }
+.pdf-report-panel.compact .pdf-report-actions { margin:0 0 12px; }
+.pdf-report-panel.compact > .field { display:flex;flex-direction:row;align-items:center;gap:12px;max-width:100%; }
+.pdf-report-panel.compact > .field > span { flex:0 0 auto; }
+.pdf-report-panel.compact select { width:auto;flex:1;max-width:650px; }
+.pdf-report-panel.compact .report-version { margin:10px 0 0;color:var(--muted);line-height:1.6; }
+@media(max-width:600px) { .pdf-report-panel.compact > .field { flex-direction:column;align-items:stretch; } .pdf-report-panel.compact select { width:100%; } }
 @media (max-width: 600px) { .pdf-preview-dialog { padding: .65rem; } .pdf-preview-controls strong { width: 100%; } .pdf-preview-dialog iframe { height: calc(100% - 200px); } }

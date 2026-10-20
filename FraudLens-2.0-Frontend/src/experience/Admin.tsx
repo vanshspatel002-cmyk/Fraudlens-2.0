@@ -1,5 +1,6 @@
 import HistoricalReport from './HistoricalReport';
-import ReportPanel from './ReportPanel';
+import CaseReview from './CaseReview';
+import { processingLabel, type AssessmentExplanation } from './reviewPresentation';
 import EvidenceViewer from "./EvidenceViewer";
 import AdminOverview from "./AdminOverview";
 import "./admin-workspace.css";
@@ -12,7 +13,6 @@ import {
   post,
   checks,
   recommendations,
-  categories,
   useConfig,
   apiImageUrl,
   historicalReport,
@@ -95,6 +95,7 @@ type CaseDetail = Row & {
   citedFindings: string[];
   processing?: { status?: string; stage?: string; detail?: string };
   analysisFallback?: boolean;
+  assessmentExplanation?: AssessmentExplanation;
   humanReviewedRun?: string;
   narrative?: string;
   outcome?: string;
@@ -129,7 +130,6 @@ export default function Admin() {
     [tab, setTab] = useState("Overview"),
     [rows, setRows] = useState<Row[]>([]),
     [detail, setDetail] = useState<CaseDetail | null>(null),
-    [detailTab, setDetailTab] = useState("Evidence"),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(false),
     [search, setSearch] = useState(""),
@@ -278,7 +278,6 @@ export default function Admin() {
     const request = ++detailRequest.current;
     if (detail?.id !== id) {
       setDetail(null);
-      setDetailTab(tab === "Reports" ? "Report" : "Evidence");
       setHumanAction("Approve");
     }
     detailLoading.current = true;
@@ -356,7 +355,7 @@ export default function Admin() {
   }
   return (
     <div className="admin">
-      {historicalReportText && <HistoricalReport text={historicalReportText} close={() => setHistoricalReport('')} />}
+      {historicalReportText && <HistoricalReport text={historicalReportText} allowDiagnostics={userRole !== 'viewer'} close={() => setHistoricalReport('')} />}
       <header className="admin-header">
         <Logo />
         <span className="workspace-label">REVIEW WORKSPACE {user && ` / ${userRole}`}</span>
@@ -534,241 +533,12 @@ export default function Admin() {
               <button className="back-link" onClick={() => setDetail(null)}>
                 ← Back to case queue
               </button>
-              <div className="case-meta">
-                <span className={"agent-tag " + (detail.kind === "claims" ? "recon" : "sentinel")}>
-                  Agent {detail.kind === "claims" ? "Recon" : "Sentinel"}
-                </span>
-                <span>{detail.id}</span>
-                <span>{detail.status}</span>
-              </div>
-              <div className="detail-tabs">
-                {["Evidence", "Agent Trace", "Report", "Audit log"].map((t) => (
-                  <button
-                    key={t}
-                    className={t === detailTab ? "selected" : ""}
-                    onClick={() => setDetailTab(t)}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-              {detailTab === "Agent Trace" ? (
-                <section className="trace">
-                  {detail.trace.length ? (
-                    detail.trace.map((t, i) => (
-                      <article key={i}>
-                        <span>{i + 1}</span>
-                        <div>
-                          <small>{t.type.toUpperCase()}</small>
-                          <h2>{t.title || t.tool || "Evidence assessment"}</h2>
-                          <p>{t.summary || t.explanation}</p>
-                          {t.input ? <pre>{JSON.stringify(t.input, null, 2)}</pre> : null}
-                          {t.result ? <pre>{JSON.stringify(t.result, null, 2)}</pre> : null}
-                        </div>
-                      </article>
-                    ))
-                  ) : (
-                    <Empty
-                      title="No completed reasoning steps"
-                      text="Only completed, recorded steps appear here. Service failures are recorded separately in the audit log."
-                    />
-                  )}
-                </section>
-              ) : detailTab === "Audit log" ? (
-                <div className="audit-list">
-                  {detail.audit.map((a, i) => (
-                    <article key={i}>
-                      <small>
-                        {new Date(a.created_at).toLocaleString()} · {a.actor}
-                      </small>
-                      <h3>{a.event}</h3>
-                      <p>{a.detail}</p>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div
-                  className={
-                    "case-layout " +
-                    (detail.kind === "claims" ? "recon " : "sentinel ") +
-                    (detailTab === "Report" ? "print-report" : "")
-                  }
-                >
-                  <div>
-                    <section className="case-panel">
-                      <div className="panel-title">
-                        <h2>Declaration</h2>
-                      </div>
-                      <dl className="declaration">
-                        {Object.entries(detail.declaration)
-                          .filter(([k, v]) => v && k !== "consent")
-                          .map(([k, v]) => (
-                            <div key={k}>
-                              <dt>{k.replace(/([A-Z])/g, " $1")}</dt>
-                              <dd>{String(v)}</dd>
-                            </div>
-                          ))}
-                      </dl>
-                    </section>
-                    <section className="case-panel">
-                      <h2>Vehicle photographs</h2>
-                      <div className="image-gallery">
-                        {detail.images.map((im) => (
-                          <button key={im.id} onClick={async () => {
-                            const src = await apiImageUrl(im.id, true);
-                            if (src) setLightbox({...im, src}); else setError('Original evidence could not be loaded.');
-                          }}>
-                            <img src={im.src} alt={im.label} />
-                            <span>{im.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </section>
-                    <section className="case-panel">
-                      <h2>Evidence Battery</h2>
-                      {categories.map((cat) => (
-                        <details open key={cat} className="finding-group">
-                          <summary>
-                            {cat}
-                            <span>{detail.findings.filter((f) => f.category === cat).length}</span>
-                          </summary>
-                          {detail.findings
-                            .filter((f) => f.category === cat)
-                            .map((f) => (
-                              <article key={f.id}>
-                                <div className="finding-title">
-                                  <h3>{f.check}</h3>
-                                  <span>{f.verdict}</span>
-                                </div>
-                                <p>{f.explanation}</p>
-                                <small>
-                                  {Math.round(f.confidence * 100)}% heuristic confidence · attributed_to:{" "}
-                                  {f.attributed_to} · {f.id}
-                                </small>
-                                {f.check_limitation && <p>{f.check_limitation}</p>}
-                                {f.evidence ? (
-                                  <pre>{JSON.stringify(f.evidence, null, 2)}</pre>
-                                ) : null}
-                              </article>
-                            ))}
-                        </details>
-                      ))}
-                      {!detail.findings.length && (
-                        <p>No findings have been recorded. This is not a clean result.</p>
-                      )}
-                    </section>
-                  </div>
-                  <aside>
-                    <section className="recommendation-panel">
-                      <span>THE AGENT'S ASSESSMENT</span>
-                      <h2>{detail.recommendation || "Awaiting analysis"}</h2>
-                      <small>Processing run: {detail.runId || 'Legacy unscoped result'}<br />Policy: {detail.policyVersion || 'Not recorded'}</small>
-                      <p>
-                        {detail.narrative ||
-                          "A human review is required. No analysis narrative has been recorded."}
-                      </p>
-                      {detail.requestedEvidence?.length > 0 && (
-                        <>
-                          <h3>Requested evidence</h3>
-                          <ul>
-                            {detail.requestedEvidence.map((s: string) => (
-                              <li key={s}>{s}</li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-                      {detail.citedFindings?.length > 0 && (
-                        <p>Cited findings: {detail.citedFindings.join(", ")}</p>
-                      )}
-                      {detail.analysisFallback && <p role="status">Automated adjudication did not complete. This is a fallback for human review, not a model assessment.</p>}
-                      {detail.processing && <p role="status">Analysis: {detail.processing.status} · {detail.processing.stage}<br />{detail.processing.detail}</p>}
-                      <button type="button" disabled={userRole==='viewer' || loading || ['queued','running'].includes(detail.processing?.status || '')} onClick={retryAnalysis}>Retry analysis</button>
-                      <button type="button" disabled={loading} onClick={() => open(detail.id)}>Refresh case</button>
-                      {detail.limitations?.length > 0 && <details open={detailTab==='Report'}><summary>Check and processing limitations</summary><ul>{detail.limitations.map(item => <li key={item}>{item}</li>)}</ul></details>}
-                      {detail.evidenceRequest && <p>Reviewer requested: {detail.evidenceRequest.artifacts.join('; ')}</p>}
-                      <ReportPanel key={detail.id} caseId={detail.id} runId={detail.runId} processingStatus={detail.processing?.status} />
-                      {detailTab === 'Report' && detail.reportHistory?.length > 0 && <label className="field report-history-selector"><span>Report history</span>
-                        <select defaultValue="" onChange={async e => {
-                          const snapshotId = e.currentTarget.value;
-                          e.currentTarget.value = '';
-                          if (!snapshotId) return;
-                          try {
-                            const report = await historicalReport(detail.id, snapshotId);
-                            const json = JSON.stringify({...report as Record<string, unknown>, snapshot_id: snapshotId}, null, 2);
-                            setHistoricalReport(json);
-                          } catch (err) {setError((err as Error).message);}
-                        }}><option value="">Select a saved report</option>{detail.reportHistory.map(item => <option key={item.snapshot_id} value={item.snapshot_id}>{new Date(item.created_at * 1000).toLocaleString()} - {item.run_id || 'legacy'}</option>)}</select>
-                      </label>}
-                      <small>This is a recommendation, not a final decision. Confidence values are heuristic scores, not calibrated probabilities of fraud.</small>
-                    </section>
-                    <section className="action-panel">
-                      <span>YOUR DECISION</span>
-                      <h2>Human admin action</h2>
-                      <p>
-                        Record the accountable outcome separately from the agent's assessment above.
-                      </p>
-                      {detail.outcome && (
-                        <p>
-                          Recorded: <strong>{detail.outcome}</strong>
-                          <br />
-                          {detail.reason}
-                          <br />
-                          <small>
-                            {detail.admin} · {detail.updated_at}
-                          </small>
-                          {detail.humanReviewedRun && <span><br />Human reviewed processing run: {detail.humanReviewedRun}</span>}
-                        </p>
-                      )}
-                      <form onSubmit={action}>
-                        {['queued','running'].includes(detail.processing?.status || '') && <p role="status">Wait for processing to finish before recording a decision.</p>}
-                        {['closed_approved','closed_rejected'].includes(detail.status) && <p role="status">A final decision has been recorded. Its history is preserved; refresh if another reviewer changed this case.</p>}
-                        <label className="field">
-                          <span>Action</span>
-                          <select
-                            name="action"
-                            required
-                            value={humanAction}
-                            onChange={(e) => setHumanAction(e.target.value)}
-                          >
-                            <option>Approve</option>
-                            <option>Reject</option>
-                            <option>Request More Evidence</option>
-                          </select>
-                        </label>
-                        <label className="field">
-                          <span>Internal reviewer note / decision reason</span>
-                          <textarea
-                            name="reason"
-                            required={humanAction !== "Approve" || detail.analysisFallback || ['failed','interrupted'].includes(detail.processing?.status || '')}
-                            maxLength={3000}
-                            rows={4}
-                          />
-                          <small>Private to reviewers. Required for rejection, evidence requests and manual review overrides.</small>
-                        </label>
-                        {(detail.analysisFallback || ['failed','interrupted'].includes(detail.processing?.status || '')) && humanAction !== 'Request More Evidence' && <label className="manual-review-consent">
-                          <input type="checkbox" name="manualReviewOverride" required />
-                          <span>Proceed with manual review because automated analysis is unavailable. Explain the evidence reviewed and the reason for this override in the internal note.</span>
-                        </label>}
-                        {humanAction === 'Request More Evidence' && <label className="field">
-                          <span>Specific photographs required (one per line)</span>
-                          <textarea name="requestedArtifacts" required maxLength={3000} rows={3} placeholder="Original rear-left view showing the damaged panel" />
-                        </label>}
-                        <label className="field">
-                          <span>Customer-visible explanation *</span>
-                          <textarea name="publicNarrative" required maxLength={1500} rows={3} />
-                          <small>
-                            Visible in the tracker. Do not include private findings, evidence or
-                            investigation details.
-                          </small>
-                        </label>
-                        <button className="record-action" disabled={loading || userRole==='viewer' || ['queued','running'].includes(detail.processing?.status || '') || ['closed_approved','closed_rejected'].includes(detail.status)}>
-                          {loading ? "Recording…" : humanAction === 'Approve' ? 'Approve case' : humanAction === 'Reject' ? 'Reject case' : 'Request more evidence'}
-                        </button>
-                      </form>
-                    </section>
-                  </aside>
-                </div>
-              )}
+              <CaseReview detail={detail} userRole={userRole} busy={loading} humanAction={humanAction}
+                onHumanAction={setHumanAction} onAction={action}
+                onPhoto={async image => {const src = await apiImageUrl(image.id,true); if(src) setLightbox({...image,src}); else setError('Original evidence could not be loaded.');}}
+                onRefresh={() => {void open(detail.id);}} onRetry={() => {void retryAnalysis();}}
+                onHistory={async snapshotId => {try {const report = await historicalReport(detail.id,snapshotId);setHistoricalReport(JSON.stringify({...report as Record<string,unknown>,snapshot_id:snapshotId}));} catch(error) {setError((error as Error).message);}}}
+              />
             </>
           ) : ["Case queue", "Claims", "Underwriting", "Reports"].includes(tab) ? (
             <>
@@ -919,7 +689,7 @@ export default function Admin() {
                             <span className={"risk risk-" + r.risk.toLowerCase()}>{r.risk}</span>
                           </td>
                           <td>
-                            {r.processingStatus || 'Not recorded'}
+                            {processingLabel({status:r.processingStatus})}
                           </td>
                           <td>
                             {r.outcome || (r.status === 'awaiting_evidence' ? 'More evidence requested' : 'Awaiting review')}
@@ -976,7 +746,7 @@ export default function Admin() {
             />
           ) : tab === "Checks reference" ? (
             <section className="case-panel">
-              <h2>Deterministic Evidence Battery</h2>
+              <h2>Evidence checks reference</h2>
               <p>
                 AI-Generation Detection and Digital Edit Detection are held at zero weight. Other
                 weights and measured reliability are unpublished. A Concern is a review signal, not

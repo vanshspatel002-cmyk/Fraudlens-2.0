@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import ReportPanel from './ReportPanel';
+import {applicationDetails,deskReviewSentences,processingLabel,reviewDate,type ReviewProcessing,type AssessmentExplanation} from './reviewPresentation';
 
-export default function HistoricalReport({ text, close }: {text: string; close: () => void}) {
+export default function HistoricalReport({ text, close, allowDiagnostics = false }: {text: string; close: () => void; allowDiagnostics?: boolean}) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { dialog.current?.showModal(); }, []);
   const report = JSON.parse(text) as Record<string, unknown>;
@@ -9,19 +10,20 @@ export default function HistoricalReport({ text, close }: {text: string; close: 
   const action = (report.admin_action || {}) as Record<string, unknown>;
   const declaration = (report.declaration || {}) as Record<string, unknown>;
   const findings = Object.values((report.findings_by_category || {}) as Record<string, Record<string, unknown>[]>).flat();
+  const processing = report.processing as ReviewProcessing | undefined;
+  const earlierReview = !!action.reviewed_run_id && !!report.run_id && action.reviewed_run_id !== report.run_id;
+  const sentences = deskReviewSentences({kind:String(declaration.agent_type || ''),declaration,processing,status:String(report.status || declaration.status || ''),runId:String(report.run_id || ''),humanReviewedRun:String(action.reviewed_run_id || ''),assessmentExplanation:report.assessment_explanation as AssessmentExplanation | undefined,
+    analysisFallback:!!agent.provider_unavailable,findings:findings.map(finding=>({verdict:String(finding.verdict || '')}))});
   return <dialog ref={dialog} aria-label="Historical report" className="report-history-dialog" onCancel={close}>
     <div className="report-history-controls"><button onClick={close}>Close historical report</button></div>
-    <h2>FraudLens saved report</h2>
-    <p>Case: {String(report.case_id)} · Processing run: {String(report.run_id || 'legacy')}<br />Policy: {String(report.policy_version || 'unrecorded')}</p>
-    {!!report.snapshot_id && <ReportPanel caseId={String(report.case_id)} runId={String(report.run_id || '')} initialSnapshotId={String(report.snapshot_id)} />}
-    <h3>Declaration at this report version</h3>
-    <dl>{Object.entries(declaration).filter(([, value]) => value != null && value !== '').map(([key,value]) => <div key={key}><dt>{key.replaceAll('_',' ')}</dt><dd>{String(value)}</dd></div>)}</dl>
-    <h3>Agent recommendation</h3><p>{String(agent.recommendation || 'No recorded recommendation')}</p><p>{String(report.agent_narrative || '')}</p>
-    {!!agent.provider_unavailable && <p>Fallback: automated adjudication did not converge.</p>}
-    <h3>Human decision</h3><p>{String(action.action || 'No recorded human action')} · {String(action.admin_id || '')} · {String(action.timestamp || '')}</p><p>{String(action.reason || '')}</p>
-    {!!action.reviewed_run_id && <p>Human reviewed processing run: {String(action.reviewed_run_id)} · {((action.reviewed_evidence_ids || []) as string[]).length} photographs</p>}
-    <h3>Recorded findings</h3>{findings.map(f => <article key={String(f.finding_id)}><h4>{String(f.check_id)} — {String(f.verdict)}</h4><p>{String(f.explanation)}</p><small>{String(f.finding_id)} · attributed to {String(f.attributed_to)}</small>{!!f.check_limitation && <p>{String(f.check_limitation)}</p>}</article>)}
-    <h3>Limitations</h3><ul>{((report.limitations || []) as string[]).map(item => <li key={item}>{item}</li>)}</ul>
-    <p>Heuristic confidence is not a calibrated fraud probability. The agent recommends; a human decides.</p>
+    <h2>Saved review</h2>
+    <p>{String(report.case_id)} · Analysis: {processingLabel(processing)}</p>
+    <h3>Desk Review</h3><p className="desk-review-summary" data-sentence-count={sentences.length}>{sentences.join(' ')}</p>
+    {!!report.snapshot_id && <ReportPanel caseId={String(report.case_id)} runId={String(report.run_id || '')} initialSnapshotId={String(report.snapshot_id)} compact />}
+    <details><summary>Application at this report version</summary><dl className="review-application">{applicationDetails(declaration).map(field=><div key={field.key}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl></details>
+    <h3>Recorded human decision</h3><p>{String(action.action || 'No human decision was recorded')}{!!action.admin_id && <> · {String(action.admin_id)}</>}{!!action.timestamp && <> · {reviewDate(String(action.timestamp))}</>}</p>
+    {!!action.action && <p>{earlierReview ? 'This decision reviewed an earlier analysis run; it does not review this report’s analysis.' : !action.reviewed_run_id ? 'The analysis basis for this historical human decision was not recorded.' : 'This decision reviewed the analysis saved in this report.'}</p>}
+    {!!action.reason && <details><summary>Internal reviewer note</summary><p>{String(action.reason)}</p></details>}
+    {allowDiagnostics && <details><summary>Technical diagnostics for this version</summary><p>Analysis run: {String(report.run_id || 'Not recorded')}<br/>Policy: {String(report.policy_version || 'Not recorded')}<br/>Recorded findings: {findings.length}</p>{!!action.reviewed_run_id && <p>Run reviewed by a human: {String(action.reviewed_run_id)}</p>}<ul>{((report.limitations || []) as string[]).map(item=><li key={item}>{item}</li>)}</ul></details>}
   </dialog>;
 }

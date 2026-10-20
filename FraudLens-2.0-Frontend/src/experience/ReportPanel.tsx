@@ -2,7 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {fetchReportPdf, prepareReport, reportVersions, type ReportVersion} from './reportClient';
 import './report-panel.css';
 
-export default function ReportPanel({caseId, runId, processingStatus, initialSnapshotId}: {caseId: string; runId?: string; processingStatus?: string; initialSnapshotId?: string}) {
+export default function ReportPanel({caseId, runId, processingStatus, initialSnapshotId, compact = false}: {caseId: string; runId?: string; processingStatus?: string; initialSnapshotId?: string; compact?: boolean}) {
   const [versions, setVersions] = useState<ReportVersion[]>([]);
   const [snapshot, setSnapshot] = useState(initialSnapshotId || '');
   const [error, setError] = useState('');
@@ -53,18 +53,18 @@ export default function ReportPanel({caseId, runId, processingStatus, initialSna
     } catch (err) {if (alive.current && epoch === requestEpoch.current) setError((err as Error).message);}
     finally {if (alive.current && epoch === requestEpoch.current) setBusy(false);}
   }
-  return <section className="pdf-report-panel" aria-label="Saved PDF report">
-    <h3>Saved PDF report</h3>
+  return <section className={'pdf-report-panel'+(compact ? ' compact' : '')} aria-label="Saved PDF report">
+    {!compact && <h3>Saved PDF report</h3>}
+    <div className="pdf-report-actions"><button type="button" disabled={busy || blocked || !loaded} onClick={() => void open(false)}>{busy ? 'Preparing PDF…' : 'Preview report'}</button><button type="button" disabled={busy || blocked || !loaded} onClick={() => void open(true)}>Download PDF</button></div>
     {!initialSnapshotId && <label className="field"><span>Report version</span><select aria-label="PDF report version" disabled={busy || !loaded} value={snapshot} onChange={event => {setSnapshot(event.target.value); setError('');}}>
-      <option value="">Current case · save analysis snapshot</option>
+      <option value="">Current report</option>
       {versions.map(version => <option key={version.snapshot_id} value={version.snapshot_id}>{new Date(version.snapshot_created_at * 1000).toLocaleString()} · {version.snapshot_id.slice(0,12)} · {version.pdf_status}</option>)}
     </select></label>}
-    {selected && <p className="report-version">Version {selected.snapshot_id.slice(0,12)}<br />Run: {selected.run_id || 'Legacy, unscoped'}<br />{selected.generated_at ? 'PDF generated ' + new Date(selected.generated_at * 1000).toLocaleString() : selected.pdf_status === 'failed' ? 'PDF generation failed. Preview or download retries this saved version.' : 'PDF pending. Preview or download creates it from the saved snapshot.'}</p>}
+    {selected && <p className="report-version">Version {selected.snapshot_id.slice(0,12)}{!compact && <><br />Run: {selected.run_id || 'Legacy, unscoped'}</>} · {selected.generated_at ? 'Generated ' + new Date(selected.generated_at * 1000).toLocaleString() : selected.pdf_status === 'failed' ? 'PDF generation failed; retry preview or download.' : 'PDF pending.'}</p>}
     {blocked && <p role="status">Current analysis is {processingStatus}. Choose a saved historical version or wait for processing to finish.</p>}
     {!loaded && <p role="status">Loading saved report versions…</p>}
-    <div className="pdf-report-actions"><button type="button" disabled={busy || blocked || !loaded} onClick={() => void open(false)}>{busy ? 'Preparing PDF…' : 'Preview report'}</button><button type="button" disabled={busy || blocked || !loaded} onClick={() => void open(true)}>Download PDF</button></div>
     {error && <p role="alert">{error}</p>}
-    <small>Saved privately with this case. Opening a PDF uses the saved analysis and does not rerun AI or checks.</small>
+    {!compact && <small>Saved privately with this case. Opening a PDF uses the saved analysis and does not rerun AI or checks.</small>}
     {preview && <dialog ref={dialog} className="pdf-preview-dialog" aria-label="PDF report preview" onCancel={closePreview}>
       <div className="pdf-preview-controls"><strong>FraudLens report</strong><a href={preview} target="_blank" rel="noopener noreferrer">Open PDF in a new tab</a><a href={preview} download={filename}>Download PDF</a><button type="button" onClick={closePreview}>Close preview</button></div>
       <p className="pdf-mobile-help">If the inline preview is unavailable on your device, use Open PDF or Download PDF above.</p>
