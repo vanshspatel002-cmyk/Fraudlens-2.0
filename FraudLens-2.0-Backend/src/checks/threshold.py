@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import db
+from .. import db, ingest
 from ..models import CheckCategory, Finding, Verdict
 from .base import Check, CheckContext, register_check
 
@@ -44,16 +44,17 @@ def _in_band_pct(amounts: list[float], band_low: float, band_high: float) -> flo
     return 100.0 * sum(1 for a in amounts if band_low <= a < band_high) / len(amounts)
 
 
-def _garage_band_stats(conn, garage_id: str, band_low: float, band_high: float) -> dict[str, Any]:
+def _garage_band_stats(conn, garage_id: str, band_low: float, band_high: float, evaluation_cutoff=None) -> dict[str, Any]:
     """
     Brute-force scan of every case, same "not worth indexing at this
     corpus size" reasoning as src.ingest.find_similar and db.get_all_cases
     itself (see that function's docstring) - only claims-type cases with
     an amount count, both for the garage and for the population baseline.
     """
-    all_claims = [c for c in db.get_all_cases(conn) if c.agent_type == "claims" and c.claim_amount is not None]
-    garage_amounts = [c.claim_amount for c in all_claims if c.garage_id == garage_id]
-    population_amounts = [c.claim_amount for c in all_claims]
+    cutoff_sql, values = ingest.evaluation_cutoff_filter(conn, evaluation_cutoff)
+    all_claims = conn.execute("SELECT garage_id,claim_amount FROM cases WHERE agent_type='claims' AND claim_amount IS NOT NULL" + cutoff_sql, values).fetchall()
+    garage_amounts = [row[1] for row in all_claims if row[0] == garage_id]
+    population_amounts = [row[1] for row in all_claims]
     return {
         "garage_claim_count": len(garage_amounts),
         "garage_in_band_pct": _in_band_pct(garage_amounts, band_low, band_high),
@@ -62,6 +63,7 @@ def _garage_band_stats(conn, garage_id: str, band_low: float, band_high: float) 
 
 
 class ThresholdGamingCheck(Check):
+    agent_types = ('claims',)
     check_id = "threshold_gaming"
     category = CheckCategory.ECONOMIC
     scope = "case"
@@ -105,6 +107,8 @@ class ThresholdGamingCheck(Check):
             "band_low": band_low,
             "band_high": band_high,
             "garage_id": case.garage_id,
+            'garage_concern_pct': garage_concern_pct,
+            'minimum_garage_claims': min_garage_claims,
         }
 
         if not in_band:
@@ -123,7 +127,7 @@ class ThresholdGamingCheck(Check):
                 )
             ]
 
-        stats = _garage_band_stats(ctx.conn, case.garage_id, band_low, band_high)
+        stats = _garage_band_stats(ctx.conn, case.garage_id, band_low, band_high, cfg.get('evaluation_cutoff'))
         evidence = {**base_evidence, **stats}
 
         enough_claims = stats["garage_claim_count"] >= min_garage_claims

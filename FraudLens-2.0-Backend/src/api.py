@@ -782,6 +782,8 @@ class JobOut(BaseModel):
     stage: Optional[str] = None
     detail: Optional[str] = None
     provider_unavailable: bool = False
+    failures: list[dict[str, Any]] = Field(default_factory=list)
+    root_failure_detail: Optional[dict[str, Any]] = None
 
 
 class SubmitCaseOut(BaseModel):
@@ -846,6 +848,7 @@ class ActionIn(BaseModel):
 
 
 class ReportDeclaration(BaseModel):
+    garage_id: Optional[str] = None
     case_id: str
     agent_type: str
     claim_type: Optional[str] = None
@@ -881,6 +884,8 @@ class ReportDeclaration(BaseModel):
 
 
 class CaseReportOut(BaseModel):
+    assessment_explanation: Optional[dict[str, Any]] = None
+    report_template_version: Optional[str] = None
     submitted_at: Optional[str] = None
     evidence_inventory: list[dict[str, Any]] = Field(default_factory=list)
     check_inventory: list[dict[str, Any]] = Field(default_factory=list)
@@ -1299,6 +1304,7 @@ def get_case_detail(case_id: str,
 
 def _report_declaration(case: Case) -> ReportDeclaration:
     return ReportDeclaration(
+        garage_id=case.garage_id,
         case_id=case.case_id,
         agent_type=case.agent_type,
         claim_type=case.claim_type,
@@ -1393,7 +1399,15 @@ def _build_report(conn,case_id):
                 if unavailable:
                     limitations.append('scene_consistency: partial comparison; these components were not confirmed consistent: ' + ', '.join(unavailable) + '. A PASS covers available comparisons only.')
     evidence_ids=json.loads(result['image_ids']) if result else [i.image_id for i in db.get_images_for_case(conn,case_id)]
+    assessment_explanation=None
+    if best:
+        for event in reversed(db.get_audit_events_for_case(conn,case_id)):
+            if (event.event_type=='case_adjudicated' and event.details.get('decision_id')==best.decision_id
+                    and (not job or event.details.get('run_id')==job['job_id'])):
+                assessment_explanation=event.details.get('assessment_explanation')
+                break
     return CaseReportOut(case_id=case_id,declaration=_report_declaration(case),
+        assessment_explanation=assessment_explanation,
         findings_by_category=grouped,finding_groups=groups,agent_recommendation=decision,
         agent_narrative=decision.summary if decision else None,
         admin_action=human,
@@ -1402,9 +1416,25 @@ def _build_report(conn,case_id):
 
 
 def _snapshot_report(conn,case_id):
-    from src.report_pdf import enrich_snapshot
+    from src.report_pdf import enrich_snapshot,RENDERER_VERSION
+    case=db.get_case(conn,case_id)
+    if not case:raise ApiError(404,'CASE_NOT_FOUND','Case not found.')
+    job=runtime_store.latest_job(conn,case_id)
+    decision=_current_decision(conn,case_id)
+    basis={'run_id':job['job_id'] if job else None,'processing_status':job['status'] if job else None,
+        'decision_id':decision.decision_id if decision else None,
+        'human_revision':conn.execute('SELECT COUNT(*) FROM admin_actions WHERE case_id=?',(case_id,)).fetchone()[0],
+        'evidence_ids':sorted(image.image_id for image in db.get_images_for_case(conn,case_id)),
+        'case_status':case.status,'template_version':RENDERER_VERSION}
+    # Opening the same run/review/template must reuse its frozen report, even
+    # when unrelated corpus counts or current registry annotations later change.
+    for row in conn.execute('SELECT snapshot_id,payload FROM report_snapshots WHERE case_id=? ORDER BY rowid DESC',(case_id,)):
+        if json.loads(row['payload']).get('report_basis')==basis:
+            return row['snapshot_id']
     report=_build_report(conn,case_id)
-    payload=json.dumps(enrich_snapshot(conn,report.model_dump(mode='json')),ensure_ascii=False,separators=(',',':'))
+    snapshot=enrich_snapshot(conn,report.model_dump(mode='json'))
+    snapshot['report_basis']=basis
+    payload=json.dumps(snapshot,ensure_ascii=False,separators=(',',':'))
     snapshot_id=runtime_store.digest(payload)
     conn.execute('INSERT INTO report_snapshots(snapshot_id,case_id,run_id,payload,created_at) VALUES (?,?,?,?,?) ON CONFLICT(snapshot_id) DO NOTHING',(snapshot_id,case_id,report.run_id,payload,time.time()))
     return snapshot_id
@@ -1943,9 +1973,12 @@ def _set_job(job_id: str, **fields: Any) -> None:
 @measured('pipeline.total')
 def _run_pipeline(job_id: str, case_id: str) -> None:
     provider = None
+    current_stage='initialization'
+    failures=[]
     try:
         from src.llm import get_provider, is_rate_limit_error, is_quota_budget_error
-        from src.perception import perceive_image
+        from src.perception import perceive_image, perception_record_usable
+        from src.analysis_diagnostics import failure_detail
         from src.orchestrator import process_case
         from src.agent.production_policy import production_policy
         with runtime_store.connection(DB_PATH) as check:
@@ -1962,16 +1995,18 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
         conn = db.connect(DB_PATH)
         try:
             provider = get_provider()
+            current_stage='evidence_loading'
             images = db.get_images_for_case(conn, case_id)
             if not images: raise ValueError('No indexed evidence available')
             perception_errors = 0
             perception_sources = {'perception_cache': 0, 'request_cache': 0, 'fresh_provider': 0, 'unavailable': 0}
             network_stopped = False
             for index, image in enumerate(images):
+                current_stage='perception'
                 _set_job(job_id, stage='perception', progress=0.1+0.4*index/len(images))
                 if network_stopped:
                     cached = db.get_perception(conn, image.content_hash)
-                    if cached is None or cached.raw_response.get('error'):
+                    if not perception_record_usable(cached):
                         perception_errors += 1
                         perception_sources['unavailable'] += 1
                     else:
@@ -1980,20 +2015,31 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                 try:
                     provenance = {}
                     with span('pipeline.perception_image'):
-                        record = perceive_image(conn, image, provider, retry_attempts=1, provenance=provenance)
+                        record = perceive_image(conn, image, provider, retry_attempts=1, provenance=provenance, release_transactions=True)
                     conn.commit()
                     perception_sources[provenance.get('source', 'unavailable')] += 1
-                    if record.raw_response.get('error'):
+                    if not perception_record_usable(record):
                         perception_errors += 1
+                        diagnostic=record.raw_response.get('diagnostic')
+                        if not diagnostic:
+                            unavailable_input=ValueError('The returned vision observations contain no usable visible evidence; request clearer original photographs.')
+                            unavailable_input.error_category='required_perception_unavailable'
+                            diagnostic=failure_detail(unavailable_input,'perception_inputs',attempt_count=int(provenance.get('source')=='fresh_provider'),
+                                attempted_network=provenance.get('source')=='fresh_provider')
+                            diagnostic['provider_status']='response_received'
+                        failures.append({**diagnostic,'image_id':image.image_id})
                 except Exception as exc:
                     conn.rollback(); perception_errors += 1
                     perception_sources['unavailable'] += 1
+                    failures.append({**failure_detail(exc,'perception'),'image_id':image.image_id,'worker_attempt':job.get('attempts',0)})
                     access_log.error('Vision unavailable: image=%s error_type=%s', image.image_id, type(exc).__name__)
                     if is_rate_limit_error(exc) or is_quota_budget_error(exc):
                         network_stopped = True
-            _set_job(job_id, stage='evidence checks', progress=0.6, perception_sources=perception_sources,
+            current_stage='evidence_checks'
+            _set_job(job_id, stage='evidence checks', progress=0.6, perception_sources=perception_sources, failures=failures,
+                     root_failure_detail=failures[0] if failures else None,
                      provider_request_profile=getattr(provider,'request_profile','unrecorded'),
-                     checks_revision='production-checks-2026-10-15-v2')
+                     checks_revision='production-checks-2026-10-20-v3')
             adjudicator = provider
             if perception_errors:
                 class UnavailableVision:
@@ -2003,7 +2049,8 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             case = db.get_case(conn, case_id)
             last_phase = 'evidence checks'
             def stage_progress(stage, progress):
-                nonlocal last_phase
+                nonlocal last_phase,current_stage
+                current_stage=stage
                 # Keep expensive OCR visible without adding a cloud transaction
                 # for every tiny check. All individual timings remain in logs.
                 phase = 'plate OCR' if stage == 'check: plate_ocr' else (
@@ -2013,14 +2060,28 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                     last_phase = phase
             decision = process_case(conn, case_id, provider=adjudicator,
                                     policy=production_policy(case.agent_type), run_id=job_id,
-                                    on_stage=stage_progress)
+                                    on_stage=stage_progress,
+                                    check_config={'evaluation_cutoff':case.created_at.isoformat()} if job.get('retrospective') else None)
             unavailable = _decision_out(decision, conn).provider_unavailable
+            for event in reversed(db.get_audit_events_for_case(conn,case_id)):
+                if event.event_type=='case_adjudicated' and event.details.get('run_id')==job_id:
+                    for item in event.details.get('trace',[]):
+                        payload=item.get('payload') or {}
+                        diagnostic=payload.get('diagnostic') or (payload.get('observation') or {}).get('diagnostic')
+                        if diagnostic and diagnostic not in failures:failures.append(diagnostic)
+                    for finding in event.details.get('assessment_explanation',{}).get('findings',[]):
+                        diagnostic=finding.get('observed_values',{}).get('diagnostic')
+                        if diagnostic and diagnostic not in failures:failures.append(diagnostic)
+                    break
             _set_job(job_id, status='failed' if unavailable or perception_errors else 'completed',
                 stage='needs_review' if unavailable or perception_errors else 'complete', progress=1.0,
                 provider_unavailable=unavailable,
                 adjudication_sources=getattr(decision,'_model_response_sources',None),
+                failures=failures,
+                root_failure_detail=failures[0] if failures else None,
                 detail='Automated analysis incomplete. Evidence is saved; fallback requires human review.' if unavailable or perception_errors else None,
                 failed_images=perception_errors)
+            current_stage='snapshot_persistence'
             conn.execute('BEGIN IMMEDIATE')
             db.lock_case(conn, case_id)
             _snapshot_report(conn, case_id)
@@ -2030,10 +2091,12 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
     except runtime_store.ExecutionLost:
         access_log.warning('Stale processing attempt discarded: case=%s', case_id)
     except Exception as exc:
+        from src.analysis_diagnostics import failure_detail
+        failures.append(failure_detail(exc,current_stage))
         access_log.error('Analysis failed: case=%s error_type=%s', case_id, type(exc).__name__)
         try:
             _set_job(job_id, status='failed', stage='failed', progress=1.0,
-                     error_type=type(exc).__name__, detail='Analysis could not complete. Evidence is saved. A reviewer can retry after resolving the cause.')
+                     error_type=type(exc).__name__, failures=failures, root_failure_detail=failures[0], detail='Analysis could not complete. Evidence is saved. A reviewer can retry after resolving the cause.')
         except runtime_store.ExecutionLost:
             access_log.warning('Recovered job retained its newer state: case=%s', case_id)
     finally:

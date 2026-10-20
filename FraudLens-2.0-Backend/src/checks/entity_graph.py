@@ -55,7 +55,7 @@ than by measurement on the production corpus, and says so.
 from __future__ import annotations
 
 import sqlite3
-from .. import db
+from .. import db, ingest
 from collections import defaultdict
 from typing import Any, Optional
 
@@ -118,8 +118,8 @@ class EntityGraphCheck(Check):
                 "related to any other.",
                 evidence)]
 
-        shared = self._shared_with_other_claimants(ctx.conn, case.case_id, identifiers)
-        cycling = self._claimant_vehicle_cycling(ctx.conn, case)
+        shared = self._shared_with_other_claimants(ctx.conn, case.case_id, identifiers, ctx.config.get('evaluation_cutoff'))
+        cycling = self._claimant_vehicle_cycling(ctx.conn, case, ctx.config.get('evaluation_cutoff'))
 
         evidence["linked_cases"] = {
             other: sorted(fields) for other, fields in sorted(shared.items())
@@ -179,10 +179,7 @@ class EntityGraphCheck(Check):
 
     @staticmethod
     def _available_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-        try:
-            return db.columns(conn, table)
-        except db.DatabaseError:
-            return set()
+        return db.columns(conn, table)
 
     def _identifiers_for(self, conn: sqlite3.Connection, case_id: str) -> dict[str, str]:
         """
@@ -219,7 +216,7 @@ class EntityGraphCheck(Check):
         return out
 
     def _shared_with_other_claimants(
-        self, conn: sqlite3.Connection, case_id: str, identifiers: dict[str, str],
+        self, conn: sqlite3.Connection, case_id: str, identifiers: dict[str, str], evaluation_cutoff=None,
     ) -> dict[str, set[str]]:
         """case_id -> set of field names shared, for cases with a DIFFERENT claimant."""
         mine = conn.execute(
@@ -235,17 +232,16 @@ class EntityGraphCheck(Check):
                 sql = ("SELECT case_id, claimant_id FROM cases "
                        f"WHERE {field} = ? AND case_id != ?")
                 params: tuple = (value, case_id)
+                cutoff_sql, cutoff_values = ingest.evaluation_cutoff_filter(conn, evaluation_cutoff)
             elif field in claimant_cols:
                 sql = ("SELECT ca.case_id, ca.claimant_id FROM cases ca "
                        "JOIN claimants c ON c.claimant_id = ca.claimant_id "
                        f"WHERE c.{field} = ? AND ca.case_id != ?")
                 params = (value, case_id)
+                cutoff_sql, cutoff_values = ingest.evaluation_cutoff_filter(conn, evaluation_cutoff, ('ca.created_at',))
             else:
                 continue
-            try:
-                rows = conn.execute(sql, params).fetchall()
-            except db.DatabaseError:
-                continue
+            rows = conn.execute(sql + cutoff_sql, (*params,*cutoff_values)).fetchall()
             for other_case, other_claimant in rows:
                 # A claimant sharing details with their own other claims is
                 # not collusion; it is the same person.
@@ -255,18 +251,16 @@ class EntityGraphCheck(Check):
         return dict(shared)
 
     def _claimant_vehicle_cycling(
-        self, conn: sqlite3.Connection, case: Any,
+        self, conn: sqlite3.Connection, case: Any, evaluation_cutoff=None,
     ) -> Optional[dict[str, Any]]:
         if not case.claimant_id or not case.garage_id or case.garage_id == 'UNASSIGNED':
             return None
-        try:
-            rows = conn.execute(
+        cutoff_sql, values = ingest.evaluation_cutoff_filter(conn, evaluation_cutoff)
+        rows = conn.execute(
                 "SELECT DISTINCT vehicle_registration FROM cases "
-                "WHERE claimant_id = ? AND garage_id = ? AND vehicle_registration IS NOT NULL",
-                (case.claimant_id, case.garage_id),
+                "WHERE claimant_id = ? AND garage_id = ? AND vehicle_registration IS NOT NULL" + cutoff_sql,
+                (case.claimant_id, case.garage_id, *values),
             ).fetchall()
-        except db.DatabaseError:
-            return None
         regs = sorted({r[0] for r in rows if r[0]})
         return {"garage_id": case.garage_id, "distinct_registrations": len(regs),
                 "registrations": regs[:10]}

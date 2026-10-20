@@ -75,6 +75,30 @@ _VALID_RECOMMENDATIONS = {r.value for r in Recommendation}
 _VALID_BANDS = {b.value for b in RiskBand}
 
 
+class AgentResponseSchemaError(ValueError):
+    error_category = 'response_schema_invalid'
+
+
+def _schema_response_source(response):
+    cached = getattr(response, 'cached', None)
+    source = 'request_cache' if cached is True else 'fresh_provider' if cached is False else 'unrecorded'
+    raw = getattr(response, 'raw', None) or {}
+    provenance = raw.get('request_provenance')
+    return {'source': source, 'model': getattr(response, 'model', 'unrecorded'),
+            'request_provenance': {key: provenance[key] for key in
+                ('session_attempt', 'requested_model', 'serving_model', 'timestamp') if key in provenance}
+                if isinstance(provenance, dict) else {}}
+
+
+def _schema_failure_diagnostic(sources):
+    from ..analysis_diagnostics import failure_detail
+    attempts = sum(source['source'] == 'fresh_provider' for source in sources)
+    diagnostic = failure_detail(AgentResponseSchemaError('The received adjudication reply did not meet the required JSON routing schema.'),
+        'agent_response_schema', attempt_count=attempts, attempted_network=attempts > 0)
+    diagnostic.update(provider_status='response_received', response_count=len(sources), response_sources=list(sources))
+    return diagnostic
+
+
 @dataclass
 class TraceStep:
     """One thing the agent did. Ordered; the list is the audit trail."""
@@ -190,12 +214,16 @@ def parse_decision(text: str) -> Optional[dict[str, Any]]:
     if recommendation not in _VALID_RECOMMENDATIONS or band not in _VALID_BANDS:
         return None
 
-    narrative = str(parsed.get("narrative", "")).strip()
+    if not isinstance(parsed.get('narrative'), str):
+        return None
+    narrative = parsed['narrative'].strip()
     if not narrative:
         return None
 
     cited = parsed.get("findings_cited") or []
     artifacts = parsed.get("requested_artifacts") or []
+    if any(not isinstance(value, list) or any(not isinstance(item, str) for item in value) for value in (cited, artifacts)):
+        return None
     return {
         "recommendation": recommendation,
         "risk_band": band,
@@ -301,6 +329,8 @@ def adjudicate(
     findings: list[Finding],
     policy: AgentPolicy,
     provider: LLMProvider,
+    check_config: Optional[dict[str, Any]] = None,
+    release_transactions: bool = False,
 ) -> AdjudicationResult:
     """
     Run one case to a routing decision.
@@ -318,67 +348,94 @@ def adjudicate(
     counters = {"tool_calls": 0, "iterations": 0, "llm_calls": 0}
     step = 0
     retried_parse = False
+    schema_sources = []
+    ended_on_invalid_schema = False
 
     for iteration in range(1, policy.max_iterations + 1):
         counters["iterations"] = iteration
         step += 1
 
+        if release_transactions:
+            # Durable runs own this connection and have not written their
+            # result yet. Release optional tool/cache writes before network
+            # work; standalone callers retain their transaction ownership.
+            conn.commit()
         call_started = time.monotonic()
         try:
             response = provider.chat(messages, tools=schemas, conn=None)
         except Exception as e:  # noqa: BLE001 - a provider failure must not lose the case
-            trace.append(TraceStep(step, "fallback", f"provider error: {type(e).__name__}: {e}"))
+            from ..analysis_diagnostics import failure_detail
+            diagnostic = failure_detail(e, 'agent_adjudication')
+            trace.append(TraceStep(step, "fallback", f"provider error: {type(e).__name__}",
+                                   {'diagnostic': diagnostic}, int((time.monotonic()-call_started)*1000)))
             elapsed = int((time.monotonic() - started) * 1000)
             return AdjudicationResult(
-                _fallback_decision(case, policy, findings, "the model was unreachable", counters, elapsed),
+                _fallback_decision(case, policy, findings, 'generation unavailable: ' + diagnostic['error_category'], counters, elapsed),
                 trace, converged=False,
             )
         counters["llm_calls"] += 1
         call_ms = int((time.monotonic() - call_started) * 1000)
 
         # -- tool call ----------------------------------------------------
-        if response.tool_call is not None:
-            name = response.tool_call.name
-            args = dict(response.tool_call.args or {})
+        tool_calls = getattr(response, 'tool_calls', None) or ([response.tool_call] if response.tool_call is not None else [])
+        if tool_calls:
+            ended_on_invalid_schema = False
+            model_content = getattr(response, 'model_content', None)
+            if model_content:
+                # Gemini 3 tool turns require the original functionCall and
+                # opaque signature. Keep them in transport history only.
+                messages.append({'role': 'assistant', 'content': '', 'provider_content': model_content})
+            for tool_call in tool_calls:
+                name = tool_call.name
+                raw_args = tool_call.args
+                valid_args = raw_args is None or isinstance(raw_args, dict)
+                args = dict(raw_args or {}) if valid_args else {}
 
-            if counters["tool_calls"] >= policy.max_tool_calls:
-                trace.append(TraceStep(step, "guard", f"tool-call cap ({policy.max_tool_calls}) reached", {"requested": name}))
-                messages.append({
-                    "role": "user",
-                    "content": "You have reached your tool-call limit. Decide now with the "
-                               "evidence you have, and reply with the JSON decision.",
-                })
-                continue
+                if not valid_args:
+                    result = {'error': 'Tool arguments must be a JSON object.', 'tool': name}
+                    trace.append(TraceStep(step, 'guard', 'invalid tool argument structure', {'requested': name}))
+                elif counters["tool_calls"] >= policy.max_tool_calls:
+                    trace.append(TraceStep(step, "guard", f"tool-call cap ({policy.max_tool_calls}) reached", {"requested": name}))
+                    result = {'error': 'Tool-call limit reached. Decide using the recorded evidence.', 'tool': name}
+                elif name not in policy.tool_names:
+                    result = {"error": f"tool {name!r} is not available to this agent",
+                              "available_tools": list(policy.tool_names)}
+                    trace.append(TraceStep(step, "guard", f"refused out-of-policy tool {name}", {"args": args}))
+                else:
+                    tool_started = time.monotonic()
+                    result = agent_tools.call_tool(name, conn, case, args, evaluation_cutoff=(check_config or {}).get('evaluation_cutoff'))
+                    tool_ms = int((time.monotonic() - tool_started) * 1000)
+                    counters["tool_calls"] += 1
+                    trace.append(TraceStep(
+                        step, "tool_call", name,
+                        {"args": args, "result_keys": sorted(result)[:8], "error": result.get("error"),
+                         'observation': agent_tools.trace_observation(result), 'provider_latency_ms': call_ms},
+                        tool_ms,
+                    ))
 
-            if name not in policy.tool_names:
-                # Hallucinated or out-of-policy tool. Tell the agent what it
-                # actually has rather than failing the case.
-                result: dict[str, Any] = {
-                    "error": f"tool {name!r} is not available to this agent",
-                    "available_tools": list(policy.tool_names),
-                }
-                trace.append(TraceStep(step, "guard", f"refused out-of-policy tool {name}", {"args": args}))
-            else:
-                result = agent_tools.call_tool(name, conn, case, args)
-                counters["tool_calls"] += 1
-                trace.append(TraceStep(
-                    step, "tool_call", name,
-                    {"args": args, "result_keys": sorted(result)[:8], "error": result.get("error")},
-                    call_ms,
-                ))
-
-            messages.append({"role": "assistant", "content": f"[tool call] {name}({json.dumps(args)})"})
-            messages.append({"role": "user", "content": f"Result of {name}:\n{json.dumps(result, indent=2, default=str)}"})
+                if model_content:
+                    messages.append({'role': 'tool', 'name': name, 'tool_call_id': getattr(tool_call, 'id', None),
+                                     'content': json.dumps(result, default=str)})
+                else:
+                    messages.append({"role": "assistant", "content": f"[tool call] {name}({json.dumps(args)})"})
+                    messages.append({"role": "user", "content": f"Result of {name}:\n{json.dumps(result, indent=2, default=str)}"})
             continue
 
         # -- final answer -------------------------------------------------
         parsed = parse_decision(response.text)
         if parsed is None:
+            ended_on_invalid_schema = True
+            source = _schema_response_source(response)
+            schema_sources.append(source)
             trace.append(TraceStep(step, "parse_failure", "reply was not a usable decision object",
-                                   {"reply_preview": (response.text or "")[:200]}, call_ms))
+                                   {"reply_preview": (response.text or "")[:200],
+                                    'diagnostic': _schema_failure_diagnostic([source])}, call_ms))
             if not retried_parse:
                 retried_parse = True
-                messages.append({"role": "assistant", "content": response.text or ""})
+                assistant = {'role': 'assistant', 'content': response.text or ''}
+                if getattr(response, 'model_content', None):
+                    assistant['provider_content'] = response.model_content
+                messages.append(assistant)
                 messages.append({"role": "user", "content": _RETRY_INSTRUCTION})
                 continue
             break
@@ -405,7 +462,8 @@ def adjudicate(
     reason = ("it did not produce a decision within "
               f"{policy.max_iterations} iterations" if counters["iterations"] >= policy.max_iterations
               else "its replies could not be parsed")
-    trace.append(TraceStep(step + 1, "fallback", reason))
+    payload = {'diagnostic': _schema_failure_diagnostic(schema_sources)} if ended_on_invalid_schema else {}
+    trace.append(TraceStep(step + 1, "fallback", reason, payload))
     elapsed = int((time.monotonic() - started) * 1000)
     return AdjudicationResult(
         _fallback_decision(case, policy, findings, reason, counters, elapsed),

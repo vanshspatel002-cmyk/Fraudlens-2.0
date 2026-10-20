@@ -57,7 +57,7 @@ rather than assuming the worse case.
 from __future__ import annotations
 
 import sqlite3
-from .. import db
+from .. import db, ingest
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -78,6 +78,7 @@ FIELDS = ("vehicle_registration", "policy_number")
 
 
 class BaselineLinkageCheck(Check):
+    agent_types = ('claims',)
     check_id = "baseline_linkage"
     category = CheckCategory.HISTORY
     scope = "case"
@@ -103,7 +104,7 @@ class BaselineLinkageCheck(Check):
         if case.agent_type != "claims":
             return []
 
-        inspections = self._prior_inspections(ctx.conn, case)
+        inspections = self._prior_inspections(ctx.conn, case, ctx.config.get('evaluation_cutoff'))
         evidence: dict[str, Any] = {
             "matched_on": list(FIELDS),
             "window_days": WINDOW_DAYS,
@@ -112,10 +113,10 @@ class BaselineLinkageCheck(Check):
 
         if not inspections:
             return [self._finding(
-                case.case_id, Verdict.PASS, 0.6,
+                case.case_id, Verdict.INCONCLUSIVE, 0.0,
                 "No prior break-in inspection is on record for this vehicle, so there "
                 "is no declared baseline for this claim to contradict.",
-                evidence)]
+                {**evidence, 'execution_state': 'not_applicable', 'reason': 'no_linked_baseline'})]
 
         recent = [i for i in inspections if i["days_before_claim"] is not None
                   and 0 <= i["days_before_claim"] <= WINDOW_DAYS]
@@ -125,23 +126,33 @@ class BaselineLinkageCheck(Check):
             nearest = min((i["days_before_claim"] for i in inspections
                            if i["days_before_claim"] is not None), default=None)
             return [self._finding(
-                case.case_id, Verdict.PASS, 0.6,
+                case.case_id, Verdict.INCONCLUSIVE, 0.0,
                 f"The most recent break-in inspection for this vehicle was "
                 f"{nearest} day(s) before the loss, outside the {WINDOW_DAYS}-day "
                 f"window in which a corrupted baseline would show."
                 if nearest is not None else
                 "No inspection date could be compared against the declared loss.",
-                evidence)]
+                {**evidence, 'execution_state': 'not_applicable' if nearest is not None else 'inconclusive'})]
+
+        # An underwriting application or human approval does not certify that
+        # the car was undamaged. Require the actual recorded image assessment.
+        for inspection in recent:
+            inspection['baseline_severity'] = self._baseline_severity(ctx.conn, inspection['case_id'], ctx.config.get('evaluation_cutoff'))
+        established = [inspection for inspection in recent if inspection['baseline_severity'] == 'none']
+        if not established:
+            return [self._finding(case.case_id, Verdict.INCONCLUSIVE, 0.0,
+                'A linked inspection exists, but a complete undamaged photographic baseline was not established. An application or reviewer approval alone cannot establish vehicle condition.',
+                {**evidence, 'execution_state': 'inconclusive', 'reason': 'undamaged_baseline_unestablished'})]
 
         severity = self._claim_severity(ctx)
         evidence["claimed_severity"] = severity or "unknown"
-        closest = min(recent, key=lambda i: i["days_before_claim"])
+        closest = min(established, key=lambda i: i["days_before_claim"])
         evidence["closest_inspection"] = closest
 
         if severity is None:
             return [self._finding(
                 case.case_id, Verdict.INCONCLUSIVE, 0.0,
-                f"This vehicle was inspected as undamaged {closest['days_before_claim']} "
+                f"The linked inspection's image assessments recorded no damage {closest['days_before_claim']} "
                 f"day(s) before the declared loss ({closest['case_id']}), but the "
                 f"severity of the claimed damage could not be read, so the two records "
                 f"cannot be compared.",
@@ -154,7 +165,7 @@ class BaselineLinkageCheck(Check):
             confidence = min(0.9, 0.6 + 0.3 * (1.0 - days / max(1, WINDOW_DAYS)))
             return [self._finding(
                 case.case_id, Verdict.CONCERN, confidence,
-                f"This vehicle passed a break-in inspection as undamaged just "
+                f"The linked inspection's image assessments recorded no damage just "
                 f"{days} day(s) before the declared loss ({closest['case_id']}), and "
                 f"this claim reports {severity} damage. Either the damage was "
                 f"sustained in that window, or the inspection did not record the "
@@ -181,12 +192,27 @@ class BaselineLinkageCheck(Check):
 
     @staticmethod
     def _columns(conn: sqlite3.Connection) -> set[str]:
-        try:
-            return db.columns(conn, 'cases')
-        except db.DatabaseError:
-            return set()
+        return db.columns(conn, 'cases')
 
-    def _prior_inspections(self, conn: sqlite3.Connection, case: Any) -> list[dict[str, Any]]:
+    @staticmethod
+    def _baseline_severity(conn, case_id, evaluation_cutoff=None):
+        from ..perception import perception_record_usable
+        cutoff_sql, values = ingest.evaluation_cutoff_filter(conn, evaluation_cutoff)
+        images = [db._image_from_row(row) for row in conn.execute('SELECT * FROM images WHERE case_id=?' + cutoff_sql, (case_id, *values))]
+        if not images:
+            return None
+        severities = []
+        for image in images:
+            record = db.get_perception(conn, image.content_hash)
+            if not perception_record_usable(record):
+                return None
+            severity = (record.damage_severity or '').strip().lower()
+            if severity not in {'none', 'minor', 'moderate', 'severe'}:
+                return None
+            severities.append(severity)
+        return max(severities, key={'none': 0, 'minor': 1, 'moderate': 2, 'severe': 3}.get)
+
+    def _prior_inspections(self, conn: sqlite3.Connection, case: Any, evaluation_cutoff=None) -> list[dict[str, Any]]:
         """Underwriting cases on the same vehicle or policy, before this loss."""
         columns = self._columns(conn)
         clauses, params = [], []
@@ -200,23 +226,27 @@ class BaselineLinkageCheck(Check):
         if not clauses:
             return []
 
-        try:
-            rows = conn.execute(
+        cutoff_sql, values = ingest.evaluation_cutoff_filter(conn, evaluation_cutoff)
+        rows = conn.execute(
                 f"SELECT case_id, declared_time, {', '.join(f for f in FIELDS if f in columns)} "
                 f"FROM cases WHERE agent_type = 'underwriting' AND case_id != ? "
-                f"AND ({' OR '.join(clauses)})",
-                (case.case_id, *params),
+                f"AND ({' OR '.join(clauses)})" + cutoff_sql,
+                (case.case_id, *params, *values),
             ).fetchall()
-        except db.DatabaseError:
-            return []
 
         out: list[dict[str, Any]] = []
         loss_time = self._as_datetime(case.declared_time)
         for row in rows:
+            registration = row['vehicle_registration'] if 'vehicle_registration' in row.keys() else None
+            if case.vehicle_registration and registration and case.vehicle_registration != registration:
+                continue  # A shared policy cannot override a contradictory vehicle identifier.
             inspected = self._as_datetime(row[1])
             days = None
             if loss_time is not None and inspected is not None:
-                days = (loss_time - inspected).days
+                if (loss_time.utcoffset() is None) == (inspected.utcoffset() is None):
+                    days = (loss_time - inspected).days
+                    if days < 0:
+                        continue
             out.append({
                 "case_id": row[0],
                 "inspected_at": str(row[1]),

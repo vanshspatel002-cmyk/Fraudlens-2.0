@@ -224,7 +224,7 @@ def test_duplicate_check_reuse_vs_clean_sweep():
 
 
 @test
-def test_metadata_check_no_exif_is_pass_not_concern():
+def test_metadata_check_no_exif_is_inconclusive_not_concern():
     clean_case_ids = [row["case_id"] for row in cases_by_archetype("CLEAN")]
     image = first_image_with_no_exif(clean_case_ids)
     assert image is not None, "expected at least one CLEAN-case image with no EXIF - none found"
@@ -232,8 +232,8 @@ def test_metadata_check_no_exif_is_pass_not_concern():
     case = get_case(image.case_id)
     findings = run_checks(get_conn(), case, check_ids=["exif_metadata"])
     this_image = next(f for f in findings if f.evidence.get("image_id") == image.image_id)
-    assert this_image.verdict == Verdict.PASS, (
-        f"expected PASS for an image with no EXIF, got {this_image.verdict.value}: {this_image.explanation}"
+    assert this_image.verdict == Verdict.INCONCLUSIVE, (
+        f"expected INCONCLUSIVE for missing EXIF, got {this_image.verdict.value}: {this_image.explanation}"
     )
     assert this_image.evidence.get("exif_present") is False
     print(f"  {case.case_id}: {this_image.explanation} (confidence={this_image.confidence})")
@@ -424,7 +424,7 @@ def test_external_corpus_passes_on_a_clean_case():
 
 
 @test
-def test_c2pa_check_no_credentials_is_pass_not_concern():
+def test_c2pa_check_no_credentials_is_inconclusive_not_concern():
     """
     Whether c2pa-python is installed or not, the one thing this must
     never do is report CONCERN on an image that simply has no
@@ -444,7 +444,7 @@ def test_c2pa_check_no_credentials_is_pass_not_concern():
     for f in findings:
         assert f.verdict != Verdict.CONCERN, f"C2PA must never CONCERN on a credential-free image: {f.explanation}"
         if available:
-            assert f.verdict == Verdict.PASS, f"with c2pa installed, expected PASS, got {f.verdict.value}"
+            assert f.verdict == Verdict.INCONCLUSIVE, f"unsigned images cannot authenticate themselves: {f.verdict.value}"
             assert f.evidence.get("credentials_present") is False
         else:
             assert f.verdict == Verdict.INCONCLUSIVE
@@ -491,7 +491,10 @@ def test_ai_detector_loads_and_returns_a_probability():
 def test_new_checks_emit_valid_findings():
     """Every new check must produce well-formed Findings with a real explanation."""
     conn = get_conn()
-    case = get_case(cases_by_archetype("CLEAN")[0]["case_id"])
+    # This battery includes claims-only plausibility and coordinate-dependent
+    # scene checks. The first CLEAN fixture is an underwriting application.
+    case = next(case for case in (get_case(row['case_id']) for row in cases_by_archetype('CLEAN'))
+                if case.agent_type == 'claims' and case.latitude is not None and case.longitude is not None)
     new_check_ids = ["external_corpus", "c2pa_credentials", "ai_generation",
                      "scene_consistency", "damage_plausibility", "digital_edit"]
 
@@ -1063,7 +1066,13 @@ def test_check_that_raises_produces_inconclusive_not_a_crash():
     assert finding.verdict == Verdict.INCONCLUSIVE
     assert finding.confidence == 0.0
     assert finding.evidence.get("error_type") == "RuntimeError"
-    assert "deliberate failure" in finding.evidence.get("error", "")
+    diagnostic = finding.evidence['diagnostic']
+    assert diagnostic['stage'] == 'check:always_raises'
+    assert diagnostic['error_category'] == 'worker_exception'
+    assert diagnostic['exception_type'] == 'RuntimeError'
+    assert diagnostic['attempted_network'] is False
+    assert "deliberate failure" in diagnostic['message']
+    assert 'error' not in finding.evidence  # Raw exception text is not a separate evidence field.
     print(f"  {finding.verdict.value}: {finding.explanation} (evidence={finding.evidence})")
 
 

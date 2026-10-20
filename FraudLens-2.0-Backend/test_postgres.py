@@ -509,3 +509,110 @@ def test_postgres_duplicate_snapshot_reads_fresh_evidence_once(client,monkeypatc
         current=check.run(CheckContext(conn,case,db.get_images_for_case(conn,case.case_id),{}))
         assert len(loads)==2 and current[0].evidence['images_compared']==2
         assert current[0].verdict is Verdict.CONCERN
+
+
+def test_postgres_retrospective_duplicate_cutoff_excludes_same_case_and_future_evidence(client,tmp_path):
+    """Real timestamp SQL and similarity checks, with explicit stored vectors."""
+    from dataclasses import replace
+    from datetime import datetime, timedelta, timezone
+    import json
+    from src.agent import tools
+    from src.checks import run_checks
+    from src.models import Case, Image, Verdict
+
+    cutoff=datetime(2026,10,20,tzinfo=timezone.utc)
+    case=Case(case_id='retrospective-current',claimant_id='fictional',garage_id='UNASSIGNED',
+        claim_type='collision',claim_amount=20000,created_at=cutoff)
+    image=Image(image_id='current-image',case_id=case.case_id,path=str(tmp_path/'fixture.png'),
+        content_hash='1'*64,phash='0'*16,dhash='0'*16,embedding=[1.,0.],created_at=cutoff)
+    with runtime_store.connection('postgresql') as conn:
+        assert conn.schema.startswith('fraudlens_test_')
+        db.insert_case(conn,case);db.save_image(conn,image)
+        db.save_image(conn,replace(image,image_id='same-case-image',content_hash='2'*64))
+        candidates=(('earlier-case',cutoff-timedelta(days=2),cutoff-timedelta(days=2)),
+                    ('future-case',cutoff+timedelta(days=1),cutoff+timedelta(days=1)),
+                    ('later-evidence',cutoff-timedelta(days=1),cutoff+timedelta(days=1)))
+        for identifier,created,image_created in candidates:
+            db.insert_case(conn,replace(case,case_id=identifier,created_at=created))
+            db.save_image(conn,replace(image,image_id=identifier+'-image',case_id=identifier,
+                content_hash=hashlib.sha256(identifier.encode()).hexdigest(),created_at=image_created))
+        conn.commit()
+        bound=cutoff.isoformat()
+        index=ingest.SimilarityIndex.from_database(conn,case.case_id,bound)
+        assert [candidate.image_id for candidate in index.candidates]==['earlier-case-image']
+        findings=run_checks(conn,case,['internal_duplicate'],config={'evaluation_cutoff':bound})
+        assert len(findings)==2 and all(f.verdict is Verdict.CONCERN for f in findings)
+        assert all(f.evidence['matched_case_id']=='earlier-case' and f.evidence['images_compared']==1 for f in findings)
+        # A model-supplied wider date cannot override the server's bound.
+        widened=tools.call_tool('widen_similarity_search',conn,case,
+            {'threshold':.8,'evaluation_cutoff':(cutoff+timedelta(days=10)).isoformat()},evaluation_cutoff=bound)
+        assert widened['matches'] and all(m['matched_case_id']=='earlier-case' for m in widened['matches'])
+        # Identical hashes alone must not flag an unrelated stored vector.
+        conn.execute('UPDATE images SET embedding=? WHERE image_id=?',(json.dumps([0.,1.]),'earlier-case-image'))
+        negative=run_checks(conn,case,['internal_duplicate'],config={'evaluation_cutoff':bound})
+        assert all(f.verdict is Verdict.PASS and f.evidence['cosine_similarity']==0 for f in negative)
+
+
+def test_postgres_run_persists_check_diagnostics_explanation_and_provider_provenance(client,monkeypatch):
+    """A fenced run uses real PG writes; provider and failing dependency are fixtures."""
+    from dataclasses import replace
+    import json
+    from src import orchestrator
+    from src.agent import tools
+    from src.agent.production_policy import production_policy
+    from src.checks import REGISTRY
+    from src.llm import LLMResponse, ToolCall
+    from src.models import Verdict
+
+    receipt=submit(client).json()
+    def missing_dependency(ctx):raise ImportError('Explicit isolated fixture dependency unavailable')
+    monkeypatch.setattr(REGISTRY['c2pa_credentials'],'run',missing_dependency)
+    provenance={'session_attempt':42,'requested_model':'offline-fixture','serving_model':'offline-fixture',
+                'timestamp':'2026-10-20T00:00:00+00:00'}
+    class OfflineProvider:
+        calls=0
+        def chat(self,*args,**kwargs):
+            assert not conn.in_transaction, 'A durable provider turn held tool/cache writes open'
+            self.calls+=1
+            if self.calls==1:
+                return LLMResponse(text='',tool_call=ToolCall('get_claimant_history',{}),
+                    raw={'request_provenance':provenance},model='offline-fixture',cached=True,latency_ms=1)
+            return LLMResponse(text=json.dumps({'recommendation':'escalate','risk_band':'desk_review',
+                'narrative':'Explicit offline fixture: a human must review the original evidence.',
+                'findings_cited':[],'requested_artifacts':[]}),tool_call=None,
+                raw={'request_provenance':{**provenance,'untrusted_extra':'fixture-opaque-value'}},
+                model='offline-fixture',cached=True,latency_ms=1)
+    provider=OfflineProvider()
+    policy=replace(production_policy('claims'),check_ids=('c2pa_credentials','exif_metadata'))
+    with runtime_store.connection('postgresql') as conn:
+        assert conn.schema.startswith('fraudlens_test_')
+        def cached_history(tool_conn,case,**kwargs):
+            db.cache_set(tool_conn,'fixture-agent-tool','history',{'fixture':True})
+            assert tool_conn.in_transaction  # The next provider turn must release this write.
+            return {'tool':'get_claimant_history','other_case_count':0,'cases':[]}
+        monkeypatch.setitem(tools.TOOLS,'get_claimant_history',cached_history)
+        job=runtime_store.claim_next(conn)
+        assert job['job_id']==receipt['job_id']
+        with runtime_store.execution(job):
+            decision=orchestrator.process_case(conn,receipt['case_id'],policy,provider,run_id=job['job_id'])
+        result=runtime_store.current_result(conn,receipt['case_id'])
+        assert result['run_id']==job['job_id'] and result['decision_id']==decision.decision_id
+        findings=db.get_findings_for_case(conn,receipt['case_id'])
+        failed=next(f for f in findings if f.check_id=='c2pa_credentials')
+        assert failed.verdict is Verdict.INCONCLUSIVE and failed.confidence==0
+        assert failed.evidence['execution_state']=='failed'
+        assert failed.evidence['diagnostic']['stage']=='check:c2pa_credentials'
+        assert failed.evidence['diagnostic']['error_category']=='missing_dependency'
+        assert failed.evidence['diagnostic']['attempted_network'] is False
+        assert next(f for f in findings if f.check_id=='exif_metadata').evidence['execution_state']=='inconclusive'
+        event=next(e for e in db.get_audit_events_for_case(conn,receipt['case_id']) if e.event_type=='case_adjudicated')
+        explanation=event.details['assessment_explanation']
+        assert explanation==decision._assessment_explanation and explanation['run_id']==job['job_id']
+        assert explanation['aggregation']['computed_value'] is None
+        assert explanation['coverage']['check_states']['c2pa_credentials']=='failed'
+        assert set(json.loads(result['finding_ids']))=={f.finding_id for f in findings}
+        expected=[{'source':'request_cache','model':'offline-fixture','request_provenance':provenance}]*2
+        assert provider.calls==2 and event.details['model_response_sources']==expected
+        assert decision._model_response_sources==expected
+        assert 'fixture-opaque-value' not in json.dumps(event.details)
+        assert db.cache_get(conn,'fixture-agent-tool','history')=={'fixture':True}

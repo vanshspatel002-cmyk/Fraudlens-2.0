@@ -32,6 +32,8 @@ import os
 import sys
 import tempfile
 import traceback
+import unittest
+from functools import wraps
 from pathlib import Path
 from typing import Optional
 
@@ -50,7 +52,7 @@ from src.llm import GeminiProvider, OllamaProvider, get_provider as llm_get_prov
 _TESTS: list = []
 
 
-class Skip(Exception):
+class Skip(unittest.SkipTest):
     """Raise from a test to mark it skipped, not failed - e.g. Ollama isn't running."""
 
 
@@ -64,9 +66,24 @@ def _is_quota_error(error: Exception) -> bool:
     return is_rate_limit_error(error) or is_quota_budget_error(error)
 
 
+_LIVE_TESTS = {
+    'test_chat_returns_nonempty_response','test_repeated_chat_hits_the_cache',
+    'test_vision_call_on_sample_image','test_ollama_provider_initializes_or_skips',
+    'test_ollama_vision_call_and_cache_hit','test_ollama_chat_returns_llmresponse',
+}
+
+
 def test(fn):
-    _TESTS.append(fn)
-    return fn
+    @wraps(fn)
+    def guarded():
+        if fn.__name__ in _LIVE_TESTS and os.environ.get('FRAUDLENS_TEST_LIVE') != '1':
+            raise Skip('Live integration disabled; bounded pilot probe records real-provider results separately.')
+        return fn()
+    _TESTS.append(guarded)
+    return guarded
+
+
+test.__test__ = False  # This decorator is not itself a pytest test.
 
 
 def run_all() -> bool:
@@ -75,11 +92,6 @@ def run_all() -> bool:
     for fn in _TESTS:
         print(f"--- {fn.__name__} ---")
         try:
-            if os.environ.get('FRAUDLENS_TEST_LIVE') != '1' and fn.__name__ in {
-                'test_chat_returns_nonempty_response','test_repeated_chat_hits_the_cache',
-                'test_vision_call_on_sample_image','test_ollama_provider_initializes_or_skips',
-                'test_ollama_vision_call_and_cache_hit','test_ollama_chat_returns_llmresponse'}:
-                raise Skip('Live integration disabled; bounded pilot probe records real-provider results separately.')
             fn()
             passed += 1
             print(f"PASS  {fn.__name__}")
@@ -390,9 +402,16 @@ def test_a_429_rotates_immediately_rather_than_sleeping():
             )
         return "ok"
 
-    started = time.monotonic()
-    result = provider._call_rotating(make_call, attempts=1)
-    elapsed = time.monotonic() - started
+    from unittest.mock import patch
+    with tempfile.TemporaryDirectory() as control_dir:
+        # This key-pool test uses a disposable quota and disables the optional
+        # session circuit; a session circuit deliberately stops after a 429.
+        with patch.dict(os.environ, {'GEMINI_QUOTA_BUDGET':str(Path(control_dir)/'quota.json'),
+                'FRAUDLENS_LIVE_LEDGER':'',
+                'FRAUDLENS_RECOVERY_ID':''}):
+            started = time.monotonic()
+            result = provider._call_rotating(make_call, attempts=1)
+            elapsed = time.monotonic() - started
 
     assert result == "ok"
     assert served_by == ["K1", "K2"], f"expected K1 then K2, got {served_by}"

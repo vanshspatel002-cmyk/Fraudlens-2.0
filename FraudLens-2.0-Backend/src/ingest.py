@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any, Iterable, Optional, Sequence, Union
 from uuid import uuid4
 
@@ -291,9 +292,15 @@ class SimilarityIndex:
             self.norms = np.linalg.norm(self.matrix, axis=1) if self.candidates else None
 
     @classmethod
-    def from_database(cls, conn, exclude_case: str):
+    def from_database(cls, conn, exclude_case: str, evaluation_cutoff=None):
         with span('similarity.load_corpus'):
-            images = db.get_all_images(conn)
+            if evaluation_cutoff is None:
+                images = db.get_all_images(conn)
+            else:
+                cutoff_sql, parameters = evaluation_cutoff_filter(conn, evaluation_cutoff, ('c.created_at','i.created_at'))
+                rows = conn.execute('SELECT i.* FROM images i JOIN cases c ON c.case_id=i.case_id WHERE i.case_id<>?' + cutoff_sql,
+                                    (exclude_case, *parameters)).fetchall()
+                images = [db._image_from_row(row) for row in rows]
         return cls(images, exclude_case)
 
     def search(self, embedding: Sequence[float], top_k: int = 10) -> list[tuple[Image, float]]:
@@ -315,10 +322,28 @@ def find_similar(
     embedding: Sequence[float],
     exclude_case: str,
     top_k: int = 10,
+    evaluation_cutoff=None,
 ) -> list[tuple[Image, float]]:
     """Search the full corpus; callers may reuse SimilarityIndex within a run.
 
     Database transfer and JSON decoding can dominate cloud-backed searches;
     this remains an exact numpy search, with no sampling or threshold change.
     """
-    return SimilarityIndex.from_database(conn, exclude_case).search(embedding, top_k)
+    return SimilarityIndex.from_database(conn, exclude_case, evaluation_cutoff).search(embedding, top_k)
+
+
+def evaluation_cutoff_filter(conn, cutoff, expressions=('created_at',)):
+    """Trusted as-of bound for historical comparisons, with real TZ ordering.
+
+    Expressions are static SQL identifiers supplied by internal callers only.
+    Applicant-declared incident dates never establish submission ordering.
+    """
+    if cutoff is None:
+        return '', ()
+    moment = cutoff if isinstance(cutoff, datetime) else datetime.fromisoformat(str(cutoff))
+    if moment.utcoffset() is None:
+        raise ValueError('Historical evaluation cutoff requires an explicit timezone.')
+    value = moment.astimezone(timezone.utc).isoformat()
+    clauses = [expression + '::timestamptz <= ?::timestamptz' if db.is_postgres(conn)
+               else 'julianday(' + expression + ') <= julianday(?)' for expression in expressions]
+    return ' AND ' + ' AND '.join(clauses), tuple(value for _ in expressions)

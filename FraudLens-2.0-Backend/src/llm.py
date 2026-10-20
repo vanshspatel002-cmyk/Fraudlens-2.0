@@ -179,6 +179,7 @@ class ToolCall:
 
     name: str
     args: dict[str, Any]
+    id: Optional[str] = None
 
 
 @dataclass
@@ -195,6 +196,8 @@ class LLMResponse:
     model: str
     cached: bool
     latency_ms: int
+    model_content: Optional[dict[str, Any]] = None
+    tool_calls: Optional[list[ToolCall]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +356,8 @@ class GeminiProvider(LLMProvider):
         """
         from google.genai import errors as genai_errors
 
+        recovery_mode=bool(os.environ.get('FRAUDLENS_RECOVERY_ID'))
+        if recovery_mode:attempts=1
         while True:
             label, secret = self._pool.current()
             client = self._client_for(label, secret)
@@ -360,19 +365,20 @@ class GeminiProvider(LLMProvider):
 
             def _budgeted_call():
                 from . import session_budget
-                session_budget.check()
-                quota_budget.reserve_call(
-                    consumer,
-                    label,
-                    keys_configured=len(self._pool),
-                    model=self.model,
-                    kind="gemini",
-                )
-                attempt = session_budget.reserve(self.model)
+                from .analysis_diagnostics import failure_detail
+                try:
+                    session_budget.check()
+                    quota_budget.reserve_call(consumer,label,keys_configured=len(self._pool),model=self.model,kind="gemini")
+                    attempt = session_budget.reserve(self.model)
+                    self._last_attempt=attempt
+                except Exception as exc:
+                    exc.analysis_failure=failure_detail(exc,'provider_control',attempt_count=0,attempted_network=False)
+                    raise
                 try:
                     result = make_call(client)
                 except Exception as exc:
                     session_budget.outcome(exc, attempt=attempt)
+                    exc.analysis_failure=failure_detail(exc,'provider_request',attempt_count=1,attempted_network=True)
                     raise
                 session_budget.outcome(attempt=attempt)
                 return result
@@ -391,6 +397,8 @@ class GeminiProvider(LLMProvider):
                 _debug(f"call served by {label}")
                 return result
             except genai_errors.APIError as e:
+                if recovery_mode:
+                    raise  # No key rotation or repeated automatic recovery probes.
                 if not is_rate_limit_error(e):
                     raise
                 _record_key_call(label, ok=False)
@@ -466,7 +474,10 @@ class GeminiProvider(LLMProvider):
             model=self.model,
             cached=False,
             latency_ms=latency_ms,
+            model_content=_extract_model_content(response),
+            tool_calls=_extract_tool_calls(response),
         )
+        result.raw['request_provenance']=_request_provenance(response,self)
 
         if conn is not None:
             db.cache_set(conn, _CHAT_NAMESPACE + self._request_cache_suffix, key, _response_to_cache_entry(result))
@@ -522,7 +533,10 @@ class GeminiProvider(LLMProvider):
             model=self.model,
             cached=False,
             latency_ms=latency_ms,
+            model_content=_extract_model_content(response),
+            tool_calls=_extract_tool_calls(response),
         )
+        result.raw['request_provenance']=_request_provenance(response,self)
 
         if conn is not None:
             db.cache_set(conn, _VISION_NAMESPACE + self._request_cache_suffix, key, _response_to_cache_entry(result))
@@ -555,6 +569,21 @@ def _to_gemini_contents(messages: list[dict]) -> list[dict]:
         if role == "system":
             pending_system.append(text)
             continue
+        if message.get('provider_content'):
+            contents.append(message['provider_content'])
+            continue
+        if role == 'tool':
+            try:result=json.loads(text) if isinstance(text,str) else text
+            except (ValueError,TypeError):result={'result':str(text)}
+            response={'name':message['name'],'response':result if isinstance(result,dict) else {'result':result}}
+            if message.get('tool_call_id') is not None:
+                response['id']=message['tool_call_id']
+            part={'function_response':response}
+            if contents and contents[-1]['role']=='user' and all('function_response' in item for item in contents[-1]['parts']):
+                contents[-1]['parts'].append(part)
+            else:
+                contents.append({'role':'user','parts':[part]})
+            continue
         if pending_system:
             text = "\n\n".join(pending_system) + "\n\n" + text
             pending_system = []
@@ -573,17 +602,25 @@ def _extract_text(response: Any) -> str:
 
 
 def _extract_tool_call(response: Any) -> Optional[ToolCall]:
+    calls = _extract_tool_calls(response)
+    return calls[0] if calls else None
+
+
+def _extract_tool_calls(response: Any) -> list[ToolCall]:
     try:
         calls = response.function_calls
         if calls:
-            fc = calls[0]
-            return ToolCall(name=fc.name, args=dict(fc.args) if fc.args else {})
+            return [ToolCall(name=fc.name, args=dict(fc.args) if fc.args else {}, id=getattr(fc,'id',None)) for fc in calls]
     except Exception:
         pass
-    return None
+    return []
 
 
 def _response_to_dict(response: Any) -> dict[str, Any]:
+    model_dump=getattr(response,'model_dump',None)
+    if callable(model_dump):
+        try:return model_dump(mode='json',exclude_none=True)
+        except Exception:pass
     to_json_dict = getattr(response, "to_json_dict", None)
     if callable(to_json_dict):
         try:
@@ -593,28 +630,54 @@ def _response_to_dict(response: Any) -> dict[str, Any]:
     return {"text": _extract_text(response)}
 
 
+def _extract_model_content(response):
+    """Preserve opaque provider signatures for the next function-calling turn."""
+    try:
+        content=response.candidates[0].content
+        return content.model_dump(mode='json',exclude_none=True)
+    except (AttributeError,IndexError,TypeError):
+        return None
+
+
+def _request_provenance(response,provider):
+    from datetime import datetime,timezone
+    return {'session_attempt':getattr(provider,'_last_attempt',None),
+        'requested_model':provider.model,'serving_model':getattr(response,'model_version',None),
+        'timestamp':datetime.now(timezone.utc).isoformat()}
+
+
 def _response_to_cache_entry(result: LLMResponse) -> dict[str, Any]:
     # latency_ms is deliberately not stored: on a hit it must reflect
     # the cost of the cache lookup that just happened, not the API
     # latency of the original call that populated the entry.
     return {
         "text": result.text,
-        "tool_call": {"name": result.tool_call.name, "args": result.tool_call.args}
+        "tool_call": {"name": result.tool_call.name, "args": result.tool_call.args,
+                      **({"id":result.tool_call.id} if result.tool_call.id is not None else {})}
         if result.tool_call
         else None,
         "raw": result.raw,
+        "model_content":result.model_content,
+        "tool_calls":[{"name":call.name,"args":call.args,"id":call.id} for call in result.tool_calls] if result.tool_calls is not None else None,
     }
 
 
 def _response_from_cache(entry: dict[str, Any], model: str, latency_ms: int) -> LLMResponse:
     tool_call = entry.get("tool_call")
+    tool_calls = entry.get('tool_calls')
+    if tool_calls is None and entry.get('model_content'):
+        # Older cache entries retained the full provider turn but exposed only
+        # its first call. Recover every call before replaying that turn.
+        tool_calls = [part['function_call'] for part in entry['model_content'].get('parts', []) if part.get('function_call')]
     return LLMResponse(
         text=entry.get("text", ""),
-        tool_call=ToolCall(name=tool_call["name"], args=tool_call["args"]) if tool_call else None,
+        tool_call=ToolCall(**tool_call) if tool_call else None,
         raw=entry.get("raw", {}),
         model=model,
         cached=True,
         latency_ms=latency_ms,
+        model_content=entry.get('model_content'),
+        tool_calls=[ToolCall(name=call['name'], args=call.get('args') or {}, id=call.get('id')) for call in tool_calls] if tool_calls is not None else None,
     )
 
 

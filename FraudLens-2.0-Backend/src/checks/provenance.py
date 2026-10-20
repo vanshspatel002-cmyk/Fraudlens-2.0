@@ -24,17 +24,16 @@ more immediately, it makes the absence explicit and auditable - "we
 looked for content credentials and there were none" is a defensible
 statement in a regulated review, where "we never looked" is not.
 
-Absence is scored PASS at low confidence, never CONCERN, for the same
-reason src/checks/metadata.py refuses to flag missing EXIF: penalising
-the overwhelmingly common case would destroy the false-positive rate,
-which is this system's primary metric. Only a credential that exists and
-fails validation is a CONCERN - that means someone tampered with a
-signed image, which is a genuine, specific finding.
+Absence is INCONCLUSIVE: unsigned evidence is neither authenticated nor
+suspicious merely because credentials are absent. SDK/I/O failures are failed
+checks, never proof of tampering. Only recorded integrity mismatch codes support
+a concern; missing trust anchors and certificate failures remain limitations.
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional
+import json
 
 from ..models import CheckCategory, Finding, Image, Verdict
 from .base import Check, CheckContext, register_check
@@ -59,7 +58,7 @@ def _get_c2pa() -> Any:
 
             _c2pa_module = c2pa
         except Exception as e:  # noqa: BLE001 - ImportError, or a native-load failure
-            _c2pa_import_error = f"{type(e).__name__}: {e}"
+            _c2pa_import_error = type(e).__name__
     return _c2pa_module
 
 
@@ -72,29 +71,37 @@ def _read_manifest(c2pa: Any, image_path: str) -> tuple[Optional[str], Optional[
     pinning this check to one release. A "no manifest present" outcome
     comes back as (None, None) - the common case, not an error.
     """
-    reader_cls = getattr(c2pa, "Reader", None)
-    if reader_cls is not None:
-        try:
-            from_file = getattr(reader_cls, "from_file", None)
-            reader = from_file(image_path) if callable(from_file) else reader_cls(image_path)
-            return reader.json(), None
-        except Exception as e:  # noqa: BLE001 - includes "no manifest found"
-            message = str(e)
-            if "no claim" in message.lower() or "manifest" in message.lower():
-                return None, None
-            return None, f"{type(e).__name__}: {message}"
+    try:
+        # Embedded provenance verification is local. Do not fetch arbitrary
+        # uploader-supplied remote manifests or OCSP URLs from backend workers.
+        with c2pa.Context.from_dict({'verify': {'remote_manifest_fetch': False, 'ocsp_fetch': False}}) as context:
+            with c2pa.Reader(image_path, context=context) as reader:
+                return reader.json(), None
+    except Exception as error:
+        missing_type = getattr(getattr(c2pa, 'C2paError', None), 'ManifestNotFound', None)
+        if ((isinstance(missing_type, type) and isinstance(error, missing_type))
+                or type(error).__name__ == 'ManifestNotFound'
+                or str(error).startswith('ManifestNotFound:')):
+            return None, None
+        return None, type(error).__name__
 
-    read_file = getattr(c2pa, "read_file", None)
-    if callable(read_file):
-        try:
-            return read_file(image_path, None), None
-        except Exception as e:  # noqa: BLE001
-            message = str(e)
-            if "no claim" in message.lower() or "manifest" in message.lower():
-                return None, None
-            return None, f"{type(e).__name__}: {message}"
 
-    return None, "c2pa is installed but exposes no recognised read API"
+def _failure_codes(store):
+    codes = []
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key == 'failure' and isinstance(item, list):
+                    codes.extend(row['code'] for row in item if isinstance(row, dict) and isinstance(row.get('code'), str))
+                else:
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+    walk(store.get('validation_results', {}))
+    codes.extend(row['code'] for row in store.get('validation_status', [])
+                 if isinstance(row, dict) and isinstance(row.get('code'), str))
+    return sorted(set(codes))
 
 
 class C2PACheck(Check):
@@ -146,7 +153,7 @@ class C2PACheck(Check):
                 Verdict.INCONCLUSIVE,
                 0.0,
                 "Content credential verification unavailable.",
-                {"reason": _c2pa_import_error or "c2pa-python is not installed"},
+                {"reason": _c2pa_import_error or "c2pa-python is not installed", 'execution_state': 'failed', 'error_category': 'dependency_unavailable'},
             )
 
         manifest_json, error = _read_manifest(c2pa, image.path)
@@ -155,26 +162,43 @@ class C2PACheck(Check):
             # A credential that exists but will not validate - the one
             # genuinely concerning outcome for this check.
             return finding(
-                Verdict.CONCERN,
-                self.VALID_CREDENTIALS_CONFIDENCE,
-                "This image carries content credentials that failed validation.",
-                {"credentials_present": True, "validation_error": error},
+                Verdict.INCONCLUSIVE,
+                0.0,
+                "Content credentials could not be inspected; an SDK or file error does not establish tampering.",
+                {"credentials_present": None, "error_type": error, 'execution_state': 'failed'},
             )
 
         if not manifest_json:
             return finding(
-                Verdict.PASS,
-                self.NO_CREDENTIALS_CONFIDENCE,
-                "This image carries no C2PA content credentials - expected, as adoption remains minimal.",
-                {"credentials_present": False},
+                Verdict.INCONCLUSIVE,
+                0.0,
+                "No embedded C2PA content credentials were found. Authenticity cannot be established from this check; absence is not evidence of fraud.",
+                {"credentials_present": False, 'execution_state': 'inconclusive', 'remote_fetch_enabled': False},
             )
-
-        return finding(
-            Verdict.PASS,
-            self.VALID_CREDENTIALS_CONFIDENCE,
-            "This image carries valid C2PA content credentials.",
-            {"credentials_present": True, "manifest": manifest_json[:2000]},
-        )
+        try:
+            store = json.loads(manifest_json)
+            if not isinstance(store, dict):
+                raise ValueError('Manifest store must be an object')
+            codes = _failure_codes(store)
+        except (TypeError, ValueError):
+            return finding(Verdict.INCONCLUSIVE, 0.0, 'The SDK returned an unusable manifest report; credential validation is unverified.',
+                           {'execution_state': 'failed', 'error_category': 'invalid_response'})
+        state = store.get('validation_state')
+        evidence = {'credentials_present': bool(store.get('active_manifest')), 'validation_state': state,
+                    'validation_codes': codes, 'active_manifest': store.get('active_manifest'), 'remote_fetch_enabled': False}
+        integrity_codes = {'assertion.hashedURI.mismatch', 'assertion.dataHash.mismatch',
+                           'assertion.bmffHash.mismatch', 'assertion.boxesHash.mismatch', 'claimSignature.mismatch'}
+        if integrity_codes.intersection(codes):
+            return finding(Verdict.CONCERN, self.VALID_CREDENTIALS_CONFIDENCE,
+                           'Embedded credentials report an integrity mismatch. Inspect the recorded validation codes; this does not establish who changed the image or why.',
+                           {**evidence, 'execution_state': 'completed'})
+        if store.get('active_manifest') and state in {'Valid', 'Trusted'} and not codes:
+            return finding(Verdict.PASS, self.VALID_CREDENTIALS_CONFIDENCE,
+                           'Embedded content credentials validate under the configured local policy. This does not verify the incident, vehicle identity or absence of fraud.',
+                           {**evidence, 'execution_state': 'completed'})
+        return finding(Verdict.INCONCLUSIVE, 0.0,
+                       'Content credentials were found but their validity or signing trust could not be established under the configured local policy.',
+                       {**evidence, 'execution_state': 'inconclusive'})
 
 
 C2PA_CHECK = register_check(C2PACheck())

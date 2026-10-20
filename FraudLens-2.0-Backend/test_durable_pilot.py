@@ -11,9 +11,18 @@ from types import SimpleNamespace
 import uuid
 import pytest
 from src import api, db, ingest, runtime_store, session_budget
-from src.models import AgentDecision, Finding, Recommendation, RiskBand, CheckCategory, Verdict
+from src.models import AgentDecision, Finding, PerceptionRecord, Recommendation, RiskBand, CheckCategory, Verdict
 from test_pilot_workflow import client, auth, photo, submit, complete_for_review, review_basis
 REAL_PIPELINE = api._run_pipeline
+
+
+def offline_perception(image):
+    """Explicit valid observations; no provider or authenticity claim."""
+    return PerceptionRecord(content_hash=image.content_hash,source='offline-cache-fixture',
+        damage_description='A small visible bumper dent.',damage_severity='minor',
+        weather_observed='unknown',road_condition='Not visible',shadow_direction='none_visible',
+        shadow_length='none',lighting='daylight',plate_text='',
+        scene_context='A parked vehicle.',anomaly_notes='',raw_response={})
 
 
 def finish(case_id):
@@ -204,7 +213,7 @@ def test_processing_runs_never_mix(client,monkeypatch):
     receipt=submit(client).json();case_id=receipt['case_id'];headers=auth(client)
     monkeypatch.setattr(orchestrator,'run_checks',lambda conn,case,check_ids,**kw:[Finding(check_id='exif_metadata',case_id=case.case_id,
         category=CheckCategory.PROVENANCE,verdict=Verdict.CONCERN,confidence=.5,explanation='Isolated test finding')])
-    def adjudicate(conn,case,findings,policy,provider):
+    def adjudicate(conn,case,findings,policy,provider,*,check_config=None,release_transactions=False):
         decision=AgentDecision(case_id=case.case_id,recommendation=Recommendation.ESCALATE,risk_band=RiskBand.DESK_REVIEW,
             confidence=.5,summary='Isolated mocked adjudication',supporting_finding_ids=[findings[0].finding_id],
             requested_artifacts=[],policy_version=policy.policy_version,llm_calls_count=1)
@@ -280,7 +289,7 @@ def test_pipeline_persists_run_and_closes_provider(client,monkeypatch,provider_f
                 'findings_cited':[],'requested_artifacts':[]}),tool_call=None,raw={},model='offline-regression',cached=False,latency_ms=1)
         def close(self):closed.append(True)
     monkeypatch.setattr(llm,'get_provider',lambda:OfflineProvider())
-    monkeypatch.setattr(perception,'perceive_image',lambda *a,**kw:SimpleNamespace(raw_response={}))
+    monkeypatch.setattr(perception,'perceive_image',lambda conn,image,*a,**kw:offline_perception(image))
     monkeypatch.setattr(orchestrator,'run_checks',lambda conn,case,check_ids,**kw:[Finding(check_id='exif_metadata',case_id=case.case_id,
         category=CheckCategory.PROVENANCE,verdict=Verdict.INCONCLUSIVE,confidence=0,explanation='Isolated mocked finding'),
         Finding(check_id='ai_generation',case_id=case.case_id,category=CheckCategory.PROVENANCE,
@@ -314,7 +323,8 @@ def test_pipeline_preserves_later_cached_vision_after_stop(client,monkeypatch):
         ('images',('two.png',photo('blue'),'image/png'))]).json()
     with runtime_store.connection(api.DB_PATH) as conn:
         images=db.get_images_for_case(conn,receipt['case_id']);claimed=runtime_store.claim_next(conn)
-    monkeypatch.setattr(db,'get_perception',lambda conn,h:SimpleNamespace(raw_response={}) if h==images[1].content_hash else None)
+    cached=offline_perception(images[1])
+    monkeypatch.setattr(db,'get_perception',lambda conn,h:cached if h==images[1].content_hash else None)
     calls=[];closed=[]
     def stop(conn,image,*a,**kw):
         calls.append(image.image_id);raise QuotaBudgetExhausted('Explicit offline session stop')
@@ -365,7 +375,7 @@ def test_run_audit_records_adjudication_response_source(client,monkeypatch,cache
     from src.agent.production_policy import production_policy
     receipt=submit(client).json();case_id=receipt['case_id']
     monkeypatch.setattr(orchestrator,'run_checks',lambda *a,**kw:[])
-    def adjudicate(conn,case,findings,policy,provider):
+    def adjudicate(conn,case,findings,policy,provider,*,check_config=None,release_transactions=False):
         provider.chat([])
         decision=AgentDecision(case_id=case.case_id,recommendation=Recommendation.ESCALATE,
             risk_band=RiskBand.DESK_REVIEW,confidence=.3,summary='Explicit offline response fixture',
@@ -377,7 +387,8 @@ def test_run_audit_records_adjudication_response_source(client,monkeypatch,cache
         claimed=runtime_store.claim_next(conn)
         with runtime_store.execution(claimed):
             decision=orchestrator.process_case(conn,case_id,provider=provider,policy=production_policy('claims'),run_id=receipt['job_id'])
-        sources=[{'source':'request_cache' if cached else 'fresh_provider','model':'offline-fixture'}]
+        sources=[{'source':'request_cache' if cached else 'fresh_provider','model':'offline-fixture',
+            'request_provenance':{}}]
         assert decision._model_response_sources==sources
         event=next(e for e in db.get_audit_events_for_case(conn,case_id) if e.event_type=='case_adjudicated')
         assert event.details['run_id']==receipt['job_id'] and event.details['model_response_sources']==sources
@@ -394,7 +405,7 @@ def test_intake_records_trusted_time_basis_for_production_checks(client,monkeypa
         files={'images':('vehicle.png',photo(),'image/png')}).json()
     captured=[]
     monkeypatch.setattr(orchestrator,'run_checks',lambda *a,**kw:captured.append(kw['config']) or [])
-    def adjudicate(conn,case,findings,policy,provider):
+    def adjudicate(conn,case,findings,policy,provider,*,check_config=None,release_transactions=False):
         decision=AgentDecision(case_id=case.case_id,recommendation=Recommendation.ESCALATE,
             risk_band=RiskBand.DESK_REVIEW,confidence=.3,summary='Offline time-basis fixture',
             supporting_finding_ids=[],requested_artifacts=[],policy_version=policy.policy_version)

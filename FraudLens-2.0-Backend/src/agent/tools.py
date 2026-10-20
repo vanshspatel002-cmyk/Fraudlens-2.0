@@ -60,7 +60,7 @@ MIN_WIDEN_THRESHOLD = 0.70
 MAX_WIDEN_MATCHES = 10
 
 
-def widen_similarity_search(conn: sqlite3.Connection, case: Case, threshold: float = 0.80) -> dict[str, Any]:
+def widen_similarity_search(conn: sqlite3.Connection, case: Case, threshold: float = 0.80, evaluation_cutoff=None) -> dict[str, Any]:
     """
     Re-run the image similarity search at a lower threshold than the
     duplicate check uses.
@@ -87,11 +87,14 @@ def widen_similarity_search(conn: sqlite3.Connection, case: Case, threshold: flo
             # find_similar takes the embedding itself and already excludes
             # the querying case; it returns (Image, cosine) pairs.
             similar = ingest.find_similar(
-                conn, image.embedding, exclude_case=case.case_id, top_k=MAX_WIDEN_MATCHES
+                conn, image.embedding, exclude_case=case.case_id, top_k=MAX_WIDEN_MATCHES,
+                evaluation_cutoff=evaluation_cutoff
             )
         except Exception as e:  # noqa: BLE001 - a tool must never break the run
+            from ..analysis_diagnostics import failure_detail
             return {"tool": "widen_similarity_search", "threshold": threshold,
-                    "matches": [], "error": f"{type(e).__name__}: {e}"}
+                    "matches": [], "error": 'Similarity search could not complete.',
+                    'diagnostic': failure_detail(e, 'agent_tool:widen_similarity_search')}
         for other, cosine in similar:
             if cosine < threshold:
                 continue
@@ -120,12 +123,13 @@ def widen_similarity_search(conn: sqlite3.Connection, case: Case, threshold: flo
     }
 
 
-def get_claimant_history(conn: sqlite3.Connection, case: Case) -> dict[str, Any]:
+def get_claimant_history(conn: sqlite3.Connection, case: Case, evaluation_cutoff=None) -> dict[str, Any]:
     """Every other case filed by this claimant, with amounts and dates."""
+    cutoff_sql, values = ingest.evaluation_cutoff_filter(conn, evaluation_cutoff)
     rows = conn.execute(
         "SELECT case_id, agent_type, claim_type, claim_amount, status, created_at "
-        "FROM cases WHERE claimant_id = ? ORDER BY created_at",
-        (case.claimant_id,),
+        "FROM cases WHERE claimant_id = ?" + cutoff_sql + " ORDER BY created_at",
+        (case.claimant_id, *values),
     ).fetchall()
 
     others = [dict(r) for r in rows if r["case_id"] != case.case_id]
@@ -147,7 +151,7 @@ def get_claimant_history(conn: sqlite3.Connection, case: Case) -> dict[str, Any]
     }
 
 
-def get_garage_history(conn: sqlite3.Connection, case: Case) -> dict[str, Any]:
+def get_garage_history(conn: sqlite3.Connection, case: Case, evaluation_cutoff=None) -> dict[str, Any]:
     """
     This garage's claim distribution, including how much of it sits just
     under the 50,000 rupee independent-survey threshold.
@@ -161,14 +165,15 @@ def get_garage_history(conn: sqlite3.Connection, case: Case) -> dict[str, Any]:
         return {"tool": "get_garage_history", "garage_id": None,
                 "note": "this case has no garage attached"}
 
+    cutoff_sql, values = ingest.evaluation_cutoff_filter(conn, evaluation_cutoff)
     rows = conn.execute(
-        "SELECT claim_amount FROM cases WHERE garage_id = ? AND claim_amount IS NOT NULL",
-        (case.garage_id,),
+        "SELECT claim_amount FROM cases WHERE garage_id = ? AND claim_amount IS NOT NULL" + cutoff_sql,
+        (case.garage_id, *values),
     ).fetchall()
     amounts = [r["claim_amount"] for r in rows]
 
     population = conn.execute(
-        "SELECT claim_amount FROM cases WHERE claim_amount IS NOT NULL"
+        "SELECT claim_amount FROM cases WHERE claim_amount IS NOT NULL" + cutoff_sql, values
     ).fetchall()
     population_amounts = [r["claim_amount"] for r in population]
 
@@ -185,9 +190,9 @@ def get_garage_history(conn: sqlite3.Connection, case: Case) -> dict[str, Any]:
         "share_in_45k_50k_band": round(band_share(amounts), 4),
         "population_share_in_band": round(band_share(population_amounts), 4),
         "note": (
-            "The band is just below the 50,000 rupee independent-survey threshold. A garage "
-            "well above the population share is billing to avoid survey - that is a pattern of "
-            "the GARAGE, and does not establish that this claimant did anything wrong."
+            "The band is below a preserved INR 50,000 research benchmark, whose current legal "
+            "applicability is unverified. A concentration describes the garage's recorded billing "
+            "distribution; it establishes neither intent nor this claimant's conduct."
         ),
     }
 
@@ -215,13 +220,14 @@ def requery_perception(
                 "available_image_ids": [i.image_id for i in db.get_images_for_case(conn, case.case_id)]}
 
     record = db.get_perception_record(conn, image.content_hash)
-    if record is None:
+    from ..perception import perception_record_usable
+    if not perception_record_usable(record):
         return {
             "tool": "requery_perception", "image_id": image_id, "question": question,
             "perception_available": False,
             "note": (
-                "This image has not been through the vision pass - vision quota is 20 requests "
-                "per key per day. Absence of perception is not evidence about the claim."
+                "No usable recorded vision observations are available for this image. "
+                "Missing or failed perception is not evidence about the claim."
             ),
         }
 
@@ -230,6 +236,8 @@ def requery_perception(
         "image_id": image_id,
         "question": question,
         "perception_available": True,
+        'source_model': record.source,
+        'schema_version': record.raw_response.get('schema_version', 'legacy_record'),
         "damage_description": record.damage_description,
         "damage_severity": record.damage_severity,
         "weather_observed": record.weather_observed,
@@ -341,7 +349,7 @@ def schemas_for(tool_names: tuple[str, ...]) -> list[dict[str, Any]]:
 
 
 def call_tool(
-    name: str, conn: sqlite3.Connection, case: Case, args: Optional[dict[str, Any]] = None
+    name: str, conn: sqlite3.Connection, case: Case, args: Optional[dict[str, Any]] = None, *, evaluation_cutoff=None
 ) -> dict[str, Any]:
     """
     Dispatch one tool call, returning an error dict rather than raising.
@@ -351,12 +359,32 @@ def call_tool(
     agent can read and route around.
     """
     args = dict(args or {})
+    if name in {'widen_similarity_search', 'get_claimant_history', 'get_garage_history'}:
+        args['evaluation_cutoff'] = evaluation_cutoff  # Trusted run context overrides any model-supplied bound.
     fn = TOOLS.get(name)
     if fn is None:
         return {"tool": name, "error": "unknown tool", "available": sorted(TOOLS)}
     try:
-        return fn(conn, case, **args)
+        result = fn(conn, case, **args)
+        if evaluation_cutoff is not None:
+            result['evaluation_cutoff'] = str(evaluation_cutoff)
+        return result
     except TypeError as e:
-        return {"tool": name, "error": f"bad arguments: {e}", "args_received": args}
+        return {"tool": name, "error": "Invalid tool arguments.", 'error_type': type(e).__name__}
     except Exception as e:  # noqa: BLE001
-        return {"tool": name, "error": f"{type(e).__name__}: {e}", "args_received": args}
+        from ..analysis_diagnostics import failure_detail
+        return {"tool": name, "error": 'Tool execution failed.', 'diagnostic': failure_detail(e, 'agent_tool:' + name)}
+
+
+def trace_observation(result):
+    """Bounded observable facts, never hidden model thoughts/signatures."""
+    keys = ('tool', 'threshold', 'match_count', 'other_case_count', 'total_claimed_inr',
+            'claim_count', 'mean_claim_inr', 'share_in_45k_50k_band', 'population_share_in_band',
+            'image_id', 'perception_available', 'damage_severity', 'weather_observed',
+            'lighting', 'source_model', 'schema_version', 'error', 'diagnostic')
+    observed = {key: result[key] for key in keys if key in result}
+    for name in ('matches', 'cases'):
+        if isinstance(result.get(name), list):
+            observed[name] = result[name][:3]
+            observed[name + '_truncated'] = len(result[name]) > 3
+    return observed

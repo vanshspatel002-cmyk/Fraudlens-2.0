@@ -120,16 +120,48 @@ def _ensure_consumer(state: dict[str, Any], consumer: str, total_daily_quota: in
         consumers[name]["budget"] = budget
 
 
+def _validate_state(state):
+    integer = lambda value: type(value) is int and value >= 0
+    valid = (isinstance(state, dict) and isinstance(state.get('quota_day'), str)
+        and integer(state.get('daily_per_key')) and state['daily_per_key'] > 0
+        and integer(state.get('total_daily_quota')) and state['total_daily_quota'] > 0
+        and 'primary_consumer' in state
+        and (state['primary_consumer'] is None or isinstance(state['primary_consumer'], str))
+        and isinstance(state.get('consumers'), dict) and isinstance(state.get('keys'), dict)
+        and isinstance(state.get('updated_at'), str)
+        and isinstance(state.get('events', []), list) and isinstance(state.get('history', []), list))
+    if valid:
+        try:
+            datetime.strptime(state['quota_day'], '%Y-%m-%d')
+        except ValueError:
+            valid = False
+        valid = valid and all(isinstance(slot, dict) and all(integer(slot.get(key)) for key in ('budget','reserved','calls'))
+                              for slot in state['consumers'].values())
+        valid = valid and all(isinstance(slot, dict) and all(integer(slot.get(key)) for key in ('reserved','calls'))
+                              for slot in state['keys'].values())
+        valid = valid and all(isinstance(event, dict) for event in state.get('events', []))
+    if not valid:
+        raise QuotaBudgetExhausted('The existing quota ledger is invalid; restore its audit history before any provider request.')
+    for prior in state.get('history', []):
+        _validate_state(prior)
+
+
 def _load_state(path: Path, total_daily_quota: int, day: str) -> dict[str, Any]:
     if path.exists():
         try:
             state = json.loads(path.read_text(encoding="utf-8"))
+            _validate_state(state)
             if state.get("quota_day") == day:
                 state["total_daily_quota"] = total_daily_quota
                 state["daily_per_key"] = daily_per_key()
                 return state
-        except (OSError, json.JSONDecodeError):
-            pass
+            # A legitimate provider quota-day rollover must retain the earlier
+            # reservations and outcomes; recovery never erases budget history.
+            new_state=_base_state(total_daily_quota,day)
+            new_state['history']=[*state.get('history',[]),{k:v for k,v in state.items() if k!='history'}]
+            return new_state
+        except (OSError, json.JSONDecodeError) as exc:
+            raise QuotaBudgetExhausted('The existing quota ledger is unreadable; restore its audit history before any provider request.') from exc
     return _base_state(total_daily_quota, day)
 
 

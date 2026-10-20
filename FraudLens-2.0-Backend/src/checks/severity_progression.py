@@ -63,8 +63,8 @@ in the same way `entity_graph` was measured against an injected ring.
 from __future__ import annotations
 
 import sqlite3
-from .. import db
-from datetime import datetime
+from .. import db, ingest
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ..models import CheckCategory, Finding, Verdict
@@ -81,6 +81,7 @@ REPAIR_EVENT_TYPES = ("repair_completed", "claim_settled", "vehicle_repaired")
 
 
 class SeverityProgressionCheck(Check):
+    agent_types = ('claims',)
     check_id = "severity_progression"
     category = CheckCategory.ECONOMIC
     scope = "case"
@@ -116,16 +117,21 @@ class SeverityProgressionCheck(Check):
 
         if len(history) < 2:
             return [self._finding(
-                case.case_id, Verdict.PASS, 0.6,
+                case.case_id, Verdict.INCONCLUSIVE, 0.0,
                 "No earlier claim is on record for this vehicle, so there is no "
                 "sequence of damage to be inconsistent.",
-                evidence)]
+                {**evidence, 'execution_state': 'not_applicable', 'reason': 'no_prior_claim_sequence'})]
 
         evidence["sequence"] = [
             {"case_id": h["case_id"], "declared_time": h["declared_time"],
              "severity": h["severity"], "description": (h["description"] or "")[:80]}
             for h in history
         ]
+
+        if any(item['when'] is None for item in history) or len({item['when'].utcoffset() is None for item in history}) > 1:
+            return [self._finding(case.case_id, Verdict.INCONCLUSIVE, 0.0,
+                'The damage sequence cannot be compared because claim timestamps are missing or use incompatible timezone bases.',
+                {**evidence, 'execution_state': 'inconclusive', 'reason': 'chronology_unverified'})]
 
         known = [h for h in history if h["severity"] in SEVERITY_ORDER]
         if len(known) < 2:
@@ -183,42 +189,53 @@ class SeverityProgressionCheck(Check):
         """Every claim on this registration, oldest first, with perceived severity."""
         if not case.vehicle_registration:
             return []
-        try:
-            rows = ctx.conn.execute(
+        cutoff_sql, values = ingest.evaluation_cutoff_filter(ctx.conn, ctx.config.get('evaluation_cutoff'))
+        rows = ctx.conn.execute(
                 "SELECT case_id, declared_time FROM cases "
-                "WHERE vehicle_registration = ? AND agent_type = 'claims'",
-                (case.vehicle_registration,),
+                "WHERE vehicle_registration = ? AND agent_type = 'claims'" + cutoff_sql,
+                (case.vehicle_registration, *values),
             ).fetchall()
-        except db.DatabaseError:
-            return []
 
         out: list[dict[str, Any]] = []
         for case_id, declared in rows:
+            when = self._as_datetime(declared)
+            current = self._as_datetime(case.declared_time)
+            if (when is not None and current is not None
+                    and (when.utcoffset() is None) == (current.utcoffset() is None) and when > current):
+                continue
             severity, description = self._severity_for(ctx, case_id)
             out.append({
                 "case_id": case_id,
                 "declared_time": str(declared) if declared else None,
-                "when": self._as_datetime(declared),
+                "when": when,
                 "severity": severity,
                 "description": description,
             })
-        return sorted(out, key=lambda r: (r["when"] is None, r["when"]))
+        def chronology_key(item):
+            when = item['when']
+            # Different UTC offsets must sort by the actual instant. The run
+            # guard still rejects missing or mixed aware/naive chronology.
+            if when is not None and when.utcoffset() is not None:
+                when = when.astimezone(timezone.utc).replace(tzinfo=None)
+            return when is None, when or datetime.max
+        return sorted(out, key=chronology_key)
 
     def _severity_for(self, ctx: CheckContext, case_id: str) -> tuple[Optional[str], Optional[str]]:
         """Worst perceived severity across a case's images, with its description."""
-        try:
-            rows = ctx.conn.execute(
-                "SELECT p.damage_severity, p.damage_description "
-                "FROM perception_records p JOIN images i ON i.content_hash = p.content_hash "
-                "WHERE i.case_id = ?", (case_id,),
-            ).fetchall()
-        except db.DatabaseError:
-            return None, None
+        from ..perception import perception_record_usable
         worst, worst_rank, description = None, -1, None
-        for severity, desc in rows:
-            s = (severity or "").strip().lower()
+        if case_id == ctx.case.case_id:
+            images = ctx.images  # This run explicitly records its own evidence version.
+        else:
+            cutoff_sql, values = ingest.evaluation_cutoff_filter(ctx.conn, ctx.config.get('evaluation_cutoff'))
+            images = [db._image_from_row(row) for row in ctx.conn.execute('SELECT * FROM images WHERE case_id=?' + cutoff_sql, (case_id,*values))]
+        for image in images:
+            record = db.get_perception(ctx.conn, image.content_hash)
+            if not perception_record_usable(record):
+                continue
+            s = (record.damage_severity or "").strip().lower()
             if s in SEVERITY_ORDER and SEVERITY_ORDER[s] > worst_rank:
-                worst, worst_rank, description = s, SEVERITY_ORDER[s], desc
+                worst, worst_rank, description = s, SEVERITY_ORDER[s], record.damage_description
         return worst, description
 
     def _find_oscillation(self, ctx: CheckContext, history: list[dict[str, Any]],
@@ -258,18 +275,18 @@ class SeverityProgressionCheck(Check):
         """
         if first["when"] is None or last["when"] is None or not registration:
             return False
-        try:
-            rows = ctx.conn.execute(
+        cutoff_sql, values = ingest.evaluation_cutoff_filter(ctx.conn, ctx.config.get('evaluation_cutoff'), ('a.created_at',))
+        rows = ctx.conn.execute(
                 "SELECT a.event_type, a.created_at FROM audit_log a "
                 "JOIN cases c ON c.case_id = a.case_id "
-                "WHERE c.vehicle_registration = ?",
-                (registration,),
+                "WHERE c.vehicle_registration = ?" + cutoff_sql,
+                (registration, *values),
             ).fetchall()
-        except db.DatabaseError:
-            return False
         for event_type, created in rows:
             if event_type in REPAIR_EVENT_TYPES:
                 when = self._as_datetime(created)
+                if when is None or (when.utcoffset() is None) != (first['when'].utcoffset() is None):
+                    raise ValueError('Recorded repair timing cannot be compared with the claim chronology.')
                 if when is not None and first["when"] <= when <= last["when"]:
                     return True
         return False

@@ -136,6 +136,51 @@ _EXPECTED_FIELDS = (
     "scene_context",
     "anomaly_notes",
 )
+PERCEPTION_SCHEMA_VERSION = 'fraudlens-visible-observations-2026-10-20-v1'
+_ENUM_FIELDS = {
+    'damage_severity': {'none', 'minor', 'moderate', 'severe', 'unknown'},
+    'weather_observed': {'clear', 'overcast', 'rain', 'wet_ground', 'snow', 'unknown'},
+    'shadow_direction': {'N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'none_visible', 'unknown'},
+    'shadow_length': {'none', 'short', 'medium', 'long', 'unknown'},
+    'lighting': {'daylight', 'dusk', 'night', 'artificial', 'unknown'},
+}
+
+
+class PerceptionSchemaError(ValueError):
+    """A provider response arrived but did not meet the observation contract."""
+    error_category = 'response_schema_invalid'
+
+
+def _schema_issues(parsed):
+    issues = []
+    for key in _EXPECTED_FIELDS:
+        if key not in parsed:
+            issues.append(key + ':missing')
+        elif not isinstance(parsed[key], str):
+            issues.append(key + ':expected_string')
+        elif key in _ENUM_FIELDS and parsed[key] not in _ENUM_FIELDS[key]:
+            issues.append(key + ':invalid_enum')
+    return issues
+
+
+def perception_record_usable(record):
+    """Failed/invalid cached rows cannot masquerade as successful perception.
+
+    Legacy observations remain usable when their recorded values are valid;
+    reuse is attributed to the original record's model, never to a new call.
+    """
+    if record is None or record.raw_response.get('error'):
+        return False
+    observed = False
+    for key in _EXPECTED_FIELDS:
+        value = getattr(record, key, None)
+        if value is None:
+            continue
+        if not isinstance(value, str) or (key in _ENUM_FIELDS and value not in _ENUM_FIELDS[key]):
+            return False
+        if value.strip() and value != 'unknown':
+            observed = True
+    return observed
 
 # How long to back off after a call fails all the way through llm.py's own
 # retries. That's already 5 attempts of exponential backoff (see
@@ -289,7 +334,7 @@ def _record_from_parsed(content_hash: str, source: str, parsed: dict[str, Any], 
         plate_text=parsed["plate_text"],
         scene_context=parsed["scene_context"],
         anomaly_notes=parsed["anomaly_notes"],
-        raw_response={"text": raw_text, "parsed": parsed},
+        raw_response={"text": raw_text, "parsed": parsed, 'schema_version': PERCEPTION_SCHEMA_VERSION},
     )
 
 
@@ -305,6 +350,7 @@ def perceive_image(
     force: bool = False,
     retry_attempts: Optional[int] = None,
     provenance: Optional[dict] = None,
+    release_transactions: bool = False,
 ) -> PerceptionRecord:
     """
     Return the cached PerceptionRecord for image.content_hash, or produce
@@ -325,20 +371,30 @@ def perceive_image(
     """
     if not force:
         cached = db.get_perception(conn, image.content_hash)
-        if cached is not None:
+        if perception_record_usable(cached):
             if provenance is not None:
                 provenance['source'] = 'perception_cache'
+                provenance['source_model'] = cached.source
+                provenance['schema_version'] = cached.raw_response.get('schema_version', 'legacy_record')
             return cached
 
     model = getattr(provider, "model", "unknown")
 
     def _describe(prompt: str):
+        if release_transactions:
+            # The durable worker owns this connection; only optional
+            # observation/request-cache writes exist before its final result.
+            conn.commit()
         if retry_attempts is None:
             return provider.describe_image(image.path, prompt, conn=conn)
         return provider.describe_image(image.path, prompt, conn=conn, retry_attempts=retry_attempts)
 
     response = _describe(PERCEPTION_PROMPT)
+    responses = [response]
     parsed, error = _try_parse(response.text)
+    schema_issues = _schema_issues(parsed) if parsed is not None else []
+    if schema_issues:
+        parsed, error = None, 'Structured observation schema validation failed.'
 
     if parsed is None:
         # One retry, stricter instruction, same image. This is a genuinely
@@ -346,26 +402,44 @@ def perceive_image(
         # accepted exception to "one call per image ever", made only when
         # the first response was too malformed to use at all.
         response = _describe(PERCEPTION_PROMPT + _RETRY_SUFFIX)
+        responses.append(response)
         parsed, error = _try_parse(response.text)
+        schema_issues = _schema_issues(parsed) if parsed is not None else []
+        if schema_issues:
+            parsed, error = None, 'Structured observation schema validation failed.'
 
     if parsed is not None:
         if provenance is not None:
             provenance['source'] = 'request_cache' if getattr(response, 'cached', False) else 'fresh_provider'
-        record = _record_from_parsed(image.content_hash, model, parsed, response.text)
+        record = _record_from_parsed(image.content_hash, getattr(response, 'model', None) or model, parsed, response.text)
     else:
         if provenance is not None:
             provenance['source'] = 'unavailable'
         # Never crash a batch job over one unparseable response - save what
         # we know (the failure itself) and move on. anomaly_notes carries
         # the parse error so it's visible to a human, not silently dropped.
+        from .analysis_diagnostics import failure_detail
+        network_attempts = sum(not bool(getattr(value, 'cached', False)) for value in responses)
+        diagnostic = failure_detail(PerceptionSchemaError(error or 'Unusable structured observations.'),
+                                    'perception_schema', attempt_count=network_attempts,
+                                    attempted_network=network_attempts > 0)
+        diagnostic['response_count'] = len(responses)
         record = PerceptionRecord(
             content_hash=image.content_hash,
-            source=model,
+            source=getattr(response, 'model', None) or model,
             anomaly_notes=f"perception parse failure: {error}",
-            raw_response={"text": response.text, "error": error},
+            raw_response={"text": response.text, "error": error, 'schema_issues': schema_issues,
+                          'schema_version': PERCEPTION_SCHEMA_VERSION, 'diagnostic': diagnostic},
         )
 
+    request_provenance = (getattr(response, 'raw', None) or {}).get('request_provenance')
+    if isinstance(request_provenance, dict):
+        record.raw_response['request_provenance'] = {key: request_provenance[key] for key in
+            ('session_attempt', 'requested_model', 'serving_model', 'timestamp') if key in request_provenance}
     db.save_perception(conn, record)
+    if provenance is not None:
+        provenance['source_model'] = record.source
+        provenance['schema_version'] = record.raw_response.get('schema_version', 'legacy_record')
     return record
 
 
@@ -498,7 +572,7 @@ def _perceive_with_unavailable_retry(conn, image: Image, provider: LLMProvider) 
     last_error: Optional[Exception] = None
     for attempt in range(1, _UNAVAILABLE_MAX_ATTEMPTS + 1):
         try:
-            return perceive_image(conn, image, provider, retry_attempts=1)
+            return perceive_image(conn, image, provider, retry_attempts=1, release_transactions=True)
         except Exception as e:  # noqa: BLE001 - only a 503 is handled here, everything else re-raises below
             if not is_unavailable_error(e):
                 raise
@@ -549,7 +623,7 @@ def run_perception_pass(
 
     if stratified:
         images = select_stratified(conn, clean_sample)
-        remaining = [i for i in images if db.get_perception(conn, i.content_hash) is None]
+        remaining = [i for i in images if not perception_record_usable(db.get_perception(conn, i.content_hash))]
         keys = max(1, len(llm._discover_keys()))
         daily = keys * FREE_TIER_DAILY_QUOTA
         days = math.ceil(len(remaining) / daily) if daily else float("inf")
@@ -593,14 +667,14 @@ def run_perception_pass(
 
     progress = tqdm(images, desc="perception pass", unit="image")
     for image in progress:
-        if db.get_perception(conn, image.content_hash) is not None:
+        if perception_record_usable(db.get_perception(conn, image.content_hash)):
             calls_skipped += 1
             progress.set_postfix(_postfix())
             continue
 
         call_start = time.monotonic()
         try:
-            _perceive_with_unavailable_retry(conn, image, provider)
+            record = _perceive_with_unavailable_retry(conn, image, provider)
         except Exception as e:  # noqa: BLE001 - a partial pass must survive to resume overnight
             if is_rate_limit_error(e) or is_quota_budget_error(e):
                 rate_limited += 1
@@ -700,6 +774,11 @@ def run_perception_pass(
             progress.set_postfix(_postfix())
             continue
 
+        if not perception_record_usable(record):
+            failed += 1
+            conn.commit()
+            progress.set_postfix(_postfix())
+            continue
         succeeded += 1
         consecutive_rate_limits = 0
         consecutive_unavailable = 0
@@ -724,6 +803,8 @@ def run_perception_pass(
         f"{rate_limited} rate-limited (429), {transient_unavailable} transient-unavailable (503), "
         f"{failed} failed"
     )
+    if end_reason == 'completed' and failed:
+        end_reason = 'completed_with_failures'
     print(f"end reason: {end_reason}")
     print(f"elapsed: {elapsed:.1f}s wall-clock, {avg_success_seconds:.2f}s/image average over {succeeded} success(es)")
     if parse_total:

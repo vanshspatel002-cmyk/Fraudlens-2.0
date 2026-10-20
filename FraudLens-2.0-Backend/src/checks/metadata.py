@@ -10,12 +10,9 @@ The single most important thing this check gets right is what it does
 NOT flag: absence of EXIF. Upload pipelines strip it routinely - a
 WhatsApp forward, a browser re-encode, most phones' own "share" sheet -
 so a photo with no EXIF at all is the overwhelmingly common case in this
-corpus, not an unusual one. Scoring that CONCERN, or even INCONCLUSIVE,
-would make this check fire on most legitimate submissions and destroy
-the system's false-positive rate, which is its primary metric (see
-models.py's module docstring). PASS, low confidence, is the only verdict
-that's both honest ("I have no reason to doubt this photo") and safe
-("I also have almost no signal either way").
+corpus, not an unusual one. Missing EXIF is INCONCLUSIVE at zero confidence:
+there is no metadata to authenticate or compare, and absence alone must not
+become either an accusation or a passed authenticity check.
 """
 
 from __future__ import annotations
@@ -131,7 +128,7 @@ class MetadataCheck(Check):
 
     GPS_CONCERN_KM = 100.0
     TIMESTAMP_INCONCLUSIVE_HOURS = 48.0
-    NO_EXIF_CONFIDENCE = 0.3
+    NO_EXIF_CONFIDENCE = 0.0
     CLEAN_EXIF_CONFIDENCE = 0.6
 
     def run(self, ctx: CheckContext) -> list[Finding]:
@@ -147,17 +144,18 @@ class MetadataCheck(Check):
                 check_id=self.check_id,
                 case_id=case.case_id,
                 category=self.category,
-                verdict=Verdict.PASS,
+                verdict=Verdict.INCONCLUSIVE,
                 confidence=self.NO_EXIF_CONFIDENCE,
                 explanation=(
                     "This image has no EXIF metadata - common for uploads via WhatsApp, a browser, or a "
-                    "phone's default sharing pipeline, not itself suspicious."
+                    "phone's default sharing pipeline. Capture time, location and authenticity remain unverified; absence is not itself suspicious."
                 ),
-                evidence={"image_id": image.image_id, "exif_present": False},
+                evidence={"image_id": image.image_id, "exif_present": False, 'execution_state': 'inconclusive'},
             )
 
         reasons: list[str] = []
-        evidence: dict[str, Any] = {"image_id": image.image_id, "exif_present": True}
+        evidence: dict[str, Any] = {"image_id": image.image_id, "exif_present": True,
+            'gps_concern_km': gps_concern_km, 'timestamp_inconclusive_hours': timestamp_hours}
         concern_confidences: list[float] = []
 
         software = _find_software_signature(exif, _EDIT_SIGNATURES)
@@ -218,7 +216,7 @@ class MetadataCheck(Check):
             category=self.category,
             verdict=Verdict.PASS,
             confidence=self.CLEAN_EXIF_CONFIDENCE,
-            explanation="EXIF metadata is present and shows no editing signature, GPS mismatch, or timestamp discrepancy.",
+            explanation="The available EXIF fields show no detected editing signature or discrepancy in comparisons with available declarations. EXIF can be changed and does not authenticate an image.",
             evidence=evidence,
         )
 

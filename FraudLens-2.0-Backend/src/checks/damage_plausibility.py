@@ -80,6 +80,7 @@ def worst_severity(values: list[Optional[str]]) -> Optional[str]:
 
 
 class DamagePlausibilityCheck(Check):
+    agent_types = ('claims',)
     check_id = "damage_plausibility"
     category = CheckCategory.ECONOMIC
     scope = "case"

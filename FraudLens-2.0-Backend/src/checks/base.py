@@ -29,6 +29,7 @@ standard place for that in a plugin-registry package. Import
 from __future__ import annotations
 
 import sqlite3
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 from typing import Any, Optional
@@ -154,6 +155,7 @@ class Check(ABC):
     weight: float = 1.0
     attributed_to: str = "claimant"
     limitation: str = ""
+    agent_types: tuple[str, ...] = ('claims', 'underwriting')
 
     @abstractmethod
     def run(self, ctx: CheckContext) -> list[Finding]:
@@ -216,6 +218,11 @@ def _run_one(check: Check, ctx: CheckContext) -> list[Finding]:
     is that one broken check must never take down every other check for
     a case, let alone the batch run across every case.
     """
+    if ctx.case.agent_type not in check.agent_types:
+        if not ctx.config.get('execution_states'):
+            return []
+        return [_inconclusive(check, ctx.case.case_id, 'This check does not apply to this application type.',
+                             {'execution_state': 'not_applicable', 'applicable_case_types': list(check.agent_types)})]
     if check.scope == "image" and not ctx.images:
         return [_inconclusive(check, ctx.case.case_id, "No images available for this case.")]
 
@@ -251,12 +258,14 @@ def _run_one(check: Check, ctx: CheckContext) -> list[Finding]:
     try:
         return prefix_findings + list(check.run(run_ctx))
     except Exception as e:  # noqa: BLE001 - one check's bug must never kill the run
+        from ..analysis_diagnostics import failure_detail
         return prefix_findings + [
             _inconclusive(
                 check,
                 ctx.case.case_id,
                 "This check could not complete due to an internal error.",
-                evidence={"error": str(e), "error_type": type(e).__name__},
+                evidence={"error_type": type(e).__name__, 'execution_state': 'failed',
+                          'diagnostic': failure_detail(e, 'check:' + check.check_id)},
             )
         ]
 
@@ -273,23 +282,35 @@ def run_checks(conn: sqlite3.Connection, case: Case, check_ids: Optional[list[st
     images = db.get_images_for_case(conn, case.case_id)
 
     perception: dict[str, PerceptionRecord] = {}
+    from ..perception import perception_record_usable
     for image in images:
         if image.content_hash in perception:
             continue
         record = db.get_perception(conn, image.content_hash)
-        if record is not None and not record.raw_response.get('error'):
+        if perception_record_usable(record):
             perception[image.content_hash] = record
 
     ctx = CheckContext(conn=conn, case=case, images=images, perception=perception, config=config or {})
 
-    ids = check_ids if check_ids is not None else list(REGISTRY.keys())
+    ids = list(dict.fromkeys(check_ids if check_ids is not None else list(REGISTRY.keys())))
+    for check_id in ids:
+        if check_id not in REGISTRY:
+            raise KeyError(f"unknown check_id {check_id!r} - registered checks: {sorted(REGISTRY)}")
     findings: list[Finding] = []
     from ..timing import span
     for index, check_id in enumerate(ids):
-        if check_id not in REGISTRY:
-            raise KeyError(f"unknown check_id {check_id!r} - registered checks: {sorted(REGISTRY)}")
         if on_check:
             on_check(check_id, index, len(ids))
         with span('check.' + check_id):
-            findings.extend(_run_one(REGISTRY[check_id], ctx))
+            started = time.monotonic()
+            results = _run_one(REGISTRY[check_id], ctx)
+            elapsed_ms = round((time.monotonic() - started) * 1000, 3)
+            if not results and ctx.config.get('execution_states'):
+                results = [_inconclusive(REGISTRY[check_id], case.case_id,
+                    'No comparison result was produced because the required case inputs or context were unavailable.',
+                    {'execution_state': 'not_run', 'reason': 'required_inputs_unavailable'})]
+            for result in results:
+                result.evidence.setdefault('execution_state', 'inconclusive' if result.verdict is Verdict.INCONCLUSIVE else 'completed')
+                result.evidence.setdefault('execution_ms', elapsed_ms)
+            findings.extend(results)
     return findings

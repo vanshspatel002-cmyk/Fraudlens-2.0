@@ -19,7 +19,10 @@ COMMANDS=[
     ['test_perception.py'],['test_ingest.py'],['test_checks.py'],['test_api.py'],
     ['scripts/verify_integration.py'],
     ['-m','pytest','-q','test_pilot_workflow.py','test_durable_pilot.py','test_demo_readiness.py',
-     'test_customer_workflow.py','test_report_pdf.py','test_deployment_storage.py'],
+     'test_customer_workflow.py','test_report_pdf.py','test_deployment_storage.py',
+     'test_analysis_recovery.py','test_engine_reliability.py',
+     'test_assessment_explanation.py','test_reprocess_history.py',
+     'test_verify_live_analysis.py','test_severity_chronology.py'],
 ]
 
 

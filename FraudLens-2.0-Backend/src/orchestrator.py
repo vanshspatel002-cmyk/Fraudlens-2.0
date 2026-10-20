@@ -93,6 +93,7 @@ def process_case(
     persist: bool = True,
     run_id: Optional[str] = None,
     on_stage=None,
+    check_config: Optional[dict[str, Any]] = None,
 ) -> AgentDecision:
     """
     Run one case end to end and return its decision.
@@ -109,7 +110,7 @@ def process_case(
         policy = policy_for(case.agent_type)
 
     started = time.monotonic()
-    check_options = {'config': {'cache_ocr': True, 'plate_ocr_observed_prefix': True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
+    check_options = {'config': {'cache_ocr': True, 'plate_ocr_observed_prefix': True, 'execution_states': True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
     if check_options:
         # New intake records this in a server-written audit, never applicant
         # narrative text. Legacy generated UTC tags are local wall-clock values.
@@ -117,6 +118,8 @@ def process_case(
                      if e.event_type == 'vehicle_image_gate'), None)
         check_options['config']['scene_time_basis'] = (gate.details.get('declared_time_basis', 'unverified')
                                                      if gate else 'unverified')
+    if check_config:
+        check_options.setdefault('config', {}).update(check_config)
     from src.timing import span
     def check_started(check_id, index, total):
         # Only optional observations/cache writes exist at this point. Release
@@ -161,7 +164,10 @@ def process_case(
                     cached = getattr(response, 'cached', None)
                     response_sources.append({'source': 'request_cache' if cached is True else (
                         'fresh_provider' if cached is False else 'unrecorded'),
-                        'model': getattr(response, 'model', 'unrecorded')})
+                        'model': getattr(response, 'model', 'unrecorded'),
+                        'request_provenance': {key: (getattr(response, 'raw', None) or {}).get('request_provenance', {}).get(key)
+                            for key in ('session_attempt', 'requested_model', 'serving_model', 'timestamp')
+                            if key in (getattr(response, 'raw', None) or {}).get('request_provenance', {})}})
                     return response
                 def __getattr__(self, name):
                     return getattr(provider, name)
@@ -169,7 +175,8 @@ def process_case(
         if on_stage:
             on_stage('agent adjudication', 0.9)
         with span('pipeline.adjudication'):
-            result = adjudicate(conn, case, findings, policy, adjudicator)
+            result = adjudicate(conn, case, findings, policy, adjudicator,
+                check_config=check_options.get('config'), release_transactions=bool(run_id))
         decision = result.decision
         trace = result.trace_dicts()
         converged = result.converged
@@ -182,6 +189,10 @@ def process_case(
         decision.latency_ms = int((time.monotonic() - started) * 1000)
         converged = True
 
+    from .assessment_explanation import explain_assessment
+    explanation = explain_assessment(case, findings, decision, policy, converged=converged,
+        trace=trace, run_id=run_id, use_agent=use_agent, check_config=check_options.get('config', {}))
+
     if persist:
         if run_id and db.is_postgres(conn):
             from . import runtime_store
@@ -193,6 +204,7 @@ def process_case(
         db.insert_agent_decision(conn, decision)
         event = adjudication_event(case.case_id, 'agent' if use_agent else 'baseline',
                                    policy.policy_version, decision, converged, trace)
+        event.details['assessment_explanation'] = explanation
         if run_id:
             event.details['run_id'] = run_id
             event.details['model_response_sources'] = response_sources
@@ -207,6 +219,7 @@ def process_case(
     # Ephemeral handoff to the existing durable job payload, with an immutable
     # copy in the adjudication audit above. No research model/schema change.
     decision._model_response_sources = response_sources
+    decision._assessment_explanation = explanation
     return decision
 
 

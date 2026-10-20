@@ -121,7 +121,8 @@ class InternalDuplicateCheck(Check):
         # A run-local snapshot avoids repeating the entire cloud transfer,
         # JSON decoding and matrix construction for each image. It is rebuilt
         # on every invocation, including after additional evidence arrives.
-        comparison = ingest.SimilarityIndex.from_database(ctx.conn, ctx.case.case_id)
+        cutoff = cfg.get('evaluation_cutoff')
+        comparison = ingest.SimilarityIndex.from_database(ctx.conn, ctx.case.case_id, cutoff)
         compared = len(comparison.candidates)
 
         findings: list[Finding] = []
@@ -158,7 +159,8 @@ class InternalDuplicateCheck(Check):
             )
 
         matches = (comparison.search(image.embedding, top_k) if comparison is not None else
-                   ingest.find_similar(ctx.conn, image.embedding, exclude_case=ctx.case.case_id, top_k=top_k))
+                   ingest.find_similar(ctx.conn, image.embedding, exclude_case=ctx.case.case_id, top_k=top_k,
+                                       evaluation_cutoff=ctx.config.get('evaluation_cutoff')))
 
         if not matches:
             return Finding(
@@ -187,6 +189,9 @@ class InternalDuplicateCheck(Check):
             "hamming_distance": best_hamming,
             "cosine_similarity": round(best_cosine, 4),
             "images_compared": compared,
+            'evaluation_cutoff': str(ctx.config['evaluation_cutoff']) if ctx.config.get('evaluation_cutoff') is not None else None,
+            'rule_parameters': {'hamming_concern': hamming_concern, 'cosine_concern': cosine_concern,
+                                'cosine_floor': cosine_floor, 'cosine_inconclusive': cosine_inconclusive, 'top_k': top_k},
         }
 
         # A duplicate is symmetric; blame is not. Only the later submission

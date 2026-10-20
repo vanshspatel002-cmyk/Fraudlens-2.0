@@ -3,6 +3,7 @@ param(
     [int]$Port = 8001,
     [string]$Schema = 'fraudlens_pilot',
     [string]$SqlitePath,
+    [string]$RuntimeDirectory,
     [switch]$NoWarmup,
     [switch]$NoWorker,
     [switch]$WorkerOnly
@@ -44,6 +45,12 @@ if ($SqlitePath) {
     $isolatedDirectory = Split-Path -Parent $resolvedSqlite
     $env:FRAUDLENS_UPLOAD_DIR = Join-Path $isolatedDirectory 'uploads'
     $env:FRAUDLENS_THUMB_DIR = Join-Path $isolatedDirectory 'thumbnails'
+}
+if ($RuntimeDirectory) {
+    $runtimePath = (Resolve-Path -LiteralPath $RuntimeDirectory -ErrorAction Stop).Path
+    if (-not (Test-Path -LiteralPath $runtimePath -PathType Container)) { throw 'RuntimeDirectory must be an existing private directory.' }
+    $env:FRAUDLENS_UPLOAD_DIR = Join-Path $runtimePath 'uploads'
+    $env:FRAUDLENS_THUMB_DIR = Join-Path $runtimePath 'thumbnails'
 }
 $env:FRAUDLENS_LIVE_LEDGER = $ledgerPath
 $env:FRAUDLENS_LIVE_LIMIT = '15'
