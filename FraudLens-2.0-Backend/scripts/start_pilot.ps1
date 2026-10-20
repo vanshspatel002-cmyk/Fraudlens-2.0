@@ -11,6 +11,17 @@ $ErrorActionPreference = 'Stop'
 if ($NoWorker -and $WorkerOnly) { throw 'Choose API without worker, or worker-only mode.' }
 $backendRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $backendRoot
+$pythonExecutable = Join-Path $backendRoot 'venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $pythonExecutable -PathType Leaf)) {
+    throw 'Backend virtual environment is missing. Create venv and install requirements.txt and requirements-pilot.txt first.'
+}
+if ($Port -lt 1 -or $Port -gt 65535) { throw 'Port must be between 1 and 65535.' }
+if (-not $WorkerOnly) {
+    $occupiedPorts = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+    if ($occupiedPorts | Where-Object { $_.Port -eq $Port }) {
+        throw "Port $Port is already occupied. Choose another -Port or stop the owning application yourself; no process was stopped."
+    }
+}
 $pilotDirectory = Join-Path $backendRoot 'outputs\pilot_validation'
 $ledgerPath = Join-Path $pilotDirectory 'live_calls.json'
 if (-not (Test-Path -LiteralPath $ledgerPath)) {

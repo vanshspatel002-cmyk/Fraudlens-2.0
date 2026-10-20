@@ -12,7 +12,7 @@ import uuid
 import pytest
 from src import api, db, ingest, runtime_store, session_budget
 from src.models import AgentDecision, Finding, Recommendation, RiskBand, CheckCategory, Verdict
-from test_pilot_workflow import client, auth, photo, submit
+from test_pilot_workflow import client, auth, photo, submit, complete_for_review, review_basis
 REAL_PIPELINE = api._run_pipeline
 
 
@@ -24,11 +24,12 @@ def finish(case_id):
 
 def request_evidence(client, case_id, headers):
     response=client.post(f'/v1/cases/{case_id}/action',headers=headers,json={
+        **review_basis(client,case_id,headers),
         'action':'request_more_evidence','reason':'Internal reviewer rationale',
         'public_message':'Please upload the original rear view.',
         'requested_artifacts':['Original rear view including the registration plate']})
     assert response.status_code==200,response.text
-    tracked=client.get('/v1/track',params={'case_id':case_id,'policy_number':'POL-123'}).json()
+    tracked=client.get('/v1/track',headers=headers,params={'case_id':case_id,'policy_number':'POL-123'}).json()
     assert 'Internal reviewer rationale' not in str(tracked)
     return tracked['evidence_request']['request_id']
 
@@ -53,7 +54,7 @@ def test_evidence_resubmission_and_history(client):
     saved=client.get(f'/v1/cases/{case_id}/report',params={'snapshot_id':original['report_history'][0]['snapshot_id']},headers=headers).json()
     assert len(saved['evidence_ids'])==1
     assert saved['admin_action']['action']=='request_more_evidence'
-    assert client.get('/v1/track',params={'case_id':case_id,'policy_number':'POL-123'}).json()['evidence_request'] is None
+    assert client.get('/v1/track',headers=headers,params={'case_id':case_id,'policy_number':'POL-123'}).json()['evidence_request'] is None
     assert any(a['event']=='additional_evidence_received' for a in updated['audit'])
     assert client.post(f'/v1/cases/{case_id}/evidence',headers={'X-Applicant-Token':receipt['applicant_token']},
         data={'request_id':request_id},files={'images':('rear.png',photo('blue'),'image/png')}).status_code==409
@@ -95,9 +96,10 @@ def test_specific_request_and_stale_human_decision(client):
     case_id=submit(client).json()['case_id'];headers=auth(client)
     assert client.post(f'/v1/cases/{case_id}/action',headers=headers,json={
         'action':'request_more_evidence','reason':'Please provide evidence'}).status_code==422
-    first=client.post(f'/v1/cases/{case_id}/action',headers=headers,json={'action':'approve','expected_revision':0})
+    base=complete_for_review(client,case_id,headers)
+    first=client.post(f'/v1/cases/{case_id}/action',headers=headers,json={**base,'action':'approve','expected_revision':0})
     assert first.status_code==200
-    assert client.post(f'/v1/cases/{case_id}/action',headers=headers,json={'action':'reject','reason':'Another outcome','expected_revision':0}).status_code==409
+    assert client.post(f'/v1/cases/{case_id}/action',headers=headers,json={**base,'action':'reject','reason':'Another outcome','public_message':'A separate sample reason','expected_revision':0}).status_code==409
 
 
 def test_idempotent_submission(client):

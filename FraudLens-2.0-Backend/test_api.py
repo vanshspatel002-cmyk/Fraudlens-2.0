@@ -399,6 +399,7 @@ def test_submit_creates_case_and_job_without_calling_the_model():
         with open(vehicle_path, "rb") as fh:
             r = client().post(
                 "/v1/cases",
+                headers={'Authorization':''},
                 data={
                     "agent_type": "claims",
                     "declared_location": "Pune",
@@ -434,6 +435,7 @@ def test_submit_rejects_non_vehicle_before_case_creation():
     before = client().get("/v1/cases").json()["total"]
     r = client().post(
         "/v1/cases",
+        headers={'Authorization':''},
         data={"agent_type": "claims", "vehicle_registration": "MH12NO0001"},
         files={"images": ("document.png", non_vehicle_png_bytes(), "image/png")},
     )
@@ -469,6 +471,7 @@ def test_job_status_is_pollable_and_unknown_job_404s():
         with open(corpus_vehicle_path(), "rb") as fh:
             body = client().post(
                 "/v1/cases",
+                headers={'Authorization':''},
                 data={'agent_type':'underwriting','vehicle_registration':'MH12UW0001'},
                 files={"images": ("vehicle.jpg", fh, "image/jpeg")},
             ).json()
@@ -511,7 +514,7 @@ def test_admin_reject_requires_reason_and_closes_case():
     assert missing.status_code == 422, missing.text
 
     reject = client().post("/v1/cases/case-uw-1/action",
-                           json={"action": "reject", "reason": "confirmed staged loss",
+                           json={"action": "reject", "reason": "confirmed staged loss", "public_message":"The sample evidence did not support this application.",
                                  "admin_id": "admin-1"})
     assert reject.status_code == 200, reject.text
     assert reject.json()["status"] == "closed_rejected"

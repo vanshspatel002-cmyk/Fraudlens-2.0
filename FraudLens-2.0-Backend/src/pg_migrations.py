@@ -9,12 +9,38 @@ TABLES = ('claimants', 'cases', 'findings', 'perception_records', 'image_artifac
           'admin_sessions', 'api_jobs', 'organizations', 'reviewer_accounts',
           'applicant_grants', 'evidence_requests', 'evidence_batches',
           'submission_receipts', 'processing_results', 'report_snapshots')
+EXTENSION_TABLES = ('customer_accounts', 'customer_sessions', 'case_owners', 'report_artifacts')
+MIGRATIONS = (('001', '001_initial.sql'), ('002', '002_customer_workflow.sql'))
 
 
-def checksum():
+def checksum(version='001'):
     # Git may check out CRLF on Windows. Hash canonical migration text so
     # an unchanged migration verifies identically on Windows and Linux.
-    return hashlib.sha256((ROOT / '001_initial.sql').read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+    names = dict(MIGRATIONS)
+    return hashlib.sha256((ROOT / names[version]).read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+
+
+def versions():
+    return [(version, checksum(version)) for version, _ in MIGRATIONS]
+
+
+def installed_versions(conn):
+    return [tuple(row) for row in conn.execute('SELECT version,checksum FROM schema_migrations ORDER BY version')]
+
+
+def upgrade(conn):
+    """Apply only checked additive versions within the caller's transaction."""
+    installed = installed_versions(conn)
+    expected = versions()
+    if not installed or installed != expected[:len(installed)]:
+        raise RuntimeError('PostgreSQL migration version/checksum mismatch; applied migrations are never rewritten.')
+    applied = []
+    for version, filename in MIGRATIONS[len(installed):]:
+        conn.raw.execute((ROOT / filename).read_text(encoding='utf-8'), prepare=False)
+        conn.execute('INSERT INTO schema_migrations(version,checksum) VALUES (?,?)', (version, checksum(version)))
+        applied.append(version)
+    secure(conn)
+    return applied
 
 
 def schema_exists(conn):
@@ -35,7 +61,7 @@ def install(conn):
         imported_at TIMESTAMPTZ NOT NULL DEFAULT now())''')
     conn.raw.execute((ROOT / '001_initial.sql').read_text(encoding='utf-8'), prepare=False)
     conn.raw.execute('INSERT INTO schema_migrations(version,checksum) VALUES (%s,%s)', ('001', checksum()))
-    secure(conn)
+    upgrade(conn)
 
 
 def secure(conn):
@@ -53,7 +79,10 @@ def secure(conn):
         for kind in ('TABLES', 'SEQUENCES', 'FUNCTIONS'):
             conn.raw.execute(sql.SQL('REVOKE ALL ON ALL {} IN SCHEMA {} FROM {}').format(sql.SQL(kind), schema, target))
             conn.raw.execute(sql.SQL('ALTER DEFAULT PRIVILEGES IN SCHEMA {} REVOKE ALL ON {} FROM {}').format(schema, sql.SQL(kind), target))
-    for table in (*TABLES, 'schema_migrations', 'migration_imports'):
+    available = {r[0] for r in conn.execute('SELECT table_name FROM information_schema.tables WHERE table_schema=?', (conn.schema,))}
+    for table in (*TABLES, *EXTENSION_TABLES, 'schema_migrations', 'migration_imports'):
+        if table not in available:
+            continue
         conn.raw.execute(sql.SQL('ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY').format(schema, sql.Identifier(table)))
 
 

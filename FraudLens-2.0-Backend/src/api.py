@@ -59,7 +59,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from src import db, runtime_store
+from src import db, runtime_store, customer_auth
 from src.timing import measured, span
 from src.agent.policy import CLAIMS_POLICY, UNDERWRITING_POLICY
 from src.models import AdminAction, AdminActionRecord, AuditEvent, Case, CheckCategory, Recommendation, RiskBand
@@ -175,7 +175,7 @@ def _client_ip(request: Request) -> str:
 
 
 def _rate_limit_key(request: Request) -> tuple[Optional[str], int]:
-    if request.method == "POST" and request.url.path == "/v1/auth/login":
+    if request.method == "POST" and request.url.path in {"/v1/auth/login", "/v1/customer/auth/login", "/v1/customer/auth/register"}:
         return "login", 5
     if request.method == "POST" and (request.url.path == "/v1/cases" or request.url.path.endswith('/evidence')):
         return "submit", RATE_LIMIT_SUBMIT_MAX
@@ -573,6 +573,8 @@ class DecisionOut(BaseModel):
 
 
 class CaseSummary(BaseModel):
+    processing_status: Optional[str] = None
+    final_admin_action: Optional[str] = None
     declaration_notes: Optional[str] = None
     """One queue row. Carries everything a table renders, so no second request."""
 
@@ -833,6 +835,9 @@ class HealthOut(BaseModel):
 
 class ActionIn(BaseModel):
     expected_revision: Optional[int] = Field(default=None, ge=0)
+    expected_run_id: Optional[str] = None
+    expected_evidence_ids: Optional[list[str]] = None
+    manual_review_override: bool = False
     public_message: Optional[str] = Field(default=None, max_length=3000)
     action: AdminAction
     reason: Optional[str] = None
@@ -876,6 +881,9 @@ class ReportDeclaration(BaseModel):
 
 
 class CaseReportOut(BaseModel):
+    submitted_at: Optional[str] = None
+    evidence_inventory: list[dict[str, Any]] = Field(default_factory=list)
+    check_inventory: list[dict[str, Any]] = Field(default_factory=list)
     run_id: Optional[str] = None
     policy_version: Optional[str] = None
     processing: Optional[dict[str, Any]] = None
@@ -1075,7 +1083,7 @@ def _summaries_for(conn, cases):
     decisions=defaultdict(list)
     for decision in db.decisions_from_rows(conn.execute('SELECT * FROM agent_decisions WHERE case_id IN ('+marks+') ORDER BY rowid',identifiers).fetchall()):
         decisions[decision.case_id].append(decision)
-    latest={r['case_id']:r for r in conn.execute('''SELECT j.case_id,r.decision_id FROM api_jobs j
+    latest={r['case_id']:r for r in conn.execute('''SELECT j.case_id,j.status,r.decision_id FROM api_jobs j
         LEFT JOIN processing_results r ON r.run_id=j.job_id
         WHERE j.case_id IN ('''+marks+''') AND j.rowid=(SELECT MAX(x.rowid) FROM api_jobs x WHERE x.case_id=j.case_id)''',identifiers)}
     concerns={r[0]:r[1] for r in conn.execute('SELECT case_id,COUNT(*) FROM ('+current_findings_sql(conn)
@@ -1088,7 +1096,7 @@ def _summaries_for(conn, cases):
         history=decisions[case.case_id]
         job=latest.get(case.case_id)
         best=next((d for d in history if d.decision_id==job['decision_id']),None) if job is not None else _best_decision(history)
-        output.append(_summary_for(conn,case,{'best':best,'concerns':concerns.get(case.case_id,0),'images':images[case.case_id]}))
+        output.append(_summary_for(conn,case,{'best':best,'concerns':concerns.get(case.case_id,0),'images':images[case.case_id], 'job': job}))
     return output
 
 
@@ -1099,6 +1107,8 @@ def _summary_for(conn: sqlite3.Connection, case: Case, facts=None) -> CaseSummar
         'SELECT image_id FROM images WHERE case_id=? ORDER BY image_id',(case.case_id,)).fetchall()
     return CaseSummary(
         case_id=case.case_id, agent_type=case.agent_type, claim_type=case.claim_type,
+        processing_status=(facts['job']['status'] if facts.get('job') is not None else None) if facts is not None else (runtime_store.latest_job(conn,case.case_id) or {}).get('status'),
+        final_admin_action='approve' if case.status == 'closed_approved' else 'reject' if case.status == 'closed_rejected' else None,
         status=case.status, vehicle_registration=case.vehicle_registration,
         vehicle_make=case.vehicle_make, vehicle_model=case.vehicle_model,
         vehicle_variant=case.vehicle_variant, vehicle_year=case.vehicle_year,
@@ -1392,10 +1402,12 @@ def _build_report(conn,case_id):
 
 
 def _snapshot_report(conn,case_id):
+    from src.report_pdf import enrich_snapshot
     report=_build_report(conn,case_id)
-    payload=report.model_dump_json()
+    payload=json.dumps(enrich_snapshot(conn,report.model_dump(mode='json')),ensure_ascii=False,separators=(',',':'))
     snapshot_id=runtime_store.digest(payload)
     conn.execute('INSERT INTO report_snapshots(snapshot_id,case_id,run_id,payload,created_at) VALUES (?,?,?,?,?) ON CONFLICT(snapshot_id) DO NOTHING',(snapshot_id,case_id,report.run_id,payload,time.time()))
+    return snapshot_id
 
 
 @app.get("/v1/cases/{case_id}/trace", response_model=TraceOut, tags=["cases"],
@@ -1457,11 +1469,20 @@ def get_trace(case_id: str,
 @app.get("/v1/track", response_model=TrackOut, tags=["cases"],
          responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}})
 def track_case(
+    request: Request,
     case_id: str = Query(...),
+    x_applicant_token: Optional[str] = Header(default=None),
     registration_number: Optional[str] = Query(None),
     policy_number: Optional[str] = Query(None),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> TrackOut:
+    if not runtime_store.applicant_authorized(conn,x_applicant_token,case_id):
+        try:
+            account = customer_auth.authenticate(conn, request.headers.get('authorization'))
+        except ApiError:
+            require_admin(request, request.headers.get('authorization'))
+        else:
+            customer_auth.require_case(conn,account,case_id)
     if not registration_number and not policy_number:
         raise ApiError(422, "VALIDATION_FAILED",
                        "Provide registration_number or policy_number with case_id.",
@@ -1495,7 +1516,7 @@ def track_case(
         agent_type=case.agent_type,
         case_id=case_id,
         status=case.status,
-        final_admin_action=admin_action.action.value if admin_action else None,
+        final_admin_action=admin_action.action.value if admin_action and case.status != 'evidence_received' else None,
         narrative='Additional evidence received; awaiting a new human review.' if case.status == 'evidence_received' else narrative,
         processing_status=(runtime_store.latest_job(conn,case_id) or {}).get('status'),
         evidence_request=({k:v for k,v in request.items() if k in {'request_id','artifacts','status'}} if (request := runtime_store.open_request(conn,case_id)) else None),
@@ -1830,6 +1851,11 @@ class ReadyOut(BaseModel):
 @app.get("/ready", response_model=ReadyOut, tags=["config"])
 def ready() -> ReadyOut:
     try:
+        from src.storage_health import check_storage_ready
+        check_storage_ready(UPLOAD_DIR, THUMB_DIR)
+    except OSError as exc:
+        raise ApiError(503, "STORAGE_UNAVAILABLE", "Evidence storage is unavailable; retry after storage is restored.") from exc
+    try:
         with runtime_store.connection(DB_PATH) as conn:
             conn.execute("SELECT 1 FROM cases LIMIT 1")
     except (RuntimeError, *db.DatabaseError) as exc:
@@ -1905,8 +1931,12 @@ def _set_job(job_id: str, **fields: Any) -> None:
             conn.execute('BEGIN')
             runtime_store.fence(conn, job_id)
         job = runtime_store.get_job(conn, job_id) or {"job_id": job_id}
+        previous_status = job.get('status')
         job.update(fields)
         runtime_store.save_job(conn, job)
+        if job.get('status') != previous_status and job.get('status') in {'completed', 'failed', 'interrupted'}:
+            db.log_audit_event(conn, AuditEvent(event_type='processing_' + job['status'],
+                case_id=job.get('case_id'), details={'run_id':job_id,'status':job['status']}))
     # The selected database is authoritative; do not retain a job cache.
 
 
@@ -2061,6 +2091,7 @@ def _build_case(case_id: str, agent_type: str, claim_type: Optional[str],
           responses={422: {"model": ErrorResponse}})
 def submit_case(
     background: BackgroundTasks,
+    request: Request,
     idempotency_key: Optional[str] = Header(default=None, min_length=16, max_length=128),
     agent_type: str = Form("claims"),
     claim_type: Optional[str] = Form(None),
@@ -2091,7 +2122,7 @@ def submit_case(
     fir_number: Optional[str] = Form(None),
     settlement_preference: Optional[str] = Form(None),
     bank_account_last4: Optional[str] = Form(None),
-    declaration_notes: Optional[str] = Form(default=None,max_length=3000),
+    declaration_notes: Optional[str] = Form(default=None,max_length=3500),
     claimant_id: Optional[str] = Form(None),
     garage_id: Optional[str] = Form(None),
     latitude: Optional[float] = Form(None),
@@ -2099,7 +2130,9 @@ def submit_case(
     images: Optional[list[UploadFile]] = File(None),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> SubmitCaseOut:
-    submission_fields = {k: v for k, v in locals().items() if k not in {'conn', 'images', 'background', 'idempotency_key'}}
+    account = customer_auth.authenticate(conn, request.headers.get('authorization'), required=False)
+    submission_fields = {k: v for k, v in locals().items() if k not in {'conn', 'images', 'background', 'idempotency_key', 'request', 'account'}}
+    submission_fields['customer_id'] = account['customer_id'] if account else None
     if idempotency_key:
         try:
             parsed_key=uuid.UUID(idempotency_key)
@@ -2225,6 +2258,11 @@ def submit_case(
                 return SubmitCaseOut(**json.loads(old['response']))
         case.declaration_notes=declaration_notes
         db.insert_case(conn, case)
+        if account:
+            # Ownership, receipt, evidence, audit and queue entry commit together.
+            # Recheck expiry after admission work, before accepting a case.
+            customer_auth.authenticate(conn, request.headers.get('authorization'))
+            customer_auth.attach(conn, account, case_id)
         db.log_audit_event(conn, AuditEvent(
             event_type="vehicle_image_gate",
             case_id=case_id,
@@ -2301,7 +2339,12 @@ def get_job(job_id: str, request: Request, x_applicant_token: Optional[str] = He
         if not job:
             raise ApiError(404,'JOB_NOT_FOUND','Job not found.')
         if not runtime_store.applicant_authorized(conn,x_applicant_token,job['case_id']):
-            require_admin(request,request.headers.get('authorization'))
+            try:
+                account = customer_auth.authenticate(conn, request.headers.get('authorization'))
+            except ApiError:
+                require_admin(request,request.headers.get('authorization'))
+            else:
+                customer_auth.require_case(conn, account, job['case_id'])
     return JobOut(**{k:v for k,v in job.items() if k in JobOut.model_fields})
 
 
@@ -2346,6 +2389,21 @@ def record_action(case_id: str, payload: ActionIn,
             raise ApiError(422,'SPECIFIC_EVIDENCE_REQUIRED','Name 1-12 specific photographs needed, one per item.')
     conn.execute('BEGIN IMMEDIATE')
     db.lock_case(conn, case_id)
+    reviewed_job = runtime_store.latest_job(conn, case_id)
+    reviewed_images = sorted(image.image_id for image in db.get_images_for_case(conn, case_id))
+    if reviewed_job and reviewed_job['status'] in {'queued', 'running'}:
+        raise ApiError(409, 'ANALYSIS_RUNNING', 'Wait for analysis to finish before recording a reviewer decision.')
+    if reviewed_job and (payload.expected_revision is None or payload.expected_run_id is None or payload.expected_evidence_ids is None):
+        raise ApiError(422, 'REVIEW_BASIS_REQUIRED', 'Refresh the case and submit the reviewed revision, analysis run and evidence identifiers.')
+    if payload.expected_run_id is not None and payload.expected_run_id != (reviewed_job or {}).get('job_id'):
+        raise ApiError(409, 'REVIEW_BASIS_CHANGED', 'The analysis run changed. Refresh and review the current report.')
+    if payload.expected_evidence_ids is not None and sorted(payload.expected_evidence_ids) != reviewed_images:
+        raise ApiError(409, 'REVIEW_BASIS_CHANGED', 'The evidence changed. Refresh and review all current photographs.')
+    if reviewed_job and (reviewed_job['status'] in {'failed', 'interrupted'} or reviewed_job.get('provider_unavailable')) and payload.action != AdminAction.REQUEST_MORE_EVIDENCE:
+        if not payload.manual_review_override or not (payload.reason or '').strip():
+            raise ApiError(422, 'MANUAL_REVIEW_REQUIRED', 'Explicitly acknowledge incomplete analysis and record your manual-review rationale.')
+    if payload.action == AdminAction.REJECT and not (payload.public_message or '').strip():
+        raise ApiError(422, 'PUBLIC_REASON_REQUIRED', 'Provide a customer-visible explanation for rejection separately from internal notes.')
     revision=conn.execute('SELECT COUNT(*) FROM admin_actions WHERE case_id=?',(case_id,)).fetchone()[0]
     if payload.expected_revision is not None and payload.expected_revision != revision:
         raise ApiError(409,'REVIEW_CHANGED','Another reviewer changed this case. Refresh before recording a decision.')
@@ -2367,6 +2425,7 @@ def record_action(case_id: str, payload: ActionIn,
                  'decision_id':reviewed_result['decision_id'] if reviewed_result else None,
                  'evidence_ids':[image.image_id for image in db.get_images_for_case(conn,case_id)],
                  'processing_status':reviewed_job['status'] if reviewed_job else None,
+                 'manual_review_override': payload.manual_review_override,
                  "requested_artifacts": payload.requested_artifacts,
                  "public_message": payload.public_message,
                  "previous_status": case.status}))
@@ -2378,6 +2437,9 @@ def record_action(case_id: str, payload: ActionIn,
 
 from src.evidence_workflow import install as _install_pilot_extensions
 _install_pilot_extensions(app)
+from src.report_pdf import install as _install_report_pdf
+_install_report_pdf(app)
+customer_auth.install(app)
 
 
 @app.get('/v1/operations',tags=['config'])

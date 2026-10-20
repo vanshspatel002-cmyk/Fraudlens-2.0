@@ -8,9 +8,9 @@ import tempfile
 import time
 import uuid
 from typing import Optional
-from fastapi import Depends, File, Form, Header, UploadFile
+from fastapi import Depends, File, Form, Header, UploadFile, Request
 from pydantic import BaseModel, Field
-from . import db, ingest, runtime_store
+from . import db, ingest, runtime_store, customer_auth
 from .models import AuditEvent
 
 
@@ -18,10 +18,15 @@ def install(app):
     from .api import ApiError, SubmitCaseOut, get_conn, require_owner, _snapshot_report, UPLOAD_DIR
 
     @app.post('/v1/cases/{case_id}/evidence', response_model=SubmitCaseOut, tags=['cases'])
-    def submit_evidence(case_id: str, request_id: str = Form(...), images: list[UploadFile] = File(...),
+    def submit_evidence(case_id: str, http_request: Request, request_id: str = Form(...), images: list[UploadFile] = File(...),
                         x_applicant_token: Optional[str] = Header(default=None),
                         conn: sqlite3.Connection = Depends(get_conn)):
-        if not runtime_store.applicant_authorized(conn,x_applicant_token,case_id):
+        def authorized():
+            if runtime_store.applicant_authorized(conn,x_applicant_token,case_id):
+                return True
+            account = customer_auth.authenticate(conn, http_request.headers.get('authorization'), required=False)
+            return customer_auth.owns(conn, account, case_id)
+        if not authorized():
             raise ApiError(401,'APPLICANT_UNAUTHORISED','A valid applicant access receipt for this case is required.')
         if not 1<=len(images)<=12:
             raise ApiError(422,'INVALID_EVIDENCE_COUNT','Attach 1–12 requested photographs.')
@@ -58,7 +63,7 @@ def install(app):
                 embeddings=[ingest._default_embedder.embed(source) for source,_,_ in staged]
                 conn.execute('BEGIN IMMEDIATE')
                 db.lock_case(conn, case_id)
-                if not runtime_store.applicant_authorized(conn,x_applicant_token,case_id):
+                if not authorized():
                     raise ApiError(401,'APPLICANT_UNAUTHORISED','The applicant receipt expired; no evidence was accepted.')
                 request=runtime_store.open_request(conn,case_id)
                 if not request or request['request_id']!=request_id:

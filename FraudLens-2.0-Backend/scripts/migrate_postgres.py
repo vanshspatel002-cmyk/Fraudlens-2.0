@@ -112,6 +112,7 @@ def apply(conn, data, import_history=()):
                  'admin_sessions','api_jobs','organizations','reviewer_accounts',
                  'applicant_grants','evidence_requests','evidence_batches',
                  'submission_receipts','processing_results','report_snapshots')
+        order = (*order, *(table for table in pg_migrations.EXTENSION_TABLES if table in data))
         for table in order:
             entry = data[table]
             available = db.columns(conn, table)

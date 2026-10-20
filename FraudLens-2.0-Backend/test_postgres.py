@@ -19,6 +19,8 @@ from src import api, db, ingest, pg_migrations, runtime_store, vehicle_gate
 from test_pilot_workflow import auth, submit, photo
 import test_pilot_workflow as workflows
 import test_durable_pilot as durable
+import test_customer_workflow as customers
+import test_report_pdf as reports
 
 pytestmark = pytest.mark.skipif(os.environ.get('FRAUDLENS_TEST_POSTGRES') != '1',
                                 reason='Real PostgreSQL tests require explicit opt-in.')
@@ -26,7 +28,7 @@ pytestmark = pytest.mark.skipif(os.environ.get('FRAUDLENS_TEST_POSTGRES') != '1'
 # Run the same contracts on both engines. The OS-lock-specific assertion has
 # a cluster-leadership counterpart below. Test names/parametrization remain
 # visible in pytest output rather than hiding checks in one aggregate test.
-for module in (workflows, durable):
+for module in (workflows, durable, customers, reports):
     for name in dir(module):
         if name.startswith('test_') and name != 'test_exclusive_worker_execution_and_shutdown':
             globals()[name] = getattr(module, name)
@@ -64,7 +66,7 @@ def client(pg_schema, tmp_path, monkeypatch):
     with runtime_store.connection('postgresql') as conn:
         assert conn.schema == pg_schema
         conn.raw.execute(sql.SQL('TRUNCATE {} RESTART IDENTITY CASCADE').format(sql.SQL(',').join(
-            sql.Identifier(pg_schema, t) for t in pg_migrations.TABLES)))
+            sql.Identifier(pg_schema, t) for t in (*pg_migrations.TABLES,*pg_migrations.EXTENSION_TABLES))))
         conn.execute("INSERT INTO organizations(organization_id,name) VALUES ('local','Isolated test organization')")
     monkeypatch.setenv('FRAUDLENS_WORKER_ENABLED','0')
     monkeypatch.setenv('FRAUDLENS_WARM_MODELS','0')
@@ -173,8 +175,9 @@ def test_postgres_stale_attempt_cannot_commit_findings_or_progress(client,monkey
 def test_postgres_browser_roles_cannot_read_or_write_any_table(client,role):
     with runtime_store.connection('postgresql') as conn:
         status=pg_migrations.security_status(conn)
-        assert status=={'tables':22,'rls_enabled':22,'browser_privilege_violations':0}
-        for table in (*pg_migrations.TABLES,'schema_migrations','migration_imports'):
+        table_count=len(pg_migrations.TABLES)+len(pg_migrations.EXTENSION_TABLES)+2
+        assert status=={'tables':table_count,'rls_enabled':table_count,'browser_privilege_violations':0}
+        for table in (*pg_migrations.TABLES,*pg_migrations.EXTENSION_TABLES,'schema_migrations','migration_imports'):
             column='version' if table=='schema_migrations' else 'source_digest' if table=='migration_imports' else 'rowid'
             operations=('SELECT * FROM {} LIMIT 0','DELETE FROM {} WHERE false',
                         'INSERT INTO {} DEFAULT VALUES','UPDATE {} SET '+column+'='+column+' WHERE false')
@@ -188,7 +191,8 @@ def test_postgres_browser_roles_cannot_read_or_write_any_table(client,role):
 
 def test_postgres_report_history_is_immutable(client):
     receipt=submit(client).json();headers=auth(client)
-    assert client.post('/v1/cases/'+receipt['case_id']+'/action',headers=headers,json={'action':'approve'}).status_code==200
+    basis=workflows.complete_for_review(client,receipt['case_id'],headers)
+    assert client.post('/v1/cases/'+receipt['case_id']+'/action',headers=headers,json={**basis,'action':'approve'}).status_code==200
     with runtime_store.connection('postgresql') as conn:
         original=[tuple(r) for r in conn.execute('SELECT snapshot_id,payload FROM report_snapshots ORDER BY rowid')]
         assert original
@@ -201,11 +205,81 @@ def test_postgres_report_history_is_immutable(client):
         assert original==[tuple(r) for r in conn.execute('SELECT snapshot_id,payload FROM report_snapshots ORDER BY rowid')]
 
 
+def test_additive_customer_upgrade_preserves_rows_and_is_idempotent(monkeypatch):
+    """Actual PostgreSQL DDL in this test's own namespace, never the pilot."""
+    name='fraudlens_test_'+uuid.uuid4().hex
+    monkeypatch.setenv('FRAUDLENS_PG_SCHEMA',name)
+    conn=db.connect('postgresql')
+    migrations=pg_migrations.MIGRATIONS
+    try:
+        conn.execute('BEGIN')
+        monkeypatch.setattr(pg_migrations,'MIGRATIONS',migrations[:1])
+        pg_migrations.install(conn)
+        conn.execute("INSERT INTO claimants(claimant_id,name,phone,bank_account,address,created_at) VALUES (?,?,?,?,?,?)",
+                     ('preserved','Fictional Applicant','0000000000','fictional','Example address','2026-01-01T00:00:00+00:00'))
+        original=[tuple(row) for row in conn.execute('SELECT * FROM claimants ORDER BY rowid')]
+        monkeypatch.setattr(pg_migrations,'MIGRATIONS',migrations)
+        assert pg_migrations.upgrade(conn)==['002']
+        assert pg_migrations.upgrade(conn)==[]
+        assert [tuple(row) for row in conn.execute('SELECT * FROM claimants ORDER BY rowid')]==original
+        assert pg_migrations.installed_versions(conn)==pg_migrations.versions()
+        for table in pg_migrations.EXTENSION_TABLES:
+            assert conn.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==0
+        assert pg_migrations.security_status(conn)['browser_privilege_violations']==0
+        conn.commit()
+    finally:
+        monkeypatch.setattr(pg_migrations,'MIGRATIONS',migrations)
+        conn.rollback()
+        assert conn.schema==name and name.startswith('fraudlens_test_') and len(name)==47
+        conn.raw.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(name)))
+        conn.close()
+
+
 def test_postgres_parameters_preserve_literals_and_percent(client):
     with runtime_store.connection('postgresql') as conn:
         row=conn.execute("SELECT ? AS value, 'why? 50%' AS literal, ? AS other -- ? remains comment\n", ('private? % value',42)).fetchone()
         assert tuple(row)==('private? % value','why? 50%',42)
         assert dict(row)=={'value':'private? % value','literal':'why? 50%','other':42}
+
+
+def test_postgres_backup_restores_customer_ownership_sessions_and_pdf(client,tmp_path,monkeypatch):
+    """Full format-2 restore, isolated schemas and explicit binary PDF fixture."""
+    from scripts.postgres_backup import backup,restore
+    receipt=submit(client).json()
+    source=db.connect('postgresql')
+    archive=tmp_path/'private-logical-backup'
+    try:
+        source.execute('BEGIN')
+        source.execute('''INSERT INTO customer_accounts(customer_id,email,password_hash,name,created_at)
+            VALUES (?,?,?,?,?)''',('customer-test','restore@example.com','fixture-hash','Fictional Restore',time.time()))
+        source.execute('INSERT INTO customer_sessions(token_hash,customer_id,credential_hash,expires_at) VALUES (?,?,?,?)',
+                       ('fixture-session','customer-test','fixture-hash',time.time()+3600))
+        source.execute('INSERT INTO case_owners(case_id,customer_id,created_at) VALUES (?,?,?)',
+                       (receipt['case_id'],'customer-test',time.time()))
+        source.execute('INSERT INTO report_snapshots(snapshot_id,case_id,payload,created_at) VALUES (?,?,?,?)',
+                       ('fixture-report',receipt['case_id'],'{}',time.time()))
+        source.execute('''INSERT INTO report_artifacts(snapshot_id,renderer_version,pdf_base64,sha256,created_at)
+            VALUES (?,?,?,?,?)''',('fixture-report','fixture-renderer','JVBERi1maXh0dXJl','fixture-digest',time.time()))
+        source.commit()
+        backup(source,archive)
+    finally:
+        source.close()
+    name='fraudlens_test_'+uuid.uuid4().hex
+    monkeypatch.setenv('FRAUDLENS_PG_SCHEMA',name)
+    target=db.connect('postgresql')
+    try:
+        restore(target,archive)
+        assert target.execute('SELECT customer_id FROM case_owners WHERE case_id=?',(receipt['case_id'],)).fetchone()[0]=='customer-test'
+        assert target.execute('SELECT COUNT(*) FROM customer_sessions').fetchone()[0]==1
+        assert tuple(target.execute('SELECT renderer_version,pdf_base64,sha256 FROM report_artifacts WHERE snapshot_id=?',
+                                    ('fixture-report',)).fetchone())==('fixture-renderer','JVBERi1maXh0dXJl','fixture-digest')
+        with pytest.raises(ValueError,match='new schema'):
+            restore(target,archive)
+    finally:
+        target.rollback()
+        assert target.schema==name and name.startswith('fraudlens_test_') and len(name)==47
+        target.raw.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(name)))
+        target.close()
 
 
 def test_postgres_pool_return_rolls_back_uncommitted_changes(client):
@@ -218,6 +292,20 @@ def test_postgres_pool_return_rolls_back_uncommitted_changes(client):
         assert not other.in_transaction
 
 
+def test_postgres_rollback_after_idle_timeout_discards_connection(client):
+    conn=db.connect('postgresql')
+    try:
+        conn.execute('BEGIN')
+        conn.execute("SET LOCAL idle_in_transaction_session_timeout='1s'")
+        threading.Event().wait(1.5)
+        conn.rollback()
+        assert conn.raw.closed
+    finally:
+        conn.close()
+    with runtime_store.connection('postgresql') as replacement:
+        assert replacement.execute('SELECT COUNT(*) FROM cases').fetchone()[0]==0
+
+
 def test_postgres_import_refuses_changed_existing_target(client):
     import sqlite3
     from scripts.migrate_postgres import inventory,apply
@@ -225,7 +313,12 @@ def test_postgres_import_refuses_changed_existing_target(client):
     source=sqlite3.connect(':memory:')
     source.row_factory=sqlite3.Row
     try:
-        db.init_db(source);runtime_store.init(source);source.commit()
+        db.init_db(source);runtime_store.init(source)
+        # This importer deliberately targets the frozen pre-customer boundary.
+        # New extension data belongs in format-2 backups, not a historical merge.
+        for table in reversed(pg_migrations.EXTENSION_TABLES):
+            source.execute('DROP TABLE IF EXISTS '+table)
+        source.commit()
         incoming=inventory(source)
         with runtime_store.connection('postgresql') as conn:
             before={t:conn.execute('SELECT COUNT(*) FROM '+t).fetchone()[0] for t in pg_migrations.TABLES}
@@ -304,7 +397,8 @@ def test_postgres_uncertain_supplement_preserves_committed_evidence(client,monke
         files={'images':('requested.png',photo('blue'),'image/png')})
     assert injected and response.status_code==503
     assert response.json()['code']=='EVIDENCE_SAVE_UNCONFIRMED'
-    tracked=client.get('/v1/track',params={'case_id':receipt['case_id'],'policy_number':'POL-123'}).json()
+    tracked=client.get('/v1/track',headers={'X-Applicant-Token':receipt['applicant_token']},
+        params={'case_id':receipt['case_id'],'policy_number':'POL-123'}).json()
     assert tracked['status']=='evidence_received' and tracked['evidence_request'] is None
     with runtime_store.connection('postgresql') as conn:
         paths=[__import__('pathlib').Path(i.path) for i in db.get_images_for_case(conn,receipt['case_id'])]

@@ -148,7 +148,7 @@ class Connection:
             return
         try:
             self.raw.rollback()
-        except (psycopg.OperationalError, psycopg.InterfaceError):
+        except psycopg.Error:
             self.raw.close()  # do not mask the original authentication/HTTP error
 
     def close(self):
@@ -221,7 +221,7 @@ def verify_schema(conn):
         rows = [tuple(r) for r in conn.execute('SELECT version,checksum FROM schema_migrations ORDER BY version')]
     except psycopg.errors.UndefinedTable:
         raise RuntimeError('PostgreSQL schema is not installed. Run scripts/migrate_postgres.py first.') from None
-    from .pg_migrations import checksum
-    if rows != [('001', checksum())]:
-        raise RuntimeError('PostgreSQL migration version/checksum mismatch; do not rewrite applied migrations.')
+    from .pg_migrations import versions
+    if rows != versions():
+        raise RuntimeError('PostgreSQL migration version/checksum mismatch; run scripts/upgrade_postgres.py after a private backup. Do not rewrite applied migrations.')
     conn._schema_verified = True

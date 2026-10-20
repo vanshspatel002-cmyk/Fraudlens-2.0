@@ -31,7 +31,11 @@ def main():
         conn=sqlite3.connect(source.as_uri()+'?mode=ro',uri=True)
     missing=[];mismatches=[];referenced=set();rows=[]
     try:
-        for image_id,path,expected in conn.execute('SELECT image_id,path,content_hash FROM images'):
+        # Freeze references in one coherent snapshot, then release the remote
+        # transaction before slow filesystem hashing/directory traversal.
+        records=list(conn.execute('SELECT image_id,path,content_hash FROM images'))
+        conn.rollback()
+        for image_id,path,expected in records:
             resolved=Path(path).resolve();referenced.add(resolved);rows.append(image_id)
             if not resolved.is_file():missing.append({'image_id':image_id,'path':path})
             elif args.hash and hashlib.sha256(resolved.read_bytes()).hexdigest()!=expected:

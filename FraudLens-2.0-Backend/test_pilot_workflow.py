@@ -43,6 +43,22 @@ def auth(client):
     assert response.status_code == 200, response.text
     return {'Authorization': 'Bearer ' + response.json()['token']}
 
+
+def complete_for_review(client, case_id, headers):
+    """Explicit controlled worker completion for HTTP decision-contract tests."""
+    with runtime_store.connection(api.DB_PATH) as conn:
+        job = runtime_store.latest_job(conn,case_id)
+        job.update(status='completed',stage='complete')
+        runtime_store.save_job(conn,job)
+    return review_basis(client,case_id,headers)
+
+
+def review_basis(client, case_id, headers):
+    detail=client.get('/v1/cases/'+case_id,headers=headers).json()
+    return {'expected_revision':detail['review_revision'],
+            'expected_run_id':detail['processing']['job_id'],
+            'expected_evidence_ids':[image['image_id'] for image in detail['images']]}
+
 def test_login_email_expiry_revocation(client):
     assert client.post('/v1/auth/login', json={'email': 'other@example.com', 'password': 'correct-password'}).status_code == 401
     headers = auth(client)
@@ -69,11 +85,12 @@ def test_applicant_admin_workflow(client, kind):
     headers = auth(client)
     assert client.get('/v1/cases', headers=headers).json()['items'][0]['case_id'] == case_id
     action = client.post(f'/v1/cases/{case_id}/action', headers=headers, json={
+        **complete_for_review(client,case_id,headers),
         'action': 'approve', 'admin_id': 'forged', 'reason': 'Internal assessment',
         'public_message': 'Your application is approved.'})
     assert action.status_code == 200, action.text
     assert action.json()['admin_id'] == 'reviewer@example.com'
-    tracked = client.get('/v1/track', params={'case_id': case_id, 'registration_number': 'MH12AB1234'}).json()
+    tracked = client.get('/v1/track', headers=headers, params={'case_id': case_id, 'registration_number': 'MH12AB1234'}).json()
     assert tracked['status'] == 'closed_approved'
     assert tracked['narrative'] == 'Your application is approved.'
     assert 'Internal assessment' not in str(tracked)
@@ -133,7 +150,7 @@ def test_private_narrative_and_fallback_disclosure(client):
         conn.execute('INSERT INTO processing_results(run_id,case_id,decision_id,finding_ids,image_ids,policy_version,converged,created_at) VALUES (?,?,?,?,?,?,?,?)',(r['job_id'],r['case_id'],d.decision_id,'[]','[]','agent-test',0,time.time()))
         conn.commit()
     finally: conn.close()
-    tracked = client.get('/v1/track', params={'case_id': r['case_id'], 'policy_number': 'POL-123'})
+    tracked = client.get('/v1/track', headers={'X-Applicant-Token':r['applicant_token']}, params={'case_id': r['case_id'], 'policy_number': 'POL-123'})
     assert 'Private garage' not in tracked.text
     assert client.get('/v1/cases/' + r['case_id'], headers=auth(client)).json()['decision']['provider_unavailable'] is True
 

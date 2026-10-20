@@ -83,6 +83,10 @@ def init(conn):
         for old in jobs[1:]:
             job = json.loads(old[0]); job.update(status='interrupted', stage='superseded'); save_job(conn, job)
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_job ON api_jobs(case_id) WHERE status IN ('queued','running')")
+    from .customer_auth import init_sqlite
+    init_sqlite(conn)
+    from .report_pdf import init_schema
+    init_schema(conn)
 
 
 @contextmanager

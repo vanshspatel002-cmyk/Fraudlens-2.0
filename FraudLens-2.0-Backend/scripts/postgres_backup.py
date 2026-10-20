@@ -25,9 +25,13 @@ def backup(conn,destination):
         raise ValueError('Use a new private backup directory; existing backups are preserved.')
     destination.mkdir(parents=True)
     conn.execute('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
-    db.init_db(conn)
+    installed = pg_migrations.installed_versions(conn)
+    expected = pg_migrations.versions()
+    if not installed or installed != expected[:len(installed)]:
+        raise ValueError('Installed schema checksum differs; retain its matching source before backup.')
+    tables = (*pg_migrations.TABLES, *pg_migrations.EXTENSION_TABLES) if len(installed) > 1 else pg_migrations.TABLES
     data={}
-    for table in pg_migrations.TABLES:
+    for table in tables:
         names=[r[0] for r in conn.execute('''SELECT column_name FROM information_schema.columns
             WHERE table_schema=? AND table_name=? ORDER BY ordinal_position''',(conn.schema,table))]
         names=['rowid',*[n for n in names if n!='rowid']]
@@ -36,7 +40,7 @@ def backup(conn,destination):
         data[table]={'columns':names,'rows':rows,'digest':digest_rows(rows)}
     history=[[r[0],r[1],r[2].isoformat()] for r in conn.execute('SELECT source_digest,counts,imported_at FROM migration_imports ORDER BY imported_at')]
     conn.rollback()
-    payload={'format':1,'schema_version':'001','schema_checksum':pg_migrations.checksum(),
+    payload={'format':2,'schema_versions':installed,
              'created_at':datetime.now(timezone.utc).isoformat(),'source_schema':conn.schema,
              'source_digest':source_digest(data),'data':data,'import_history':history}
     content=json.dumps(payload,ensure_ascii=False,separators=(',',':'),allow_nan=False).encode('utf-8')
@@ -54,10 +58,20 @@ def restore(conn,source):
     if hashlib.sha256(content).hexdigest()!=manifest['sha256']:
         raise ValueError('Backup checksum failed.')
     payload=json.loads(content)
-    if payload['format']!=1 or payload['schema_version']!='001' or payload['schema_checksum']!=pg_migrations.checksum():
+    if payload['format'] == 1:
+        compatible = payload['schema_version']=='001' and payload['schema_checksum']==pg_migrations.checksum()
+        tables = pg_migrations.TABLES
+    elif payload['format'] == 2:
+        installed = [tuple(row) for row in payload['schema_versions']]
+        compatible = bool(installed) and installed == pg_migrations.versions()[:len(installed)]
+        tables = (*pg_migrations.TABLES, *pg_migrations.EXTENSION_TABLES) if len(installed) > 1 else pg_migrations.TABLES
+    else:
+        compatible = False
+        tables = ()
+    if not compatible:
         raise ValueError('Unsupported backup schema/version; retain its matching source migration.')
     data=payload['data']
-    if set(data)!=set(pg_migrations.TABLES) or source_digest(data)!=payload['source_digest']:
+    if set(data)!=set(tables) or source_digest(data)!=payload['source_digest']:
         raise ValueError('Backup inventory digest failed.')
     for entry in data.values():
         if digest_rows(entry['rows'])!=entry['digest']:
