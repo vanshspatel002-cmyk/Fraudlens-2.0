@@ -1,6 +1,11 @@
 # FraudLens presentation workflow — 20 October 2026
 
-This is the current workflow guide. Earlier dated handovers and measurements are
+The subsequent analysis repair is documented in
+[ANALYSIS_REPAIR_HANDOVER.md](ANALYSIS_REPAIR_HANDOVER.md) and
+[ANALYSIS_REPAIR_VERIFICATION.md](ANALYSIS_REPAIR_VERIFICATION.md). Use those
+records for current pipeline controls, report versions and qualification results.
+
+This is the preceding presentation workflow guide. Earlier dated handovers and measurements are
 preserved as history. Work is on `presentation/customer-workflow-20261018` based
 on `8e9a10f`. No push, deployment, purchase, or model-budget reset was performed.
 Implementation and initial qualification took place on 18 October; final

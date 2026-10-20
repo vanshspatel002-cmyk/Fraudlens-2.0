@@ -1,6 +1,10 @@
 # Presentation verification — 18–20 October 2026
 
-Results below belong to this branch. Overlapping reruns are **not** added into a
+Subsequent analysis-repair results are recorded separately in
+[ANALYSIS_REPAIR_VERIFICATION.md](ANALYSIS_REPAIR_VERIFICATION.md); its live
+provider results do not change the historical boundaries below.
+
+Results below belong to the presentation branch. Overlapping reruns are **not** added into a
 single release total. Earlier historical 241/272-pass releases remain historical.
 No successful live Gemini request is claimed. Test command output is retained in
 tool-console transcripts unless a private artifact path is explicitly named.
