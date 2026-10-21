@@ -332,3 +332,50 @@ The idle API and worker were reloaded with the same pilot settings. API health
 and readiness returned 200, worker OCR warmed, one pilot leadership lock was
 held, and no queued/running jobs remained. Both original provider controls
 remained byte-identical after reload. The frontend was not changed by this task.
+
+## Operator recovery follow-up - 21 October 2026
+
+This section supersedes the preceding four-attempt/permanent-recovery-block
+status. See [GEMINI_DIAGNOSTICS.md](GEMINI_DIAGNOSTICS.md) and
+[operator-recovery-audit.json](docs/gemini_diagnostics/operator-recovery-audit.json).
+The earlier configuration audit is retained unchanged.
+
+The permanent `prior_recovery_already_recorded` gate was application logic.
+Policy `operator-transient-recovery-2026-10-21-v2` permits a named, audited
+operator to request one half-open probe after a failed transient recovery and a
+30-minute cooldown. Original events/recoveries, cap, stop and daily controls
+remain retained. Shared locking permits one probe; failure closes its allowance.
+Configuration/access/quota/manual stops remain ineligible. Diagnostics now require
+complete effective pilot settings (including PostgreSQL schema and original
+ledgers), preferably read from the running API with `--process-id`.
+
+Exactly one generation reached Google: HTTP 400 `INVALID_ARGUMENT`, no
+observations, no schema-validation result and no finish reason. One separately
+budgeted configured-model metadata GET returned 200 and advertised generation
+support; metadata does not establish successful image generation. Attempts are
+now 6/15, headroom 9, and additional authorized generation is zero. Original four
+events and the original failed recovery remain unchanged.
+
+Offline SDK inspection reproduced a concrete legacy `responseSchema` defect:
+Pydantic extra-field exclusion emitted unsupported `additional_properties`. The
+adapter now uses `response_json_schema` and explicitly validates returned JSON.
+This likely explains the 400, but the first response did not retain field-level
+provider details; the exact attribution and corrected wire format are NOT live
+verified. Safe ErrorInfo/field hints are now retained for future diagnostics.
+No second generation was made. Claims and underwriting remain unverified live.
+
+Focused offline verification: 184 passed, 10 live-dependent tests skipped.
+Controlled transports cover cooldown, concurrency, cap/history preservation,
+configuration alignment, full observation schema, corrected wire format, parsing
+and separately counted metadata. Ordinary tests retain the pre-collection network
+guard and disposable controls. No frontend change was part of this repair.
+
+The idle dedicated worker was paused for the authorized operations. API/worker
+were then restarted with matching original pilot settings and stopped controls.
+API health/readiness returned 200, OCR warmed, one leadership lock was held and
+zero queued/running jobs remained. No application case, report or decision was
+created or reprocessed. No credential, cap or original audit history was reset;
+no push or deployment occurred. A future corrected probe needs new authorization
+and a correction-specific audited gate because the latest failure is HTTP 400.
+Another qualifying probe plus both fresh case types needs at least 10 requests,
+which exceeds the retained 9 slots before any agent tool follow-ups.

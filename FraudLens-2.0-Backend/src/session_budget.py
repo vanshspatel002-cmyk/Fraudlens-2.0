@@ -9,9 +9,15 @@ from pathlib import Path
 import time
 import threading
 import secrets
+import math
 from .quota_budget import QuotaBudgetExhausted, QuotaControlInvalid
 
 _request = threading.local()
+RECOVERY_POLICY_VERSION = 'operator-transient-recovery-2026-10-21-v2'
+RECOVERY_COOLDOWN_SECONDS = 30 * 60
+TRANSIENT_OUTCOMES = {'failure:'+value for value in (
+    '500','502','503','504','TimeoutError','ReadTimeout','WriteTimeout','ConnectTimeout',
+    'PoolTimeout','ConnectError','ReadError','WriteError','RemoteProtocolError','NetworkError')}
 
 
 class ProviderCircuitOpen(QuotaBudgetExhausted):
@@ -98,44 +104,67 @@ def _allow(state):
         recovery=_recovery(state)
         if not recovery or recovery['status'] not in {'authorized','probing','validation_authorized'}:
             raise ProviderCircuitOpen('Application provider circuit is stopped; no network request attempted.')
+        if recovery is not state['recoveries'][-1]:
+            raise ProviderCircuitOpen('An earlier recovery cannot spend the latest operator allowance.')
         if recovery['reserved'] >= recovery['allowance']:
             raise QuotaBudgetExhausted('Audited recovery allowance reached; no network request attempted.')
 
 
-def recovery_eligibility(state, limit):
+def recovery_eligibility(state, limit, *, operator=False, now=None):
     """Pure audit of existing policy; inspecting it never reopens a circuit."""
-    failures=[e for e in state.get('events',[]) if e.get('outcome','').startswith('failure:')]
+    failures=[e for e in state.get('events',[]) if e.get('outcome','').startswith('failure:') and e.get('kind')!='model_metadata']
     restricted=any(word in str(state.get('stopped','')).lower() for word in ('quota','billing','access denied','manual stop','request cap','capacity exhausted'))
-    if restricted or not state.get('stopped') or not failures or any(e['outcome'] not in {'failure:500','failure:502','failure:503','failure:504'} for e in failures[-2:]):
+    if restricted or not state.get('stopped') or not failures or any(e['outcome'] not in TRANSIENT_OUTCOMES for e in failures[-2:]):
         return {'eligible':False,'reason':'not_a_transient_http_circuit'}
-    if state.get('recoveries'):
-        return {'eligible':False,'reason':'prior_recovery_already_recorded'}
     if state['attempts'] >= min(15,max(0,int(limit))):
         return {'eligible':False,'reason':'attempt_budget_exhausted'}
+    if any(event['outcome']=='reserved' for event in state['events']):
+        return {'eligible':False,'reason':'request_still_in_flight'}
+    if state.get('recoveries'):
+        if not operator:return {'eligible':False,'reason':'prior_recovery_already_recorded'}
+        prior=state['recoveries'][-1]
+        if prior['status']!='failed':return {'eligible':False,'reason':'recovery_already_active_or_awaiting_validation'}
+        if prior.get('failure_outcome') not in TRANSIENT_OUTCOMES:
+            return {'eligible':False,'reason':'previous_recovery_not_transient'}
+        finished=prior.get('finished_at')
+        if not isinstance(finished,(float,int)) or isinstance(finished,bool) or not math.isfinite(finished):
+            return {'eligible':False,'reason':'recovery_completion_time_unverified'}
+        remaining=math.ceil(finished+RECOVERY_COOLDOWN_SECONDS-(time.time() if now is None else now))
+        if remaining>0:return {'eligible':False,'reason':'recovery_cooldown','retry_after_seconds':remaining}
+        return {'eligible':True,'reason':'operator_half_open_probe_permitted','cooldown_seconds':RECOVERY_COOLDOWN_SECONDS}
     return {'eligible':True,'reason':'one_initial_half_open_probe_permitted'}
 
 
-def authorize_recovery(reason):
+def authorize_recovery(reason, *, operator=None, expected_attempts=None):
     """One explicit probe of a transient circuit, preserving the original stop.
 
-    Quota/access/configuration stops and already attempted probes are ineligible.
+    A named operator may retry a FAILED TRANSIENT recovery after cooldown.
+    Quota/access/configuration stops and in-flight requests remain ineligible.
     Merely authorizing does not reserve either budget or contact the provider.
     """
     if not os.environ.get('FRAUDLENS_LIVE_LEDGER'):
         raise ValueError('The original live ledger is required for recovery.')
     def update(state):
         _limit=min(15,max(0,int(os.environ.get('FRAUDLENS_LIVE_LIMIT','15'))))
-        eligibility=recovery_eligibility(state,_limit)
+        if expected_attempts is not None and state['attempts']!=expected_attempts:
+            raise ValueError('The backed-up attempt count changed; inspect controls before authorizing.')
+        eligibility=recovery_eligibility(state,_limit,operator=bool(operator))
         if eligibility['reason']=='not_a_transient_http_circuit':
             raise ValueError('Only a recorded transient HTTP-error circuit can receive a recovery probe.')
         if eligibility['reason']=='prior_recovery_already_recorded':
             raise ValueError('A recovery has already been authorized; inspect its retained outcome instead of probing again.')
         if eligibility['reason']=='attempt_budget_exhausted':
             raise QuotaBudgetExhausted('No authorized request budget remains for a recovery probe.')
+        if not eligibility['eligible']:raise ValueError('Operator recovery blocked: '+eligibility['reason'])
+        if operator is not None and (not isinstance(operator,str) or not operator.strip()):raise ValueError('An operator audit label is required.')
         if not str(reason).strip():raise ValueError('An audited recovery reason is required.')
         recovery={'recovery_id':secrets.token_hex(12),'requested_at':time.time(),
             'reason':str(reason)[:300],'original_stop':state['stopped'],
             'base_attempts':state['attempts'],'allowance':1,'reserved':0,'status':'authorized'}
+        if operator:
+            recovery.update(policy_version=RECOVERY_POLICY_VERSION,operator=operator[:100],
+                previous_recovery_id=state['recoveries'][-1]['recovery_id'] if state.get('recoveries') else None,
+                cooldown_seconds=RECOVERY_COOLDOWN_SECONDS)
         state.setdefault('recoveries',[]).append(recovery)
         return recovery['recovery_id']
     return _change(update)
@@ -145,7 +174,7 @@ def authorize_validation(recovery_id, maximum_additional_calls, reason):
     """Explicit bounded follow-up after a successful probe, under the same cap."""
     def update(state):
         recovery=next((r for r in state.get('recoveries',[]) if r['recovery_id']==recovery_id),None)
-        if not recovery or recovery['status']!='probe_succeeded':
+        if not recovery or recovery is not state['recoveries'][-1] or recovery['status']!='probe_succeeded':
             raise ValueError('Bounded validation requires the successful initial recovery probe.')
         remaining=min(15,int(os.environ.get('FRAUDLENS_LIVE_LIMIT','15')))-state['attempts']
         count=int(maximum_additional_calls)
@@ -158,6 +187,47 @@ def authorize_validation(recovery_id, maximum_additional_calls, reason):
 def check():
     """Avoid consuming research quota reservations when this session is stopped."""
     _change(_allow)
+
+
+def reject_recovery_result(recovery_id, category):
+    """Retain HTTP success but close a probe whose saved observations are unusable."""
+    if category!='response_schema_invalid':raise ValueError('Unsupported probe validation category.')
+    def update(state):
+        recovery=state['recoveries'][-1] if state.get('recoveries') else None
+        if not recovery or recovery['recovery_id']!=recovery_id or recovery['status']!='probe_succeeded':
+            raise ValueError('Only the just-completed current probe can fail observation validation.')
+        recovery.update(status='failed',failure_outcome='failure:'+category,finished_at=time.time())
+    _change(update)
+
+
+def reserve_model_metadata(model,operator,reason):
+    """Explicit one-shot READ scope under the same lifetime cap, never generation.
+
+    Used only by GeminiProvider.model_metadata's fixed models.get call. It cannot
+    reopen the generation circuit or extend a recovery's one-request allowance.
+    """
+    if not os.environ.get('FRAUDLENS_LIVE_LEDGER') or not isinstance(operator,str) or not operator.strip() or not isinstance(reason,str) or not reason.strip():
+        raise ValueError('Original ledger and explicit operator/reason are required for metadata inspection.')
+    if model!=os.environ.get('GEMINI_MODEL'):raise ValueError('Only configured-model metadata may be read.')
+    def update(state):
+        cap=min(15,max(0,int(os.environ.get('FRAUDLENS_LIVE_LIMIT','15'))))
+        if state['attempts']>=cap:raise QuotaBudgetExhausted('Original attempt cap prevents metadata inspection.')
+        if any(e['outcome']=='reserved' for e in state['events']):raise ProviderCircuitOpen('A provider operation is still in flight.')
+        state['attempts']+=1
+        state['events'].append({'attempt':state['attempts'],'model':model,'time':time.time(),'outcome':'reserved',
+            'kind':'model_metadata','operator':str(operator)[:100],'reason':str(reason)[:300]})
+        return state['attempts']
+    return _change(update)
+
+
+def model_metadata_outcome(attempt,error=None):
+    """A metadata reply must not alter generation failure counters or stops."""
+    def update(state):
+        event=next((e for e in state['events'] if e['attempt']==attempt),None)
+        if not event or event.get('kind')!='model_metadata' or event['outcome']!='reserved':
+            raise ValueError('No matching in-flight metadata inspection.')
+        event.update(outcome='success' if error is None else 'failure:'+str(getattr(error,'code',None) or type(error).__name__),completed_at=time.time())
+    _change(update)
 
 
 def reserve(model):
@@ -195,8 +265,12 @@ def outcome(error=None, *, attempt=None):
             elif recovery['status']=='probing':
                 recovery.update(status='probe_succeeded',probe_succeeded_at=time.time())
         state['consecutive_failures'] = state['consecutive_failures'] + 1 if error else 0
+        previous_stop=state['stopped']
         if code == 429:
             state['stopped'] = 'provider quota exhausted'
         elif error and (code in (400, 401, 403, 404) or state['consecutive_failures'] >= 2):
             state['stopped'] = 'configuration failure or repeated provider failures'
+        if state['stopped']!=previous_stop:
+            state.setdefault('stop_history',[]).append({'time':time.time(),'previous_stop':previous_stop,
+                'stop':state['stopped'],'cause_attempt':attempt})
     _change(update)

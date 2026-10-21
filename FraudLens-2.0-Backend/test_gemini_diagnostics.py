@@ -124,13 +124,14 @@ def test_probe_schema_is_enforced_by_installed_sdk(controlled,monkeypatch,valid)
     path=controlled/'sample.png';Image.new('RGB',(8,8)).save(path);sent=[]
     def handle(request):
         sent.append(json.loads(request.content))
-        text=json.dumps({'vehicle_visible':True,'observations':['A parked vehicle.']}) if valid else '{"wrong":true}'
+        from test_engine_reliability import OBSERVATIONS
+        text=json.dumps(OBSERVATIONS) if valid else '{"wrong":true}'
         return httpx.Response(200,json={'candidates':[{'finishReason':'STOP','content':{'parts':[{'text':text}]}}]})
     provider,client,transport=sdk_provider(monkeypatch,handle)
     try:
         if valid:
             result=provider.describe_image(str(path),'fixture',retry_attempts=1,response_schema=ProbeObservation)
-            assert ProbeObservation.model_validate_json(result.text).vehicle_visible
+            assert ProbeObservation.model_validate_json(result.text).lighting=='daylight'
         else:
             with pytest.raises(llm.GenerationResponseError):provider.describe_image(str(path),'fixture',retry_attempts=1,response_schema=ProbeObservation)
         config=sent[0]['generationConfig']
@@ -318,6 +319,8 @@ def test_known_truncated_cache_is_ignored_and_normal_controls_apply(controlled,m
 def test_rehearsal_does_not_trust_old_probe_success_or_overrun_allowance(reason):
     from scripts.prepare_analysis_rehearsal import validate_recovery
     result={'success':True,'cached':False,'structured_observation_valid':True,'recovery_id':'fixture','attempts_after':3}
+    from src.perception import PERCEPTION_SCHEMA_VERSION
+    result['perception_schema_version']=PERCEPTION_SCHEMA_VERSION
     ledger={'attempts':3,'recoveries':[{'recovery_id':'fixture','status':'validation_authorized','allowance':13,'reserved':1}],
             'events':[{'attempt':3,'outcome':'success','recovery_id':'fixture'}]}
     if reason=='generic_text':result.pop('structured_observation_valid')

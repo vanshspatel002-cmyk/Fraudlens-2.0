@@ -1,8 +1,8 @@
 """Read-only Gemini configuration/control audit. Never creates clients or calls APIs.
 
---process-id reads a local same-user process environment in memory (64-bit Windows
-or Linux). Only the explicit safe summary is printed; credentials are never
-printed, hashed or written. --pilot previews start_pilot.ps1's control settings.
+--process-id reads a local same-user pilot environment in memory (64-bit Windows
+or Linux). Otherwise the shell must already contain COMPLETE pilot settings.
+Only safe configuration is printed. No SQLite/alternate-ledger fallback exists.
 """
 import argparse
 import ctypes
@@ -84,6 +84,7 @@ def summarize(env):
         'worker_enabled':env.get('FRAUDLENS_WORKER_ENABLED','1')=='1',
         'recovery_id_present':bool(env.get('FRAUDLENS_RECOVERY_ID')),
         'database_kind':'postgresql' if env.get('FRAUDLENS_DB')=='postgresql' else 'sqlite/default',
+        'postgresql_schema':env.get('FRAUDLENS_PG_SCHEMA') if re.fullmatch(r'fraudlens_[a-z0-9_]+',env.get('FRAUDLENS_PG_SCHEMA','')) else None,
         'sdk_endpoint_override_present':any(bool(env.get(n)) for n in ['GOOGLE_GEMINI_BASE_URL','GOOGLE_VERTEX_BASE_URL','GOOGLE_GENAI_USE_VERTEXAI']),
         'shell_key_matches_dotenv':None}
     from dotenv import dotenv_values
@@ -100,8 +101,8 @@ def summarize(env):
             'last_event_at':iso(state['events'][-1].get('time')) if state['events'] else None,
             'last_outcome':state['events'][-1]['outcome'] if state['events'] else None,
             'recovery_status':recovery.get('status'),'recovery_finished_at':iso(recovery.get('finished_at')),
-            'new_recovery_permitted':session_budget.recovery_eligibility(state,cap)['eligible'],
-            'recovery_block_reason':session_budget.recovery_eligibility(state,cap)['reason'],
+            'new_recovery_permitted':session_budget.recovery_eligibility(state,cap,operator=True)['eligible'],
+            'recovery_block_reason':session_budget.recovery_eligibility(state,cap,operator=True)['reason'],
             'authorized_now':0 if state['stopped'] and recovery.get('status') not in {'authorized','validation_authorized'} else max(0,min(cap-state['attempts'],recovery.get('allowance',cap)-recovery.get('reserved',0)))}
     else:result['session']={'status':'unconfigured_or_missing; do not infer pilot allowance'}
     filename = env.get('GEMINI_QUOTA_BUDGET','outputs/quota_budget.json')
@@ -134,19 +135,15 @@ def main():
     group.add_argument('--process-id',type=int);group.add_argument('--pilot',action='store_true')
     parser.add_argument('--plan-validation',action='store_true',help='Count calls for the existing one-photo claims/six-photo underwriting rehearsal without submitting anything.')
     args=parser.parse_args()
-    from dotenv import load_dotenv
-    load_dotenv(ROOT/'.env',override=False)
-    env=process_environment(args.process_id) if args.process_id else os.environ.copy()
-    if args.pilot:
-        env.update(FRAUDLENS_LIVE_LEDGER=str(ROOT/'outputs/pilot_validation/live_calls.json'),
-            GEMINI_QUOTA_BUDGET=str(ROOT/'outputs/pilot_validation/quota_budget.json'),FRAUDLENS_LIVE_LIMIT='15',
-            FRAUDLENS_GEMINI_REQUEST_PROFILE='gemini3_defaults_v2')
     try:
+        from src.pilot_config import load_pilot_environment,PilotConfigurationError
+        env=load_pilot_environment(process_environment(args.process_id) if args.process_id else os.environ.copy())
         result=summarize(env)
+        result['configuration_source']='running_pilot_process' if args.process_id else 'complete_pilot_environment'
         if args.plan_validation:result['validation_request_plan']=request_plan()
         print(json.dumps(result,indent=2))
     except Exception as exc:
-        print(json.dumps({'audit_failed':type(exc).__name__,'detail':'Configuration/controls could not be read safely; no request attempted.'}));return 1
+        print(json.dumps({'audit_failed':type(exc).__name__,'detail':str(exc) if isinstance(exc,PilotConfigurationError) else 'Configuration/controls could not be read safely; no request attempted.'}));return 1
     return 0
 
 

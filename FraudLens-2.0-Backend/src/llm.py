@@ -311,6 +311,8 @@ class GeminiProvider(LLMProvider):
 
         self._genai = genai
         self._clients: dict[str, Any] = {}
+        self.http_attempts = 0
+        self.http_statuses = []
         self.model = model
         # Compatibility correction, separate from historical research policy.
         # Old perception_records remain legitimate reusable observations; raw
@@ -330,8 +332,37 @@ class GeminiProvider(LLMProvider):
     def _client_for(self, label: str, secret: str):
         """One cached Client per key - constructing them is not free."""
         if label not in self._clients:
-            self._clients[label] = self._genai.Client(api_key=secret, http_options=self._genai.types.HttpOptions(timeout=60000, retry_options=self._genai.types.HttpRetryOptions(attempts=1)))
+            self._clients[label] = self._genai.Client(api_key=secret, http_options=self._genai.types.HttpOptions(
+                timeout=60000,retry_options=self._genai.types.HttpRetryOptions(attempts=1),
+                client_args={'follow_redirects':False,'event_hooks':{'request':[self._http_attempt],'response':[self._http_response]}}))
         return self._clients[label]
+
+    def _http_attempt(self, request):
+        # Counter only: never retain URLs, headers, prompts or image bodies.
+        self.http_attempts += 1
+
+    def _http_response(self, response):
+        self.http_statuses.append(response.status_code)
+
+    def model_metadata(self,*,operator,reason):
+        """One operator-authorized GET; no inference, retries, rotation or caches."""
+        from . import session_budget
+        from .analysis_diagnostics import failure_detail
+        label,secret=self._pool.current()
+        # Session reservation first fails closed at the original lifetime cap.
+        attempt=session_budget.reserve_model_metadata(self.model,operator,reason)
+        http_before=self.http_attempts
+        try:
+            quota_budget.reserve_call(quota_budget.infer_consumer(),label,keys_configured=len(self._pool),model=self.model,kind='model_metadata')
+            metadata=self._client_for(label,secret).models.get(model=self.model)
+        except Exception as exc:
+            session_budget.model_metadata_outcome(attempt,exc)
+            exc.analysis_failure=failure_detail(exc,'model_metadata',attempt_count=1,
+                attempted_network=self.http_attempts>http_before,model=self.model)
+            raise
+        session_budget.model_metadata_outcome(attempt)
+        return {'requested_model':self.model,'supported_actions':getattr(metadata,'supported_actions',None),
+            'input_token_limit':getattr(metadata,'input_token_limit',None),'output_token_limit':getattr(metadata,'output_token_limit',None)}
 
     @property
     def _client(self):
@@ -444,7 +475,10 @@ class GeminiProvider(LLMProvider):
         # generate_content), so a fresh config is built per call rather
         # than cached on self the way the old GenerationConfig was.
         sampling = {} if self._request_cache_suffix else {'temperature': 0}
-        structured = {'response_mime_type':'application/json','response_schema':response_schema} if response_schema is not None else {}
+        # Pydantic extra='forbid' includes additionalProperties. In this pinned
+        # SDK, response_schema converts it to unsupported additional_properties
+        # in the legacy Schema proto. JSON Schema belongs in response_json_schema.
+        structured = {'response_mime_type':'application/json','response_json_schema':response_schema.model_json_schema()} if response_schema is not None else {}
         return types.GenerateContentConfig(**sampling, **structured, tools=tools or None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
 
@@ -519,7 +553,7 @@ class GeminiProvider(LLMProvider):
         image_bytes = Path(image_path).read_bytes()
         key = _vision_cache_key(image_bytes, prompt, self.model)
         if response_schema is not None:
-            key = hashlib.sha256(json.dumps({'vision_key':key,'response_schema':response_schema.model_json_schema()},sort_keys=True).encode()).hexdigest()
+            key = hashlib.sha256(json.dumps({'vision_key':key,'response_schema':response_schema.model_json_schema(),'wire_contract':'json_schema_v1'},sort_keys=True).encode()).hexdigest()
 
         if conn is not None:
             lookup_start = time.monotonic()
@@ -544,7 +578,7 @@ class GeminiProvider(LLMProvider):
 
         def _call(client):
             response = client.models.generate_content(model=self.model,contents=contents,config=config)
-            _validate_generation_response(response, structured=response_schema is not None)
+            _validate_generation_response(response, structured=response_schema is not None, schema=response_schema)
             return response
 
         response = self._call_rotating(_call, attempts=retry_attempts)
@@ -637,7 +671,7 @@ def _cached_generation_usable(entry):
     return True
 
 
-def _validate_generation_response(response, structured=False):
+def _validate_generation_response(response, structured=False, schema=None):
     """Do not cache or use truncated, blocked, empty or malformed generations."""
     from .analysis_diagnostics import response_metadata
     metadata = response_metadata(response)
@@ -646,7 +680,11 @@ def _validate_generation_response(response, structured=False):
     blocked = metadata.get('block_reason') not in {None, 'BLOCK_REASON_UNSPECIFIED'}
     unusable = blocked or not candidates or finish != 'STOP'
     unusable |= not bool(_extract_text(response).strip() or _extract_tool_calls(response))
-    unusable |= structured and getattr(response,'parsed',None) is None
+    if structured:
+        if schema is not None:
+            try:schema.model_validate_json(_extract_text(response))
+            except (ValueError,TypeError):unusable=True
+        else:unusable |= getattr(response,'parsed',None) is None
     if unusable:
         error = GenerationResponseError('The generation was blocked, incomplete or empty; private response content omitted.')
         error.response_metadata = metadata

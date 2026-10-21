@@ -21,6 +21,9 @@ def validate_recovery(result,ledger,photo_count,limit=15):
     """An old generic-text success cannot unlock a new live rehearsal."""
     if not result.get('success') or result.get('cached') is not False or result.get('structured_observation_valid') is not True:
         raise ValueError('A fresh, schema-valid image probe is required; generic text or cached replies do not qualify.')
+    from src.perception import PERCEPTION_SCHEMA_VERSION
+    if result.get('perception_schema_version')!=PERCEPTION_SCHEMA_VERSION:
+        raise ValueError('The probe must validate the current full perception schema.')
     recovery=next((r for r in ledger.get('recoveries',[]) if r.get('recovery_id')==result.get('recovery_id')),None)
     if not recovery or recovery.get('status')!='validation_authorized':
         raise ValueError('The original recovery must currently authorize bounded validation; failed recovery cannot be reused.')

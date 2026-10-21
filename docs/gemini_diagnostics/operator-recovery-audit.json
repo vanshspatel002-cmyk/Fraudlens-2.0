@@ -1,0 +1,220 @@
+{
+  "starting_commit": "e91fd4cf424949531a3b35b50d65cf54322436cb",
+  "configuration_before": {
+    "started_at": "2026-10-21T18:09:26.463460+00:00",
+    "starting_commit": "e91fd4cf424949531a3b35b50d65cf54322436cb",
+    "api_before": {
+      "provider": "gemini",
+      "agent_model": "gemini-3.5-flash",
+      "perception_model": "gemini-3.5-flash",
+      "same_provider_instance_for_both_stages": true,
+      "key_present": true,
+      "sdk_version": "2.18.1",
+      "request_profile": "gemini3_defaults_v2",
+      "session_ledger": "<backend>/outputs/pilot_validation/live_calls.json",
+      "quota_ledger": "<backend>/outputs/pilot_validation/quota_budget.json",
+      "worker_enabled": false,
+      "recovery_id_present": false,
+      "database_kind": "postgresql",
+      "postgresql_schema": "fraudlens_pilot",
+      "sdk_endpoint_override_present": false,
+      "shell_key_matches_dotenv": true,
+      "session": {
+        "attempts": 4,
+        "cap": 15,
+        "headroom": 11,
+        "stop": "configuration failure or repeated provider failures",
+        "initial_stop_at": "2026-10-14T12:49:41.173466+00:00",
+        "last_event_at": "2026-10-20T16:20:54.420596+00:00",
+        "last_outcome": "failure:503",
+        "recovery_status": "failed",
+        "recovery_finished_at": "2026-10-20T16:21:08.816499+00:00",
+        "new_recovery_permitted": true,
+        "recovery_block_reason": "operator_half_open_probe_permitted",
+        "authorized_now": 0
+      },
+      "daily": {
+        "recorded_day": "2026-10-20",
+        "current_pacific_day": "2026-10-21",
+        "recorded_cap": 100,
+        "recorded_reservations": 2,
+        "historical_days": 1,
+        "note": "Recorded reservations are not proof of outbound HTTP; no rollover is written by this audit."
+      }
+    },
+    "worker_before": {
+      "provider": "gemini",
+      "agent_model": "gemini-3.5-flash",
+      "perception_model": "gemini-3.5-flash",
+      "same_provider_instance_for_both_stages": true,
+      "key_present": true,
+      "sdk_version": "2.18.1",
+      "request_profile": "gemini3_defaults_v2",
+      "session_ledger": "<backend>/outputs/pilot_validation/live_calls.json",
+      "quota_ledger": "<backend>/outputs/pilot_validation/quota_budget.json",
+      "worker_enabled": true,
+      "recovery_id_present": false,
+      "database_kind": "postgresql",
+      "postgresql_schema": "fraudlens_pilot",
+      "sdk_endpoint_override_present": false,
+      "shell_key_matches_dotenv": true,
+      "session": {
+        "attempts": 4,
+        "cap": 15,
+        "headroom": 11,
+        "stop": "configuration failure or repeated provider failures",
+        "initial_stop_at": "2026-10-14T12:49:41.173466+00:00",
+        "last_event_at": "2026-10-20T16:20:54.420596+00:00",
+        "last_outcome": "failure:503",
+        "recovery_status": "failed",
+        "recovery_finished_at": "2026-10-20T16:21:08.816499+00:00",
+        "new_recovery_permitted": true,
+        "recovery_block_reason": "operator_half_open_probe_permitted",
+        "authorized_now": 0
+      },
+      "daily": {
+        "recorded_day": "2026-10-20",
+        "current_pacific_day": "2026-10-21",
+        "recorded_cap": 100,
+        "recorded_reservations": 2,
+        "historical_days": 1,
+        "note": "Recorded reservations are not proof of outbound HTTP; no rollover is written by this audit."
+      }
+    },
+    "settings_and_credentials_consistent": true,
+    "jobs_running_before": 0,
+    "jobs_queued_before": 0,
+    "metadata_requests": 0,
+    "generation_requests": 0,
+    "validation_request_plan_before": {
+      "claims_photographs": 1,
+      "underwriting_photographs": 6,
+      "fresh_image_calls_minimum": 7,
+      "agent_final_turns_minimum": 2,
+      "case_calls_minimum_without_tool_followups": 9,
+      "case_calls_with_one_tool_followup_per_case": 11,
+      "initial_structured_image_probe": 1,
+      "total_including_probe_minimum": 10,
+      "total_with_probe_and_one_tool_followup_per_case": 12,
+      "worst_case_including_one_schema_retry_per_image_and_agent_iteration_caps": 31,
+      "note": "No cache counts as fresh. Local tool execution costs no generation; its follow-up turn does. Recovery transport retries are disabled."
+    },
+    "selected_image": "data/curated/damaged/damaged_0045.jpg",
+    "image_review": "Existing dataset photograph; no people or readable registration plate observed. Not a customer submission.",
+    "google_references": [
+      "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash",
+      "https://ai.google.dev/gemini-api/docs/generate-content/structured-output",
+      "https://ai.google.dev/gemini-api/docs/generate-content/image-understanding"
+    ]
+  },
+  "policy": {
+    "version": "operator-transient-recovery-2026-10-21-v2",
+    "cooldown_seconds": 1800,
+    "generation_probe_allowance": 1,
+    "one_concurrent_probe": true,
+    "prior_permanent_block_was_application_logic": true
+  },
+  "generation_probe": {
+    "started_at": "2026-10-21T18:11:28.273907+00:00",
+    "finished_at": "2026-10-21T18:11:32.423179+00:00",
+    "success": false,
+    "http_attempted": true,
+    "http_attempts": 1,
+    "http_status": 400,
+    "requested_model": "gemini-3.5-flash",
+    "request_profile": "gemini3_defaults_v2",
+    "perception_schema_version": "fraudlens-visible-observations-2026-10-20-v1",
+    "schema_validation": "not_run",
+    "finish_reason": null,
+    "attempts_after": 5,
+    "remaining_session_cap": 10,
+    "failure": {
+      "stage": "recovery_probe",
+      "error_category": "provider_configuration",
+      "timestamp": "2026-10-21T18:11:32.371910+00:00",
+      "attempt_count": 1,
+      "retryable": false,
+      "provider_status": "http_400",
+      "http_status": 400,
+      "attempted_network": true,
+      "exception_type": "ClientError",
+      "message": "Provider rejected the request or model configuration.",
+      "provider_error_code": "INVALID_ARGUMENT",
+      "model": "gemini-3.5-flash",
+      "session_attempt": 5,
+      "attempt_history": [
+        {
+          "error_category": "provider_configuration",
+          "http_status": 400,
+          "provider_error_code": "INVALID_ARGUMENT"
+        }
+      ]
+    }
+  },
+  "model_metadata": {
+    "operation": "configured_model_metadata",
+    "generation_requests": 0,
+    "metadata_requests": 1,
+    "started_at": "2026-10-21T18:18:45.644198+00:00",
+    "success": true,
+    "metadata": {
+      "requested_model": "gemini-3.5-flash",
+      "supported_actions": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "input_token_limit": 1048576,
+      "output_token_limit": 65536
+    },
+    "http_attempts": 1,
+    "http_status": 200,
+    "finished_at": "2026-10-21T18:18:47.065451+00:00",
+    "attempts_after": 6,
+    "remaining_session_cap": 9
+  },
+  "provider_request_totals": {
+    "generation_requests": 1,
+    "metadata_gets": 1,
+    "transport_retries": 0
+  },
+  "preservation": {
+    "original_session_events_unchanged": true,
+    "original_recovery_unchanged": true,
+    "old_reports_and_decisions_reprocessed": false,
+    "existing_session_cap": 15,
+    "headroom_after_operations": 9,
+    "authorized_additional_generation_requests": 0
+  },
+  "wire_contract": {
+    "observed_legacy_request_field": "generationConfig.responseSchema.additional_properties",
+    "corrected_request_field": "generationConfig.responseJsonSchema.additionalProperties",
+    "new_wire_format_live_verified": false,
+    "provider_field_level_error_retained": false,
+    "interpretation": "A definite legacy Schema/JSON Schema mismatch was reproduced offline. It is the likely HTTP 400 cause; no corrected live generation was authorized."
+  },
+  "verification": {
+    "final_offline_passed": 184,
+    "live_tests_skipped": 10,
+    "calls_in_offline_tests": 0
+  },
+  "status": "Live perception unverified; corrected wire format tested offline only.",
+  "service_restoration": {
+    "api_health": {
+      "/health": 200,
+      "/ready": 200
+    },
+    "settings_and_credentials_consistent": true,
+    "worker_ocr_warmup": "ready",
+    "one_worker_leadership_lock": true,
+    "queued_jobs": 0,
+    "running_jobs": 0,
+    "session_attempts": 6,
+    "session_cap": 15,
+    "headroom": 9,
+    "generation_circuit_stopped": true,
+    "generation_recovery_status": "failed",
+    "original_events_and_recovery_preserved": true
+  }
+}

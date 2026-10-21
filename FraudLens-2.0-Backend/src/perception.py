@@ -38,7 +38,8 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Literal
+from pydantic import ConfigDict, create_model
 
 from tqdm import tqdm
 
@@ -143,6 +144,13 @@ _ENUM_FIELDS = {
     'shadow_length': {'none', 'short', 'medium', 'long', 'unknown'},
     'lighting': {'daylight', 'dusk', 'night', 'artificial', 'unknown'},
 }
+
+# The probe and production application validator share exactly the same fields
+# and enum vocabulary; this does not invent a second observation contract.
+PerceptionObservation = create_model('PerceptionObservation',
+    __config__=ConfigDict(extra='forbid',strict=True),
+    **{key: (Literal[tuple(sorted(_ENUM_FIELDS[key]))] if key in _ENUM_FIELDS else str, ...)
+       for key in _EXPECTED_FIELDS})
 
 
 class PerceptionSchemaError(ValueError):

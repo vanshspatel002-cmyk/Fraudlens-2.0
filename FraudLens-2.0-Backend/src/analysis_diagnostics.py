@@ -37,7 +37,27 @@ def failure_detail(error, stage, attempt_count=None, attempted_network=None, mod
     try: code=int(code) if code is not None else None
     except (ValueError,TypeError): code=None
     name=type(error).__name__;lower=str(error).lower()
+    # ErrorInfo enums/BadRequest field paths are safe evidence. Do not retain
+    # provider message/body, arbitrary metadata values, prompts or credentials.
+    details=getattr(error,'details',{})
+    payload=details.get('error',details) if isinstance(details,dict) else {}
+    provider_reason=None;invalid_fields=[]
+    message=payload.get('message','') if isinstance(payload,dict) else ''
+    safe_hint=None
+    if isinstance(message,str):
+        if re.search(r'(?i)api key (?:not valid|is invalid|expired|has expired)',message):safe_hint='invalid_or_expired_api_key'
+        elif re.search(r'(?i)(response[_ ](?:json[_ ])?schema|invalid json payload|generation_config)',message):safe_hint='request_schema_or_parameter'
+    for item in payload.get('details',[]) if isinstance(payload,dict) else []:
+        if not isinstance(item,dict):continue
+        reason=item.get('reason')
+        if isinstance(reason,str) and re.fullmatch(r'[A-Z_]{2,80}',reason):provider_reason=reason
+        for violation in item.get('fieldViolations',[]):
+            field=violation.get('field') if isinstance(violation,dict) else None
+            if isinstance(field,str) and re.fullmatch(r'[A-Za-z0-9_.\[\]-]{1,120}',field):invalid_fields.append(field)
     category=getattr(error,'error_category',None)
+    if provider_reason in {'API_KEY_INVALID','API_KEY_EXPIRED','API_KEY_NOT_FOUND','API_KEY_SERVICE_BLOCKED','API_KEY_HTTP_REFERRER_BLOCKED','API_KEY_IP_ADDRESS_BLOCKED'}:
+        category='provider_access_denied'
+    if safe_hint=='invalid_or_expired_api_key':category='provider_access_denied'
     if not category:
         if code==429: category='provider_quota_or_rate_limit'
         elif code in {401,403}:category='provider_access_denied'
@@ -84,4 +104,7 @@ def failure_detail(error, stage, attempt_count=None, attempted_network=None, mod
         result['provider_request_id']=request_id
     result.update(getattr(error,'response_metadata',{}) or {})
     if model:result['model']=model
+    if provider_reason:result['provider_error_reason']=provider_reason
+    if invalid_fields:result['invalid_request_fields']=invalid_fields[:8]
+    if safe_hint:result['provider_error_hint']=safe_hint
     return result
