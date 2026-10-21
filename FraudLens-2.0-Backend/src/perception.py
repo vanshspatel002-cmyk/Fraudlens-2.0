@@ -35,7 +35,6 @@ import random
 import re
 import statistics
 import sys
-import traceback
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -227,16 +226,14 @@ ERROR_LOG = Path("outputs/perception_errors.log")
 MAX_CONSECUTIVE_NON_QUOTA_FAILURES = 5
 
 
-def log_failure(image: Image, kind: str, trace_text: str) -> None:
-    """Append a full traceback/error. Never let logging a failure cause one."""
+def log_failure(image: Image, kind: str, error: Exception) -> None:
+    """Append fixed diagnostics, never a raw provider traceback or applicant text."""
     try:
+        from .analysis_diagnostics import failure_detail
+        record={**failure_detail(error,'perception_batch'),'case_id':image.case_id,'image_id':image.image_id}
         ERROR_LOG.parent.mkdir(parents=True, exist_ok=True)
         with ERROR_LOG.open("a", encoding="utf-8") as fh:
-            fh.write(
-                f"\n{'=' * 70}\n{datetime.now(timezone.utc).isoformat()} "
-                f"kind={kind} case={image.case_id} image={image.image_id} "
-                f"hash={image.content_hash}\n{'=' * 70}\n{trace_text}\n"
-            )
+            fh.write(json.dumps(record)+'\n')
     except Exception:  # noqa: BLE001
         pass
 
@@ -422,20 +419,22 @@ def perceive_image(
         network_attempts = sum(not bool(getattr(value, 'cached', False)) for value in responses)
         diagnostic = failure_detail(PerceptionSchemaError(error or 'Unusable structured observations.'),
                                     'perception_schema', attempt_count=network_attempts,
-                                    attempted_network=network_attempts > 0)
+                                    attempted_network=network_attempts > 0, model=model)
         diagnostic['response_count'] = len(responses)
+        diagnostic.update({key:value for key,value in ((getattr(response,'raw',None) or {}).get('request_provenance') or {}).items()
+                           if key in {'finish_reason','block_reason','provider_request_id'}})
         record = PerceptionRecord(
             content_hash=image.content_hash,
             source=getattr(response, 'model', None) or model,
             anomaly_notes=f"perception parse failure: {error}",
-            raw_response={"text": response.text, "error": error, 'schema_issues': schema_issues,
+            raw_response={"error": error, 'schema_issues': schema_issues,
                           'schema_version': PERCEPTION_SCHEMA_VERSION, 'diagnostic': diagnostic},
         )
 
     request_provenance = (getattr(response, 'raw', None) or {}).get('request_provenance')
     if isinstance(request_provenance, dict):
         record.raw_response['request_provenance'] = {key: request_provenance[key] for key in
-            ('session_attempt', 'requested_model', 'serving_model', 'timestamp') if key in request_provenance}
+            ('session_attempt', 'requested_model', 'serving_model', 'timestamp','finish_reason','block_reason','provider_request_id') if key in request_provenance}
     db.save_perception(conn, record)
     if provenance is not None:
         provenance['source_model'] = record.source
@@ -754,7 +753,7 @@ def run_perception_pass(
                 failed += 1
                 kind = type(e).__name__
                 consecutive_non_quota_failures += 1
-                log_failure(image, kind, traceback.format_exc())
+                log_failure(image, kind, e)
                 if consecutive_non_quota_failures >= MAX_CONSECUTIVE_NON_QUOTA_FAILURES:
                     conn.commit()
                     raise RuntimeError(
@@ -762,9 +761,9 @@ def run_perception_pass(
                         f"failures; see {ERROR_LOG}"
                     ) from e
             if is_rate_limit_error(e) or is_quota_budget_error(e) or is_unavailable_error(e):
-                log_failure(image, kind, f"{type(e).__name__}: {e}")
+                log_failure(image, kind, e)
             print(
-                f"\n[perception] {kind}: {e} on {image.content_hash[:12]}... - "
+                f"\n[perception] {kind} ({type(e).__name__}) on {image.content_hash[:12]}... - "
                 f"backing off {_ERROR_BACKOFF_SECONDS:.0f}s and continuing "
                 "(this image stays uncached; re-run to retry it)",
                 file=sys.stderr,

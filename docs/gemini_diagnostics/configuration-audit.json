@@ -1,0 +1,143 @@
+{
+  "captured_at": "2026-10-21T17:38:28.910363+00:00",
+  "source_commit": "4be7c603de4e358e52d773aa5e3f26e4b5e11bb2",
+  "running_api": {
+    "provider": "gemini",
+    "agent_model": "gemini-3.5-flash",
+    "perception_model": "gemini-3.5-flash",
+    "same_provider_instance_for_both_stages": true,
+    "key_present": true,
+    "sdk_version": "2.18.1",
+    "request_profile": "gemini3_defaults_v2",
+    "session_ledger": "<backend>/outputs/pilot_validation/live_calls.json",
+    "quota_ledger": "<backend>/outputs/pilot_validation/quota_budget.json",
+    "worker_enabled": false,
+    "recovery_id_present": false,
+    "database_kind": "postgresql",
+    "sdk_endpoint_override_present": false,
+    "shell_key_matches_dotenv": true,
+    "session": {
+      "attempts": 4,
+      "cap": 15,
+      "headroom": 11,
+      "stop": "configuration failure or repeated provider failures",
+      "initial_stop_at": "2026-10-14T12:49:41.173466+00:00",
+      "last_event_at": "2026-10-20T16:20:54.420596+00:00",
+      "last_outcome": "failure:503",
+      "recovery_status": "failed",
+      "recovery_finished_at": "2026-10-20T16:21:08.816499+00:00",
+      "new_recovery_permitted": false,
+      "recovery_block_reason": "prior_recovery_already_recorded",
+      "authorized_now": 0
+    },
+    "daily": {
+      "recorded_day": "2026-10-20",
+      "current_pacific_day": "2026-10-21",
+      "recorded_cap": 100,
+      "recorded_reservations": 2,
+      "historical_days": 1,
+      "note": "Recorded reservations are not proof of outbound HTTP; no rollover is written by this audit."
+    }
+  },
+  "running_worker": {
+    "provider": "gemini",
+    "agent_model": "gemini-3.5-flash",
+    "perception_model": "gemini-3.5-flash",
+    "same_provider_instance_for_both_stages": true,
+    "key_present": true,
+    "sdk_version": "2.18.1",
+    "request_profile": "gemini3_defaults_v2",
+    "session_ledger": "<backend>/outputs/pilot_validation/live_calls.json",
+    "quota_ledger": "<backend>/outputs/pilot_validation/quota_budget.json",
+    "worker_enabled": true,
+    "recovery_id_present": false,
+    "database_kind": "postgresql",
+    "sdk_endpoint_override_present": false,
+    "shell_key_matches_dotenv": true,
+    "session": {
+      "attempts": 4,
+      "cap": 15,
+      "headroom": 11,
+      "stop": "configuration failure or repeated provider failures",
+      "initial_stop_at": "2026-10-14T12:49:41.173466+00:00",
+      "last_event_at": "2026-10-20T16:20:54.420596+00:00",
+      "last_outcome": "failure:503",
+      "recovery_status": "failed",
+      "recovery_finished_at": "2026-10-20T16:21:08.816499+00:00",
+      "new_recovery_permitted": false,
+      "recovery_block_reason": "prior_recovery_already_recorded",
+      "authorized_now": 0
+    },
+    "daily": {
+      "recorded_day": "2026-10-20",
+      "current_pacific_day": "2026-10-21",
+      "recorded_cap": 100,
+      "recorded_reservations": 2,
+      "historical_days": 1,
+      "note": "Recorded reservations are not proof of outbound HTTP; no rollover is written by this audit."
+    }
+  },
+  "diagnostic_shell": {
+    "provider": "gemini",
+    "agent_model": "gemini-3.5-flash",
+    "perception_model": "gemini-3.5-flash",
+    "same_provider_instance_for_both_stages": true,
+    "key_present": true,
+    "sdk_version": "2.18.1",
+    "request_profile": "legacy",
+    "session_ledger": null,
+    "quota_ledger": "<backend>/outputs/quota_budget.json",
+    "worker_enabled": true,
+    "recovery_id_present": false,
+    "database_kind": "sqlite/default",
+    "sdk_endpoint_override_present": false,
+    "shell_key_matches_dotenv": true,
+    "session": {
+      "status": "unconfigured_or_missing; do not infer pilot allowance"
+    },
+    "daily": {
+      "recorded_day": "2026-09-25",
+      "current_pacific_day": "2026-10-21",
+      "recorded_cap": 100,
+      "recorded_reservations": 59,
+      "historical_days": 0,
+      "note": "Recorded reservations are not proof of outbound HTTP; no rollover is written by this audit."
+    }
+  },
+  "api_worker_consistent": true,
+  "api_worker_credentials_consistent": true,
+  "validation_request_plan": {
+    "claims_photographs": 1,
+    "underwriting_photographs": 6,
+    "fresh_image_calls_minimum": 7,
+    "agent_final_turns_minimum": 2,
+    "case_calls_minimum_without_tool_followups": 9,
+    "case_calls_with_one_tool_followup_per_case": 11,
+    "initial_structured_image_probe": 1,
+    "total_including_probe_minimum": 10,
+    "total_with_probe_and_one_tool_followup_per_case": 12,
+    "worst_case_including_one_schema_retry_per_image_and_agent_iteration_caps": 31,
+    "note": "No cache counts as fresh. Local tool execution costs no generation; its follow-up turn does. Recovery transport retries are disabled."
+  },
+  "live_requests_this_task": 0,
+  "latest_three_saved_pilot_jobs": {
+    "processing": "failed",
+    "root_category": "provider_circuit_open",
+    "outbound_attempted": false,
+    "fresh_responses": 0
+  },
+  "note": "Configuration read from local process environments; no credential values or credential hashes are retained. Database evidence read in a read-only transaction.",
+  "service_reload": {
+    "checked_at": "2026-10-21T17:50:20.484167+00:00",
+    "api_statuses": {
+      "health": 200,
+      "ready": 200
+    },
+    "worker_ocr_ready": true,
+    "active_pilot_jobs": 0,
+    "pilot_leadership_locks": 1,
+    "configuration_consistent": true,
+    "controls_byte_identical": true,
+    "provider_authorized_calls": 0
+  }
+}

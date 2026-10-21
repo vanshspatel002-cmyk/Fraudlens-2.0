@@ -86,7 +86,7 @@ def _schema_response_source(response):
     provenance = raw.get('request_provenance')
     return {'source': source, 'model': getattr(response, 'model', 'unrecorded'),
             'request_provenance': {key: provenance[key] for key in
-                ('session_attempt', 'requested_model', 'serving_model', 'timestamp') if key in provenance}
+                ('session_attempt', 'requested_model', 'serving_model', 'timestamp','finish_reason','block_reason','provider_request_id') if key in provenance}
                 if isinstance(provenance, dict) else {}}
 
 
@@ -96,6 +96,10 @@ def _schema_failure_diagnostic(sources):
     diagnostic = failure_detail(AgentResponseSchemaError('The received adjudication reply did not meet the required JSON routing schema.'),
         'agent_response_schema', attempt_count=attempts, attempted_network=attempts > 0)
     diagnostic.update(provider_status='response_received', response_count=len(sources), response_sources=list(sources))
+    if sources:
+        diagnostic['model'] = sources[-1]['model']
+        diagnostic.update({key:value for key,value in sources[-1]['request_provenance'].items()
+                           if key in {'finish_reason','block_reason','provider_request_id'}})
     return diagnostic
 
 
@@ -428,7 +432,7 @@ def adjudicate(
             source = _schema_response_source(response)
             schema_sources.append(source)
             trace.append(TraceStep(step, "parse_failure", "reply was not a usable decision object",
-                                   {"reply_preview": (response.text or "")[:200],
+                                    {"reply_preview": '[Unusable model response omitted]',
                                     'diagnostic': _schema_failure_diagnostic([source])}, call_ms))
             if not retried_parse:
                 retried_parse = True

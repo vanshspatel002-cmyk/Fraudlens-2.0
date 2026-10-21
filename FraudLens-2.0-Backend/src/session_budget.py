@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 import threading
 import secrets
-from .quota_budget import QuotaBudgetExhausted
+from .quota_budget import QuotaBudgetExhausted, QuotaControlInvalid
 
 _request = threading.local()
 
@@ -55,7 +55,7 @@ def _validate_state(state):
             seen.add(recovery['recovery_id'])
         valid = valid and all(not event.get('recovery_id') or isinstance(event['recovery_id'], str) and event['recovery_id'] in seen for event in state['events'])
     if not valid:
-        raise QuotaBudgetExhausted('The existing session ledger is invalid; restore its audit history before any provider request.')
+        raise QuotaControlInvalid('The existing session ledger is invalid; restore its audit history before any provider request.')
 
 
 def _change(callback):
@@ -78,7 +78,7 @@ def _change(callback):
             try:
                 state = json.loads(path.read_text()) if path.exists() else {'attempts': 0, 'consecutive_failures': 0, 'stopped': None, 'events': []}
             except (OSError, json.JSONDecodeError) as exc:
-                raise QuotaBudgetExhausted('The existing session ledger is unreadable; restore its audit history before any provider request.') from exc
+                raise QuotaControlInvalid('The existing session ledger is unreadable; restore its audit history before any provider request.') from exc
             _validate_state(state)
             result = callback(state)
             tmp = path.with_suffix('.tmp')
@@ -102,6 +102,19 @@ def _allow(state):
             raise QuotaBudgetExhausted('Audited recovery allowance reached; no network request attempted.')
 
 
+def recovery_eligibility(state, limit):
+    """Pure audit of existing policy; inspecting it never reopens a circuit."""
+    failures=[e for e in state.get('events',[]) if e.get('outcome','').startswith('failure:')]
+    restricted=any(word in str(state.get('stopped','')).lower() for word in ('quota','billing','access denied','manual stop','request cap','capacity exhausted'))
+    if restricted or not state.get('stopped') or not failures or any(e['outcome'] not in {'failure:500','failure:502','failure:503','failure:504'} for e in failures[-2:]):
+        return {'eligible':False,'reason':'not_a_transient_http_circuit'}
+    if state.get('recoveries'):
+        return {'eligible':False,'reason':'prior_recovery_already_recorded'}
+    if state['attempts'] >= min(15,max(0,int(limit))):
+        return {'eligible':False,'reason':'attempt_budget_exhausted'}
+    return {'eligible':True,'reason':'one_initial_half_open_probe_permitted'}
+
+
 def authorize_recovery(reason):
     """One explicit probe of a transient circuit, preserving the original stop.
 
@@ -112,13 +125,12 @@ def authorize_recovery(reason):
         raise ValueError('The original live ledger is required for recovery.')
     def update(state):
         _limit=min(15,max(0,int(os.environ.get('FRAUDLENS_LIVE_LIMIT','15'))))
-        failures=[e for e in state.get('events',[]) if e.get('outcome','').startswith('failure:')]
-        restricted=any(word in str(state.get('stopped','')).lower() for word in ('quota','billing','access denied','manual stop','request cap','capacity exhausted'))
-        if restricted or not state.get('stopped') or not failures or any(e['outcome'] not in {'failure:500','failure:502','failure:503','failure:504'} for e in failures[-2:]):
+        eligibility=recovery_eligibility(state,_limit)
+        if eligibility['reason']=='not_a_transient_http_circuit':
             raise ValueError('Only a recorded transient HTTP-error circuit can receive a recovery probe.')
-        if state.get('recoveries'):
+        if eligibility['reason']=='prior_recovery_already_recorded':
             raise ValueError('A recovery has already been authorized; inspect its retained outcome instead of probing again.')
-        if state['attempts'] >= _limit:
+        if eligibility['reason']=='attempt_budget_exhausted':
             raise QuotaBudgetExhausted('No authorized request budget remains for a recovery probe.')
         if not str(reason).strip():raise ValueError('An audited recovery reason is required.')
         recovery={'recovery_id':secrets.token_hex(12),'requested_at':time.time(),

@@ -1967,6 +1967,12 @@ def _set_job(job_id: str, **fields: Any) -> None:
         job = runtime_store.get_job(conn, job_id) or {"job_id": job_id}
         previous_status = job.get('status')
         job.update(fields)
+        # Diagnostics remain run-specific when copied into reports/audit views.
+        # Never mutate earlier saved results or provider-ledger events.
+        for diagnostic in [*(job.get('failures') or []), job.get('root_failure_detail')]:
+            if isinstance(diagnostic,dict):
+                diagnostic.setdefault('run_id',job_id)
+                diagnostic.setdefault('case_id',job.get('case_id'))
         runtime_store.save_job(conn, job)
         if job.get('status') != previous_status and job.get('status') in {'completed', 'failed', 'interrupted'}:
             db.log_audit_event(conn, AuditEvent(event_type='processing_' + job['status'],

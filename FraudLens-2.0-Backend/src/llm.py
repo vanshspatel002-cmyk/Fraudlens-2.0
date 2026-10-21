@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from io import BytesIO
 import json
 import os
 import sqlite3
@@ -357,6 +358,8 @@ class GeminiProvider(LLMProvider):
         from google.genai import errors as genai_errors
 
         recovery_mode=bool(os.environ.get('FRAUDLENS_RECOVERY_ID'))
+        request_attempts = 0
+        attempt_history = []
         if recovery_mode:attempts=1
         while True:
             label, secret = self._pool.current()
@@ -364,6 +367,7 @@ class GeminiProvider(LLMProvider):
             consumer = quota_budget.infer_consumer()
 
             def _budgeted_call():
+                nonlocal request_attempts
                 from . import session_budget
                 from .analysis_diagnostics import failure_detail
                 try:
@@ -372,13 +376,19 @@ class GeminiProvider(LLMProvider):
                     attempt = session_budget.reserve(self.model)
                     self._last_attempt=attempt
                 except Exception as exc:
-                    exc.analysis_failure=failure_detail(exc,'provider_control',attempt_count=0,attempted_network=False)
+                    exc.analysis_failure=failure_detail(exc,'provider_control',attempt_count=request_attempts,attempted_network=request_attempts > 0,model=self.model)
+                    exc.analysis_failure['attempt_history'] = list(attempt_history)
+                    if request_attempts:
+                        exc.analysis_failure['provider_status'] = 'locally_blocked_after_attempts'
                     raise
+                request_attempts += 1
                 try:
                     result = make_call(client)
                 except Exception as exc:
                     session_budget.outcome(exc, attempt=attempt)
-                    exc.analysis_failure=failure_detail(exc,'provider_request',attempt_count=1,attempted_network=True)
+                    detail=failure_detail(exc,'provider_request',attempt_count=request_attempts,attempted_network=True,model=self.model)
+                    attempt_history.append({key:detail[key] for key in ('error_category','http_status','provider_error_code','provider_request_id','finish_reason','block_reason') if key in detail})
+                    exc.analysis_failure={**detail,'session_attempt':attempt,'attempt_history':list(attempt_history)}
                     raise
                 session_budget.outcome(attempt=attempt)
                 return result
@@ -424,7 +434,7 @@ class GeminiProvider(LLMProvider):
                     )
                 raise
 
-    def _config(self, tools: Optional[list[dict]] = None):
+    def _config(self, tools: Optional[list[dict]] = None, response_schema=None):
         from google.genai import types
 
         # Google recommends default sampling for Gemini 3.x. This is a request
@@ -434,7 +444,8 @@ class GeminiProvider(LLMProvider):
         # generate_content), so a fresh config is built per call rather
         # than cached on self the way the old GenerationConfig was.
         sampling = {} if self._request_cache_suffix else {'temperature': 0}
-        return types.GenerateContentConfig(**sampling, tools=tools or None,
+        structured = {'response_mime_type':'application/json','response_schema':response_schema} if response_schema is not None else {}
+        return types.GenerateContentConfig(**sampling, **structured, tools=tools or None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
 
     # -- chat -----------------------------------------------------------
@@ -450,19 +461,23 @@ class GeminiProvider(LLMProvider):
         if conn is not None:
             lookup_start = time.monotonic()
             hit = db.cache_get(conn, _CHAT_NAMESPACE + self._request_cache_suffix, key)
-            if hit is not None:
+            if hit is not None and _cached_generation_usable(hit):
                 latency_ms = int((time.monotonic() - lookup_start) * 1000)
                 _record_usage(cache_hit=True, latency_ms=latency_ms)
                 return _response_from_cache(hit, self.model, latency_ms)
 
         start = time.monotonic()
+        contents = _to_gemini_contents(messages)
+        config = self._config(tools)
 
         def _call(client):
-            return client.models.generate_content(
+            response = client.models.generate_content(
                 model=self.model,
-                contents=_to_gemini_contents(messages),
-                config=self._config(tools),
+                contents=contents,
+                config=config,
             )
+            _validate_generation_response(response)
+            return response
 
         response = self._call_rotating(_call)
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -493,6 +508,7 @@ class GeminiProvider(LLMProvider):
         prompt: str,
         conn: Optional[sqlite3.Connection] = None,
         retry_attempts: int = _RETRY_ATTEMPTS,
+        response_schema=None,
     ) -> LLMResponse:
         # retry_attempts defaults to the normal policy - it only exists so
         # scripts/benchmark_perception.py can pass 1 and get the *raw*
@@ -502,26 +518,34 @@ class GeminiProvider(LLMProvider):
         # retry/backoff behaviour as before.
         image_bytes = Path(image_path).read_bytes()
         key = _vision_cache_key(image_bytes, prompt, self.model)
+        if response_schema is not None:
+            key = hashlib.sha256(json.dumps({'vision_key':key,'response_schema':response_schema.model_json_schema()},sort_keys=True).encode()).hexdigest()
 
         if conn is not None:
             lookup_start = time.monotonic()
             hit = db.cache_get(conn, _VISION_NAMESPACE + self._request_cache_suffix, key)
-            if hit is not None:
+            if hit is not None and _cached_generation_usable(hit):
                 latency_ms = int((time.monotonic() - lookup_start) * 1000)
                 _record_usage(cache_hit=True, latency_ms=latency_ms)
                 return _response_from_cache(hit, self.model, latency_ms)
 
         start = time.monotonic()
+        # Validate before reserving a request; use the actual decoded format,
+        # not a filename suffix. Send the same immutable bytes that were hashed.
+        from PIL import Image
+        from google.genai import types
+        with Image.open(BytesIO(image_bytes)) as image:
+            image.load()
+            mime = Image.MIME.get(image.format)
+            if mime not in {'image/jpeg','image/png','image/webp','image/heic','image/heif'}:
+                raise ValueError('Unsupported evidence image format; no provider request attempted.')
+            contents = [prompt, types.Part.from_bytes(data=image_bytes,mime_type=mime)]
+        config = self._config(response_schema=response_schema)
 
         def _call(client):
-            from PIL import Image
-
-            with Image.open(image_path) as image:
-                return client.models.generate_content(
-                    model=self.model,
-                    contents=[prompt, image],
-                    config=self._config(),
-                )
+            response = client.models.generate_content(model=self.model,contents=contents,config=config)
+            _validate_generation_response(response, structured=response_schema is not None)
+            return response
 
         response = self._call_rotating(_call, attempts=retry_attempts)
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -594,6 +618,41 @@ def _to_gemini_contents(messages: list[dict]) -> list[dict]:
     return contents
 
 
+class GenerationResponseError(ValueError):
+    error_category = 'response_schema_invalid'
+
+
+def _cached_generation_usable(entry):
+    """Reject saved empty/blocked/truncated generations without altering history."""
+    if not (str(entry.get('text') or '').strip() or entry.get('tool_call') or entry.get('tool_calls')):
+        return False
+    raw=entry.get('raw') or {}
+    feedback=raw.get('prompt_feedback') or raw.get('promptFeedback') or {}
+    if (feedback.get('block_reason') or feedback.get('blockReason')) not in {None,'BLOCK_REASON_UNSPECIFIED'}:
+        return False
+    if 'candidates' in raw:
+        candidates=raw['candidates'] or []
+        if not candidates or (candidates[0].get('finish_reason') or candidates[0].get('finishReason')) != 'STOP':
+            return False
+    return True
+
+
+def _validate_generation_response(response, structured=False):
+    """Do not cache or use truncated, blocked, empty or malformed generations."""
+    from .analysis_diagnostics import response_metadata
+    metadata = response_metadata(response)
+    candidates = getattr(response, 'candidates', None) or []
+    finish = metadata.get('finish_reason')
+    blocked = metadata.get('block_reason') not in {None, 'BLOCK_REASON_UNSPECIFIED'}
+    unusable = blocked or not candidates or finish != 'STOP'
+    unusable |= not bool(_extract_text(response).strip() or _extract_tool_calls(response))
+    unusable |= structured and getattr(response,'parsed',None) is None
+    if unusable:
+        error = GenerationResponseError('The generation was blocked, incomplete or empty; private response content omitted.')
+        error.response_metadata = metadata
+        raise error
+
+
 def _extract_text(response: Any) -> str:
     try:
         return response.text or ""
@@ -641,9 +700,10 @@ def _extract_model_content(response):
 
 def _request_provenance(response,provider):
     from datetime import datetime,timezone
+    from .analysis_diagnostics import response_metadata
     return {'session_attempt':getattr(provider,'_last_attempt',None),
         'requested_model':provider.model,'serving_model':getattr(response,'model_version',None),
-        'timestamp':datetime.now(timezone.utc).isoformat()}
+        'timestamp':datetime.now(timezone.utc).isoformat(), **response_metadata(response)}
 
 
 def _response_to_cache_entry(result: LLMResponse) -> dict[str, Any]:

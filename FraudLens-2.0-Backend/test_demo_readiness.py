@@ -126,7 +126,7 @@ def test_sdk_serializes_vision_and_chat_without_network(tmp_path,monkeypatch):
     requests=[]
     def handle(request):
         requests.append((request.url.path,json.loads(request.content)))
-        return httpx.Response(200,json={'candidates':[{'content':{'role':'model','parts':[{'text':'offline test'}]}}]})
+        return httpx.Response(200,json={'candidates':[{'finishReason':'STOP','content':{'role':'model','parts':[{'text':'offline test'}]}}]})
     transport=httpx.Client(transport=httpx.MockTransport(handle))
     client=genai.Client(api_key='offline-placeholder',http_options=types.HttpOptions(
         httpx_client=transport,timeout=60000,retry_options=types.HttpRetryOptions(attempts=1)))

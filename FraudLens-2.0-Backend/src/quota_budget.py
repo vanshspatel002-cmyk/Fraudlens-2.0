@@ -38,6 +38,14 @@ class QuotaBudgetExhausted(RuntimeError):
     """Raised before an API call when this consumer's shared budget is spent."""
 
 
+class QuotaControlBusy(QuotaBudgetExhausted):
+    error_category = 'provider_control_busy'
+
+
+class QuotaControlInvalid(QuotaBudgetExhausted):
+    error_category = 'provider_control_invalid'
+
+
 def pacific_quota_day(now: Optional[datetime] = None) -> str:
     """Gemini free-tier quotas reset on Google's Pacific quota day."""
     now = now or datetime.now(timezone.utc)
@@ -141,7 +149,7 @@ def _validate_state(state):
                               for slot in state['keys'].values())
         valid = valid and all(isinstance(event, dict) for event in state.get('events', []))
     if not valid:
-        raise QuotaBudgetExhausted('The existing quota ledger is invalid; restore its audit history before any provider request.')
+        raise QuotaControlInvalid('The existing quota ledger is invalid; restore its audit history before any provider request.')
     for prior in state.get('history', []):
         _validate_state(prior)
 
@@ -161,7 +169,7 @@ def _load_state(path: Path, total_daily_quota: int, day: str) -> dict[str, Any]:
             new_state['history']=[*state.get('history',[]),{k:v for k,v in state.items() if k!='history'}]
             return new_state
         except (OSError, json.JSONDecodeError) as exc:
-            raise QuotaBudgetExhausted('The existing quota ledger is unreadable; restore its audit history before any provider request.') from exc
+            raise QuotaControlInvalid('The existing quota ledger is unreadable; restore its audit history before any provider request.') from exc
     return _base_state(total_daily_quota, day)
 
 
@@ -196,11 +204,10 @@ def _lock(path: Path) -> Iterator[None]:
             os.write(fd, str(os.getpid()).encode("ascii", errors="ignore"))
         except FileExistsError:
             if time.monotonic() >= deadline:
-                try:
-                    lock_path.unlink()
-                except OSError:
-                    pass
-                deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+                # A slow living writer is not a stale lock. Deleting its lock
+                # admits two writers and can lose counted attempts. Fail closed;
+                # interrupted-owner recovery requires an explicit operator audit.
+                raise QuotaControlBusy('Shared quota control is locked; no provider request attempted.')
             time.sleep(0.1)
     try:
         yield
@@ -239,6 +246,10 @@ def reserve_call(
         state = _load_state(path, total, day)
         _ensure_consumer(state, consumer, total)
         slot = state["consumers"][consumer]
+        total_reserved = sum(item['reserved'] for item in state['consumers'].values())
+        key_reserved = state['keys'].get(key_label, {}).get('reserved', 0)
+        if total_reserved >= total or key_reserved >= daily_per_key():
+            raise QuotaBudgetExhausted('Shared daily or selected-key attempt budget exhausted; no provider request attempted.')
         if slot["reserved"] >= slot["budget"]:
             _write_state(path, state)
             raise QuotaBudgetExhausted(

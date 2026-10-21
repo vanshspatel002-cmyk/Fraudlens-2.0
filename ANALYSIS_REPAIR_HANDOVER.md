@@ -302,3 +302,33 @@ Restart the API and frontend using the established local commands to load this
 source. No migration, deployment, provider recovery or historical reprocessing
 is required or authorized by this visual update. The earlier unrelated staged
 documentation and local connectivity/loading edits remain preserved separately.
+
+## Gemini diagnosis and guard repair — 21 October 2026
+
+See [GEMINI_DIAGNOSTICS.md](GEMINI_DIAGNOSTICS.md) for the current code/control
+audit, safe configuration evidence, offline repairs, request plan and repeatable
+commands. The original ledger still has four requests and a failed recovery;
+its existing one-recovery policy forbids another probe. Numerical headroom is
+11 but currently authorized additional calls are zero. No live request was made
+in this task, so fresh claims and underwriting qualification remain unverified.
+
+New diagnostics retain model, safe provider identifiers/finish reasons, attempt
+history and case/run context without raw provider error bodies. Generations must
+finish with STOP; blocked, empty, truncated or invalid structured replies are
+unusable. Image bytes/MIME remain traceable to the decoded input. Quota writers
+fail closed on lock contention and enforce shared/selected-key limits. Original
+provider controls, budgets and events were not reset or expanded.
+
+Ordinary pytest blocks external transports before collection and isolates
+inherited provider controls. Legacy perception callable tests now have the same
+explicit live guard as LLM tests. Future rehearsal preparation requires a fresh
+structured image probe, current bounded recovery and explicit photographs; an
+earlier generic-text success or failed recovery cannot authorize a schema.
+These are offline software/control repairs, not successful live AI analysis.
+
+The final provider/legacy guard run passed 146 tests with 10 live-dependent
+skips; the overlapping durable/report/explanation regression run passed 218.
+The idle API and worker were reloaded with the same pilot settings. API health
+and readiness returned 200, worker OCR warmed, one pilot leadership lock was
+held, and no queued/running jobs remained. Both original provider controls
+remained byte-identical after reload. The frontend was not changed by this task.

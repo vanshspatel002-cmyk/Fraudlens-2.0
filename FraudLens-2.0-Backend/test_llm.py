@@ -68,6 +68,7 @@ def _is_quota_error(error: Exception) -> bool:
 
 _LIVE_TESTS = {
     'test_chat_returns_nonempty_response','test_repeated_chat_hits_the_cache',
+    'test_usage_stats_reports_correctly',  # Asserts a hit from those live/cache fixtures.
     'test_vision_call_on_sample_image','test_ollama_provider_initializes_or_skips',
     'test_ollama_vision_call_and_cache_hit','test_ollama_chat_returns_llmresponse',
 }

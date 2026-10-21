@@ -18,6 +18,8 @@ import os
 import sys
 import tempfile
 import traceback
+import unittest
+from functools import wraps
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -35,13 +37,25 @@ from src.models import Case, Image
 _TESTS: list = []
 
 
-class Skip(Exception):
+class Skip(unittest.SkipTest):
     """Raise to mark a test skipped rather than failed - same convention as test_llm.py."""
 
 
+_LIVE_TESTS = {'test_perceive_image_produces_parseable_json',
+               'test_repeated_call_served_from_cache_no_new_api_call','test_perception_coverage_increments'}
+
+
 def test(fn):
-    _TESTS.append(fn)
-    return fn
+    @wraps(fn)
+    def guarded():
+        if fn.__name__ in _LIVE_TESTS and os.environ.get('FRAUDLENS_TEST_LIVE') != '1':
+            raise Skip('Live perception tests require explicit opt-in; ordinary verification uses controlled fixtures.')
+        return fn()
+    _TESTS.append(guarded)
+    return guarded
+
+
+test.__test__ = False
 
 
 def run_all() -> bool:
