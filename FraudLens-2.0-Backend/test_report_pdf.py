@@ -119,16 +119,18 @@ def test_long_pdf_layout_and_all_execution_states(tmp_path):
     (tmp_path/'long-layout.pdf').write_bytes(content)
 
 
-def test_new_report_template_creates_new_version_and_keeps_legacy_bytes(client,tmp_path):
+@pytest.mark.parametrize('old_version',[None,report_pdf.READER_V2_VERSION,report_pdf.READER_V3_VERSION])
+def test_new_report_template_creates_new_version_and_keeps_legacy_bytes(client,tmp_path,old_version):
     case_id=seed_case(tmp_path);headers=auth(client);path=f'/v1/cases/{case_id}/reports'
     with runtime_store.connection(api.DB_PATH) as conn:
         payload=api._build_report(conn,case_id).model_dump(mode='json')
         payload.pop('report_template_version',None)
+        if old_version: payload['report_template_version']=old_version
         saved=json.dumps(payload);legacy_id=runtime_store.digest(saved)
         conn.execute('INSERT INTO report_snapshots(snapshot_id,case_id,run_id,payload,created_at) VALUES (?,?,?,?,?)',
             (legacy_id,case_id,payload['run_id'],saved,1000))
     legacy=client.post(path+'/prepare?snapshot_id='+legacy_id,headers=headers)
-    assert legacy.status_code==200 and legacy.json()['renderer_version']==report_pdf.LEGACY_RENDERER_VERSION
+    assert legacy.status_code==200 and legacy.json()['renderer_version']==(old_version or report_pdf.LEGACY_RENDERER_VERSION)
     original=client.get(path+'/'+legacy_id+'/pdf',headers=headers).content
     latest=client.post(path+'/prepare',headers=headers)
     assert latest.status_code==200 and latest.json()['snapshot_id']!=legacy_id
@@ -157,7 +159,7 @@ def test_reader_report_grouping_calculation_and_all_pages_render(kind,tmp_path):
         confidence=.75,summary='Review the matching photograph and obtain a legible plate view.',supporting_finding_ids=[findings[-1].finding_id],requested_artifacts=[],policy_version=production_policy(kind).policy_version)
     explanation=explain_assessment(case,findings,decision,production_policy(kind),converged=True,run_id='hidden-run-reference')
     serialized=[{**asdict(f),'verdict':f.verdict.value} for f in findings]
-    report={'case_id':case.case_id,'report_template_version':report_pdf.RENDERER_VERSION,'submitted_at':'2026-10-20T06:00:00+00:00',
+    report={'case_id':case.case_id,'report_template_version':report_pdf.READER_V3_VERSION,'submitted_at':'2026-10-20T06:00:00+00:00',
         'run_id':'hidden-run-reference','declaration':{'agent_type':kind,'person_name':'Fictional Example','vehicle_registration':'MH12EX1234',
         'vehicle_make':'Honda','vehicle_model':'City','vehicle_year':2023,'claim_amount':42500 if kind=='claims' else None,'idv':450000,
         'policy_number':'EXAMPLE-POLICY','declaration_notes':'Applicant states that the vehicle photographs show the current condition.'},
@@ -187,7 +189,7 @@ def test_reader_report_grouping_calculation_and_all_pages_render(kind,tmp_path):
 
 @pytest.mark.parametrize('reviewed_run',['older-run-reference',None])
 def test_retrospective_report_does_not_inherit_earlier_or_unknown_human_decision(reviewed_run):
-    report={'case_id':'retrospective-fixture','run_id':'new-run-reference','report_template_version':report_pdf.RENDERER_VERSION,
+    report={'case_id':'retrospective-fixture','run_id':'new-run-reference','report_template_version':report_pdf.READER_V3_VERSION,
         'declaration':{'agent_type':'claims','person_name':'Fictional Example'},'processing':{'status':'completed'},
         'admin_action':{'action':'approve','admin_id':'reviewer-fixture','reviewed_run_id':reviewed_run,
                         'reason':'Older review remains preserved.','timestamp':'2026-10-18T06:00:00+00:00'}}
@@ -206,7 +208,7 @@ def test_reader_report_preserves_failed_not_run_and_not_applicable_states():
     states=['failed','not_run','not_applicable']
     findings=[{'check_id':check_id,'verdict':'inconclusive','explanation':'A controlled missing-input observation.',
                'evidence':{'execution_state':state}} for check_id,state in zip(['plate_ocr','c2pa_credentials','baseline_linkage'],states)]
-    report={'case_id':'state-fixture','report_template_version':report_pdf.RENDERER_VERSION,
+    report={'case_id':'state-fixture','report_template_version':report_pdf.READER_V3_VERSION,
         'declaration':{'agent_type':'claims'},'processing':{'status':'failed'},'findings_by_category':{'identity':findings}}
     content=report_pdf.render_pdf(report,'a'*64,1792476000)
     text=' '.join(' '.join(page.extract_text().split()) for page in PdfReader(BytesIO(content)).pages)
@@ -224,7 +226,7 @@ def test_reader_report_explains_rounded_baseline_score_at_threshold(confidence,r
         verdict=Verdict.CONCERN,confidence=confidence,explanation='Controlled threshold observation.')]
     decision=baseline.decide(findings,case)
     explanation=explain_assessment(case,findings,decision,production_policy('claims'),converged=True,use_agent=False)
-    report={'case_id':case.case_id,'report_template_version':report_pdf.RENDERER_VERSION,
+    report={'case_id':case.case_id,'report_template_version':report_pdf.READER_V3_VERSION,
         'declaration':{'agent_type':'claims'},'processing':{'status':'completed'},'assessment_explanation':explanation}
     content=report_pdf.render_pdf(report,'a'*64,1792476000)
     text=' '.join(' '.join(page.extract_text().split()) for page in PdfReader(BytesIO(content)).pages)

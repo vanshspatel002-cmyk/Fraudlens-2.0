@@ -1,4 +1,5 @@
 import HistoricalReport from './HistoricalReport';
+import RiskIndicator, { type RiskPresentation } from './RiskIndicator';
 import CaseReview from './CaseReview';
 import { processingLabel, type AssessmentExplanation } from './reviewPresentation';
 import EvidenceViewer from "./EvidenceViewer";
@@ -86,6 +87,7 @@ type Finding = {
   evidence?: unknown;
 };
 type CaseDetail = Row & {
+  riskPresentation?: RiskPresentation;
   trace: TraceEntry[];
   audit: AuditEntry[];
   images: CaseImage[];
@@ -436,7 +438,7 @@ export default function Admin() {
           <div className="admin-title">
             <div>
               <span>FraudLens 2.0 / {detail ? "Case detail" : tab}</span>
-              <h1>
+              <div className={detail ? 'admin-case-heading' : undefined}><h1>
                 {detail
                   ? detail.registration
                   : !user
@@ -444,7 +446,7 @@ export default function Admin() {
                     : tab === "Overview"
                       ? "Operations overview"
                       : tab}
-              </h1>
+              </h1>{detail && <RiskIndicator assessment={detail.riskPresentation} />}</div>
             </div>
             {user && (
               <button onClick={() => (detail ? open(detail.id) : load())}>

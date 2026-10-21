@@ -1,0 +1,19 @@
+.admin .admin-case-heading { display:flex;align-items:center;gap:24px;flex-wrap:wrap;min-width:0; }
+.admin .admin-case-heading h1 { margin:0;overflow-wrap:anywhere; }
+.risk-indicator { width:310px;max-width:100%;min-width:0;padding:12px 14px;border:1px solid var(--line,#d8dfe2);border-radius:12px;background:var(--panel,#fff);color:var(--text,#172e38); }
+.risk-indicator-heading { display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px;margin-bottom:14px; }
+.risk-indicator-heading>span { font-size:11px; }
+.risk-segments { display:flex;gap:3px; }
+.risk-segment { position:relative;flex:1;text-align:center;padding:7px 3px;font-size:11px;font-weight:700;border:1px solid transparent; }
+.risk-segment:first-child { border-radius:7px 0 0 7px; }
+.risk-segment:last-child { border-radius:0 7px 7px 0; }
+.is-assessed .risk-segment-low { background:#d7eadb;color:#18492a; }
+.is-assessed .risk-segment-medium { background:#f8e5a5;color:#4c3900; }
+.is-assessed .risk-segment-high { background:#f1cccc;color:#762428; }
+.risk-segment.is-selected { border:2px solid currentColor;box-shadow:inset 0 -2px 0 currentColor; }
+.risk-marker { position:absolute;top:-13px;left:calc(50% - 5px);font-size:11px;line-height:12px;color:var(--text,#172e38); }
+.is-neutral .risk-segment { background:var(--surface-raised,#edf0f2);color:var(--muted,#66727a);border-color:var(--line,#d8dfe2); }
+.risk-indicator small { display:block;font-size:10px;line-height:1.55;margin-top:7px;color:var(--muted,#66727a);overflow-wrap:anywhere; }
+.risk-policy { display:inline; }
+@media(max-width:640px) { .admin .admin-case-heading { gap:14px;align-items:flex-start; } .risk-indicator { width:100%;box-sizing:border-box; } }
+@media print { .risk-segment.is-selected { outline:2px solid currentColor;outline-offset:1px; } }

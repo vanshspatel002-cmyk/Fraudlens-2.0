@@ -1,0 +1,26 @@
+[
+  {
+    "case": "claims-high",
+    "width": 1440,
+    "phase": "before",
+    "javascript_errors": 0
+  },
+  {
+    "case": "claims-high",
+    "width": 390,
+    "phase": "before",
+    "javascript_errors": 0
+  },
+  {
+    "case": "underwriting-medium",
+    "width": 1440,
+    "phase": "before",
+    "javascript_errors": 0
+  },
+  {
+    "case": "underwriting-medium",
+    "width": 390,
+    "phase": "before",
+    "javascript_errors": 0
+  }
+]

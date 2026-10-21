@@ -24,7 +24,8 @@ from . import db, runtime_store
 
 LEGACY_RENDERER_VERSION = "fraudlens-pdf-2026-10-18-v1"
 READER_V2_VERSION = "fraudlens-pdf-2026-10-20-v2"
-RENDERER_VERSION = "fraudlens-pdf-2026-10-21-v3"
+READER_V3_VERSION = "fraudlens-pdf-2026-10-21-v3"
+RENDERER_VERSION = "fraudlens-pdf-2026-10-21-v4"
 ARTIFACT_SCHEMA = """CREATE TABLE IF NOT EXISTS report_artifacts (
     snapshot_id TEXT PRIMARY KEY REFERENCES report_snapshots(snapshot_id),
     renderer_version TEXT NOT NULL, pdf_base64 TEXT, sha256 TEXT,
@@ -123,10 +124,32 @@ def enrich_snapshot(conn, report):
                      else 'inconclusive' if 'inconclusive' in explicit or any(f['verdict'] == 'inconclusive' for f in recorded) else 'completed')
         else:
             state = 'not_applicable' if report.get('policy_version') == policy.policy_version and check_id not in applicable else 'not_run'
-        coverage.append({'check_id': check_id, 'purpose': CHECK_PURPOSES.get(check_id, 'Inspect recorded case evidence using this registered check.'),
+        coverage.append({'check_id': check_id, 'applicable': check_id in applicable, 'category': check.category.value,
+                         'purpose': CHECK_PURPOSES.get(check_id, 'Inspect recorded case evidence using this registered check.'),
                          'state': state, 'finding_ids': [f['finding_id'] for f in recorded],
                          'limitation': check.limitation or None})
     report['check_inventory'] = coverage
+    # Only database-owned internal references are eligible for a frozen image.
+    # Never open a filename/path supplied by a finding or an external corpus.
+    comparisons = []
+    matched_ids = list(dict.fromkeys(f.get('evidence', {}).get('matched_image_id') for f in findings
+                                   if f.get('check_id') == 'internal_duplicate' and isinstance(f.get('evidence', {}).get('matched_image_id'),str) and f['evidence']['matched_image_id']))
+    for image_id in matched_ids[:8]:
+        row = conn.execute('SELECT path,case_id FROM images WHERE image_id=?', (image_id,)).fetchone()
+        if not row:
+            continue
+        item = {'image_id': image_id, 'case_id': row['case_id'], 'label': 'Internal reference', 'access_basis': 'reviewer_only'}
+        try:
+            with Image.open(_resolve_data_path(row['path'])) as original:
+                thumb = ImageOps.exif_transpose(original).convert('RGB'); thumb.thumbnail((500, 340))
+                buffer = BytesIO(); thumb.save(buffer, 'JPEG', quality=78)
+                item['thumbnail_base64'] = base64.b64encode(buffer.getvalue()).decode()
+        except Exception:
+            item['thumbnail_unavailable'] = True
+        comparisons.append(item)
+    report['comparison_evidence'] = comparisons
+    from .risk_presentation import assessment_presentation
+    report['assessment_presentation'] = assessment_presentation(report)
     report['report_template_version'] = RENDERER_VERSION
     return report
 
@@ -531,6 +554,9 @@ def _render_pdf_v2(report, snapshot_id, generated_at, keep_headings=False):
 
 def render_pdf(report, snapshot_id, generated_at):
     if report.get('report_template_version')==RENDERER_VERSION:
+        from .report_visuals import render_visual_report
+        return render_visual_report(report, snapshot_id, generated_at)
+    if report.get('report_template_version')==READER_V3_VERSION:
         return _render_pdf_v2(report,snapshot_id,generated_at,keep_headings=True)
     if report.get('report_template_version')==READER_V2_VERSION:
         return _render_pdf_v2(report,snapshot_id,generated_at)
@@ -574,7 +600,7 @@ def install(app):
             return _metadata(row,artifact)
         created = time.time()
         declared_version = payload.get('report_template_version')
-        renderer_version = declared_version if declared_version in {RENDERER_VERSION, READER_V2_VERSION} else LEGACY_RENDERER_VERSION
+        renderer_version = declared_version if declared_version in {RENDERER_VERSION, READER_V3_VERSION, READER_V2_VERSION} else LEGACY_RENDERER_VERSION
         try:
             content = render_pdf(payload,snapshot_id,created)
             checksum = hashlib.sha256(content).hexdigest()

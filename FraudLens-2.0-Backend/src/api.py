@@ -884,6 +884,7 @@ class ReportDeclaration(BaseModel):
 
 
 class CaseReportOut(BaseModel):
+    assessment_presentation: Optional[dict[str, Any]] = None
     assessment_explanation: Optional[dict[str, Any]] = None
     report_template_version: Optional[str] = None
     submitted_at: Optional[str] = None
@@ -1406,13 +1407,16 @@ def _build_report(conn,case_id):
                     and (not job or event.details.get('run_id')==job['job_id'])):
                 assessment_explanation=event.details.get('assessment_explanation')
                 break
-    return CaseReportOut(case_id=case_id,declaration=_report_declaration(case),
+    report = CaseReportOut(case_id=case_id,declaration=_report_declaration(case),
         assessment_explanation=assessment_explanation,
         findings_by_category=grouped,finding_groups=groups,agent_recommendation=decision,
         agent_narrative=decision.summary if decision else None,
         admin_action=human,
         run_id=job['job_id'] if job else None,policy_version=decision.policy_version if decision else None,
         processing=runtime_store.job_view(job),evidence_ids=evidence_ids,limitations=list(dict.fromkeys(limitations)))
+    from .risk_presentation import assessment_presentation
+    report.assessment_presentation = assessment_presentation(report.model_dump(mode='json'))
+    return report
 
 
 def _snapshot_report(conn,case_id):

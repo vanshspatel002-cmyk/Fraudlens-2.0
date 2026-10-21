@@ -249,3 +249,56 @@ and revert only these focused repair commits. No schema change is required by
 this repair. Retain newly added runs, reports and audit history; never overwrite
 the database with the earlier backup. Restore a backup only into a new namespace
 for recovery. Preserve the original control ledgers and unrelated staged edits.
+
+## Visual risk and report update — 21 October 2026
+
+Newly prepared reports use `fraudlens-pdf-2026-10-21-v4`. Renderers v1, v2 and
+v3 remain available; existing snapshot payloads and PDF bytes are retained.
+The template version remains part of the snapshot basis, so preparing the new
+current report creates a separate version. Preview and download address the
+same saved artifact and do not rerun checks, models or human decisions.
+
+`src/risk_presentation.py::assessment_presentation` is the common display
+contract. It derives presentation only from the saved explanation, processing
+state, run association and policy version. The API includes it in the reviewer
+report, and snapshots freeze it for the PDF. The frontend does not score cases.
+The admin registration header and PDF front page use matching categorical
+Low/Medium/High segments and text labels. Numeric scores appear only when the
+saved baseline aggregation explicitly validates a finite score. Production
+model routing remains category-only; the bar has no equal numerical ranges.
+
+Failed, queued, running, interrupted, materially incomplete, missing, unsupported
+or stale assessments stay neutral with no marker or current score. A human
+approval/rejection cannot supply automated risk. A saved earlier run is labeled
+historical; a run mismatch cannot silently inherit its classification.
+Required check coverage is displayed separately from risk and excludes optional
+zero-weight experiments from the required-completion count.
+
+The v4 report groups saved check observations into identity, history, provenance,
+context and economic panels. It includes OCR comparisons, metadata availability,
+actual identifier links, dated baseline/severity tables and the recorded garage
+benchmark. Comparison thumbnails are frozen only for database-owned internal
+image references under reviewer-only report access. External filenames are never
+opened. Missing crops, boxes, masks, maps or compatible scales receive honest
+fallbacks. Experimental checks prominently show exclusion/zero contribution.
+No scoring weights, thresholds, model outputs or processing rules were changed.
+
+Controlled artifacts, before/after laptop/mobile screenshots, check-graphic
+screenshots, exact changed-file purposes and verification records are in
+[docs/visual_review/README.md](docs/visual_review/README.md). These are authored
+software/layout fixtures, not successful live analysis or accuracy evidence.
+The provider stop and historical processing gate remain in force. No Gemini
+quota was used; browser APIs were fully intercepted and backend tests used
+temporary databases. No existing application case or report was rewritten.
+
+Verification includes focused display/PDF tests, existing assessment/customer/
+reviewer workflow tests, v1–v3 artifact retention, frontend typecheck/production
+build, browser Low/Medium/High/incomplete/stale/historical/unsupported states,
+1440 px and 390 px layouts, and identical preview/download bytes. Every sample
+PDF page was extracted, rasterized and checked for page bounds and image aspect
+ratio; all-page contact sheets and representative full-size pages were reviewed.
+
+Restart the API and frontend using the established local commands to load this
+source. No migration, deployment, provider recovery or historical reprocessing
+is required or authorized by this visual update. The earlier unrelated staged
+documentation and local connectivity/loading edits remain preserved separately.

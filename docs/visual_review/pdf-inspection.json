@@ -1,0 +1,50 @@
+[
+  {
+    "file": "claims-high.pdf",
+    "pages": 10,
+    "all_pages_rendered": true,
+    "text_and_image_bounds": "passed",
+    "image_aspect_ratios": "passed",
+    "first_page_label": "Assessed risk: High"
+  },
+  {
+    "file": "claims-incomplete.pdf",
+    "pages": 10,
+    "all_pages_rendered": true,
+    "text_and_image_bounds": "passed",
+    "image_aspect_ratios": "passed",
+    "first_page_label": "Assessment incomplete"
+  },
+  {
+    "file": "claims-low.pdf",
+    "pages": 10,
+    "all_pages_rendered": true,
+    "text_and_image_bounds": "passed",
+    "image_aspect_ratios": "passed",
+    "first_page_label": "Assessed risk: Low"
+  },
+  {
+    "file": "claims-medium.pdf",
+    "pages": 10,
+    "all_pages_rendered": true,
+    "text_and_image_bounds": "passed",
+    "image_aspect_ratios": "passed",
+    "first_page_label": "Assessed risk: Medium"
+  },
+  {
+    "file": "underwriting-incomplete.pdf",
+    "pages": 9,
+    "all_pages_rendered": true,
+    "text_and_image_bounds": "passed",
+    "image_aspect_ratios": "passed",
+    "first_page_label": "Assessment incomplete"
+  },
+  {
+    "file": "underwriting-medium.pdf",
+    "pages": 9,
+    "all_pages_rendered": true,
+    "text_and_image_bounds": "passed",
+    "image_aspect_ratios": "passed",
+    "first_page_label": "Assessed risk: Medium"
+  }
+]

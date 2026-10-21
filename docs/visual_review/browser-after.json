@@ -1,0 +1,76 @@
+[
+  {
+    "case": "claims-high",
+    "check": "preview/download use identical saved bytes; no analysis/decision request"
+  },
+  {
+    "case": "claims-high",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "claims-high",
+    "width": 390,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "underwriting-medium",
+    "check": "preview/download use identical saved bytes; no analysis/decision request"
+  },
+  {
+    "case": "underwriting-medium",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "underwriting-medium",
+    "width": 390,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "claims-incomplete",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "underwriting-incomplete",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "claims-low",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "claims-medium",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "stale-after-evidence",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "historical-completed",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  },
+  {
+    "case": "unknown-category",
+    "width": 1440,
+    "phase": "after",
+    "javascript_errors": 0
+  }
+]

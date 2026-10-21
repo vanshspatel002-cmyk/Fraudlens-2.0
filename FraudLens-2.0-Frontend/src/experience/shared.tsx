@@ -551,6 +551,7 @@ async function caseDetail(id: string) {
     })),
     processing: d.processing,
     assessmentExplanation: report.assessment_explanation,
+    riskPresentation: report.assessment_presentation,
     analysisFallback: !!decision.provider_unavailable,
     humanReviewedRun: (report.admin_action as ApiRecord | undefined)?.reviewed_run_id
       ? String((report.admin_action as ApiRecord).reviewed_run_id) : undefined,
