@@ -390,9 +390,10 @@ def perceive_image(
             # The durable worker owns this connection; only optional
             # observation/request-cache writes exist before its final result.
             conn.commit()
+        options = {'response_schema': PerceptionObservation} if isinstance(provider, GeminiProvider) else {}
         if retry_attempts is None:
-            return provider.describe_image(image.path, prompt, conn=conn)
-        return provider.describe_image(image.path, prompt, conn=conn, retry_attempts=retry_attempts)
+            return provider.describe_image(image.path, prompt, conn=conn, **options)
+        return provider.describe_image(image.path, prompt, conn=conn, retry_attempts=retry_attempts, **options)
 
     response = _describe(PERCEPTION_PROMPT)
     responses = [response]
@@ -442,7 +443,8 @@ def perceive_image(
     request_provenance = (getattr(response, 'raw', None) or {}).get('request_provenance')
     if isinstance(request_provenance, dict):
         record.raw_response['request_provenance'] = {key: request_provenance[key] for key in
-            ('session_attempt', 'requested_model', 'serving_model', 'timestamp','finish_reason','block_reason','provider_request_id') if key in request_provenance}
+            ('session_attempt', 'requested_model', 'serving_model', 'timestamp','finish_reason','block_reason','provider_request_id',
+             'token_usage','http_status','latency_ms','started_at','source','schema_version','schema','run_id','case_id') if key in request_provenance}
     db.save_perception(conn, record)
     if provenance is not None:
         provenance['source_model'] = record.source

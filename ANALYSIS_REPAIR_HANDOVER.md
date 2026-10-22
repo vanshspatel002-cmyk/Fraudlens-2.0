@@ -417,3 +417,59 @@ append-only development policy could set cumulative ceiling 37 (7 retained + 30
 workflow calls), restricted validation scope and expiry. This is a proposal only;
 no cap, key, Google limit or billing change was made. No case, report, decision,
 historical reprocessing, push or deployment occurred.
+
+## Isolated live workflows and scoped budget - 22 October 2026
+
+**Claims: Live workflow verified (assessment incomplete). Underwriting: Blocked
+by missing legitimate six-view evidence.** See [GEMINI_DIAGNOSTICS.md](GEMINI_DIAGNOSTICS.md)
+and [live-workflow-audit.json](docs/gemini_diagnostics/live-workflow-audit.json).
+
+The user's new explicit authorization superseded the prior 15-cap proposal
+blocker. A revision to 37 cumulative / 30 new requests was appended without
+changing the seven prior events, recoveries, daily controls or original stop.
+The expiring grant was restricted to schema `fraudlens_validation_20261022` and
+actual API-accepted job `64dcf803f54c43dd8f13a7c039ed7924`, case
+`case-03dd3c967b5b`. Normal workers/unbound jobs cannot spend it. Current task
+used four new generations (one fresh full-schema perception, three real agent
+turns). Tools requested/executed: get_claimant_history and requery_perception;
+the latter reads saved observations without another provider call. All four
+requests returned HTTP 200 / STOP. Metadata/retries: zero. Actual requested and
+serving models, response IDs, token counts, timing/source and run scope were
+checkpointed before downstream persistence. The probe was not repeated.
+
+Claims job completed on attempt 1 with one perception, 13 findings, a converged
+decision, processing result and run-specific snapshot. The saved model decision
+is clear/approve with null score; no human approval was written. Incomplete
+required evidence/check coverage keeps the shared UI/PDF risk indicator neutral
+and explicitly requires review. Three checks completed, seven were inconclusive
+(including two zero-weight experiments), scene consistency was not run and two
+baseline/history checks were not applicable. Valid execution is not accuracy or
+proof of a fully cleared claim. The crop supports panel damage, not precise
+body type, capture time, registration or incident cause.
+
+No legitimate same-vehicle six-view set including odometer/plate could be
+established in the authorized samples. No unrelated/AI images or fake labels
+were substituted, so no underwriting case or PDF was created. Its exact blocker
+is evidence quality/availability, not a fresh Gemini outage.
+
+The nine-page claims PDF, actual desktop/mobile/customer screenshots and front
+page are in [live_validation](docs/gemini_diagnostics/live_validation/README.md).
+All PDF pages were extracted/rendered/visually inspected. Blob/API/browser
+preview/download bytes agree; ownership, private images, roles, two-tab sessions
+and saved risk display passed. Headless Chrome's native viewer frame loaded,
+but native document pixels were not confirmed; the identical PDF was fully
+rendered independently. This limitation is retained in the audit.
+
+Offline checks: 226 passed / 10 live skips for provider/engine preflight; 108
+passed for durable/customer/PDF/risk; 18 passed for final scoped controls. Counts
+overlap. Tests cannot contact external Gemini by default. No frontend application
+source, scoring weights, thresholds or renderer version were changed.
+
+Grant closed after claims completion and before PDF/UI checks. Total attempts
+11, unused 26 revoked, authorized generation now zero. Original pilot services,
+schema/storage and ordinary 15 process setting were restored with normal
+provider generation still stopped. Case/report/decision counts in the original
+pilot are checked against the preflight. Isolated live data and original audit
+prefixes remain retained. No billing, purchase, key rotation, provider-limit
+bypass, historical reprocessing, push or deployment occurred. Future underwriting
+requires the real six-view evidence and new explicit scoped authorization.

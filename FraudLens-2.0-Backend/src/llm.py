@@ -388,7 +388,7 @@ class GeminiProvider(LLMProvider):
         """
         from google.genai import errors as genai_errors
 
-        recovery_mode=bool(os.environ.get('FRAUDLENS_RECOVERY_ID'))
+        recovery_mode=bool(os.environ.get('FRAUDLENS_RECOVERY_ID') or os.environ.get('FRAUDLENS_VALIDATION_ID'))
         request_attempts = 0
         attempt_history = []
         if recovery_mode:attempts=1
@@ -413,6 +413,9 @@ class GeminiProvider(LLMProvider):
                         exc.analysis_failure['provider_status'] = 'locally_blocked_after_attempts'
                     raise
                 request_attempts += 1
+                from datetime import datetime, timezone
+                self._request_started_at = datetime.now(timezone.utc).isoformat()
+                self._request_started_mono = time.monotonic()
                 try:
                     result = make_call(client)
                 except Exception as exc:
@@ -510,6 +513,8 @@ class GeminiProvider(LLMProvider):
                 contents=contents,
                 config=config,
             )
+            from .provider_receipts import received
+            received(self, response, 'agent')
             _validate_generation_response(response)
             return response
 
@@ -581,6 +586,9 @@ class GeminiProvider(LLMProvider):
 
         def _call(client):
             response = client.models.generate_content(model=self.model,contents=contents,config=config)
+            from .provider_receipts import received
+            from .perception import PERCEPTION_SCHEMA_VERSION
+            received(self, response, 'perception', PERCEPTION_SCHEMA_VERSION, request_contract)
             _validate_generation_response(response, structured=response_schema is not None, schema=response_schema)
             return response
 
@@ -749,9 +757,16 @@ def _extract_model_content(response):
 def _request_provenance(response,provider):
     from datetime import datetime,timezone
     from .analysis_diagnostics import response_metadata
-    return {'session_attempt':getattr(provider,'_last_attempt',None),
+    result = {'session_attempt':getattr(provider,'_last_attempt',None),
         'requested_model':provider.model,'serving_model':getattr(response,'model_version',None),
         'timestamp':datetime.now(timezone.utc).isoformat(), **response_metadata(response)}
+    if os.environ.get('FRAUDLENS_VALIDATION_ID'):
+        from . import session_budget
+        # The receipt has already been persisted; read-only lookup cannot emit a request.
+        state = json.loads(Path(os.environ['FRAUDLENS_LIVE_LEDGER']).read_text(encoding='utf8'))
+        event = next((e for e in state['events'] if e['attempt'] == result['session_attempt']), {})
+        result.update(event.get('receipt', {}))
+    return result
 
 
 def _response_to_cache_entry(result: LLMResponse) -> dict[str, Any]:

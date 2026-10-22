@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -105,6 +106,12 @@ def summarize(env):
             'recovery_block_reason':session_budget.recovery_eligibility(state,cap,operator=True)['reason'],
             'authorized_now':0 if state['stopped'] and recovery.get('status') not in {'authorized','validation_authorized'} else max(0,min(cap-state['attempts'],recovery.get('allowance',cap)-recovery.get('reserved',0)))}
     else:result['session']={'status':'unconfigured_or_missing; do not infer pilot allowance'}
+    if filename and Path(filename).is_file() and state.get('validation_grants'):
+        grant=state['validation_grants'][-1]
+        result['session'].update(normal_process_cap=cap,cap=grant['ceiling'],headroom=max(0,grant['ceiling']-state['attempts']))
+        result['validation_grant']={key:grant.get(key) for key in ('policy','schema','status','allowance','reserved','jobs')}
+        result['validation_grant'].update(expires_at=iso(grant['expires_at']),
+            currently_authorized=max(0,grant['allowance']-grant['reserved']) if grant['status']=='active' and time.time()<grant['expires_at'] else 0)
     filename = env.get('GEMINI_QUOTA_BUDGET','outputs/quota_budget.json')
     if Path(filename).is_file():
         state=json.loads(Path(filename).read_text(encoding='utf8'));quota_budget._validate_state(state)

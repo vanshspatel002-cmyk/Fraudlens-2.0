@@ -63,6 +63,8 @@ def _validate_state(state):
         valid = valid and all(not event.get('recovery_id') or isinstance(event['recovery_id'], str) and event['recovery_id'] in seen for event in state['events'])
     if not valid:
         raise QuotaControlInvalid('The existing session ledger is invalid; restore its audit history before any provider request.')
+    from .validation_budget import validate_state
+    validate_state(state)
 
 
 def _change(callback):
@@ -98,6 +100,10 @@ def _change(callback):
 
 
 def _allow(state, request_contract=None):
+    from .validation_budget import allow
+    validation = allow(state)
+    if validation:
+        return validation
     limit = min(15, max(0, int(os.environ.get('FRAUDLENS_LIVE_LIMIT', '15'))))
     if state['attempts'] >= limit:
         raise QuotaBudgetExhausted('Authorized live request cap reached; no network request attempted.')
@@ -298,13 +304,16 @@ def model_metadata_outcome(attempt,error=None):
 
 def reserve(model, *, request_contract=None):
     def update(state):
-        _allow(state, request_contract)
+        validation = _allow(state, request_contract)
         current = _recovery(state)
         if (current and current.get('kind') == 'request_schema_correction' and current['status'] != 'validation_authorized'
                 and model != current['request_contract']['model']):
             raise ProviderCircuitOpen('The corrected probe must use the authorized pilot model.')
         state['attempts'] += 1
         event={'attempt': state['attempts'], 'model': model, 'time': time.time(), 'outcome': 'reserved'}
+        if validation:
+            from .validation_budget import reserve as reserve_validation
+            reserve_validation(validation, event)
         recovery=_recovery(state)
         if recovery:
             recovery['reserved']+=1
@@ -331,6 +340,8 @@ def outcome(error=None, *, attempt=None):
         code = getattr(error, 'code', None)
         event['outcome'] = 'success' if error is None else f'failure:{code or type(error).__name__}'
         event['completed_at']=time.time()
+        from .validation_budget import outcome as validation_outcome
+        validation_outcome(state, event, error)
         recovery=next((r for r in state.get('recoveries',[]) if r['recovery_id']==event.get('recovery_id')),None)
         if recovery:
             if error:
@@ -346,4 +357,14 @@ def outcome(error=None, *, attempt=None):
         if state['stopped']!=previous_stop:
             state.setdefault('stop_history',[]).append({'time':time.time(),'previous_stop':previous_stop,
                 'stop':state['stopped'],'cause_attempt':attempt})
+    _change(update)
+
+
+def save_receipt(attempt, receipt):
+    """Safe response metadata added before validation or result persistence."""
+    def update(state):
+        event = next((e for e in state['events'] if e['attempt'] == attempt), None)
+        if not event or event['outcome'] != 'reserved' or not event.get('validation_id'):
+            raise ValueError('No scoped in-flight request exists for this receipt.')
+        event['receipt'] = dict(receipt)
     _change(update)

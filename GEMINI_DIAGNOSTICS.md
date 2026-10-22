@@ -1,3 +1,252 @@
+# Isolated live workflow validation - 22 October 2026
+
+**Claims: Live workflow verified. Underwriting: Blocked by evidence availability.**
+The claims job completed with fresh structured Gemini perception, actual checks,
+a real agent decision and two genuine tool exchanges. Its **assessment remains
+incomplete** because important evidence/context is missing. UI and PDF correctly
+stay neutral and require human review; completed execution does not establish
+complete coverage, accuracy or a fraud probability. No human approval was recorded.
+
+Starting branch: `repair/analysis-pipeline-20261020`; starting commit:
+`666f16f6866efe88277897dc0c0080aec1c5da59`. This document and
+[corrected-schema-audit.json](docs/gemini_diagnostics/corrected-schema-audit.json)
+were inspected first. The corrected perception probe was NOT repeated.
+No applicable AGENTS.md was found. Earlier audits and unrelated edits remain
+unchanged. Current evidence: [live-workflow-audit.json](docs/gemini_diagnostics/live-workflow-audit.json).
+
+## Actual claims result
+
+| Item | Saved / verified result |
+|---|---|
+| Isolated PostgreSQL schema | `fraudlens_validation_20261022` |
+| Case | `case-03dd3c967b5b` |
+| Durable job / analysis run | `64dcf803f54c43dd8f13a7c039ed7924` |
+| API acceptance | Actual authenticated multipart POST, HTTP 201; one image; customer ownership attached atomically |
+| Worker state | `completed` / `complete`, attempt 1; no provider or processing failure |
+| Perception | 1 fresh provider observation; 0 perception-cache and 0 request-cache qualifications |
+| Agent | 3 fresh generation turns; converged final routing, no fallback |
+| Actual tools | `get_claimant_history`, then `requery_perception`; recorded successful tool results |
+| Persistence | 1 perception, 13 findings, 1 agent decision, 1 processing result and a run-specific snapshot |
+| Recorded automated decision | Band `clear`, recommendation `approve`, numeric score null |
+| Displayed assessment | `Assessment incomplete`, category null, score null; no Low marker |
+| Human/customer outcome | Awaiting reviewer; no human decision or approval was inserted |
+| Saved PDF | 9 pages; renderer `fraudlens-pdf-2026-10-21-v4` |
+| Snapshot | `e87b0b2242ac1b27bd867a9202776f6f3e52367e2cfdc317ab79ae90acecc43f` |
+| PDF SHA-256 | `c28c97f7420e0639b0a74d58596639dfbe0fbdeb84fb97a42b7c7b4f3df8f8de` |
+
+The case used `data/curated/damaged/damaged_0012.jpg`, an inspected, authorized
+close-up showing rear-panel denting/scuffs, without people or a readable plate.
+It passed the actual local vehicle-admission gate. Registration, applicant,
+policy, incident date/location and INR 20,000 amount were explicitly fictional
+validation inputs. The photograph does not authenticate those declarations.
+
+The observation contract has all ten required fields and enums. The model
+recorded a large dent/scuffs below the red taillight, `moderate` damage, unknown
+weather, ground not visible, no directional shadow, daylight and no plate text.
+Visible panel damage is supported. The inferred body type (`sedan`) cannot be
+established from this crop and was not silently rewritten or treated as truth.
+No boxes, physical severity percentages, repair quotes or calibrated confidence
+were invented. Schema-valid observations are not accuracy evidence.
+
+The tools were chosen by the real model, not forced by the diagnostic script.
+The history tool queried the isolated case records. `requery_perception` read the
+already saved observation and made **zero additional provider calls**. This
+legitimate reuse is distinct from the original fresh perception qualification.
+The final decision cites three actual saved findings. No model reasoning was
+invented; receipts, action traces and concise recorded explanations are retained.
+
+## Why assessment coverage is still incomplete
+
+All 13 expected check records exist. Their saved execution states are:
+
+- Completed: external reference comparison, damage/amount plausibility and entity relationships (3).
+- Inconclusive: internal comparison, EXIF, C2PA, plate OCR, threshold pattern and the two optional AI/editing experiments (7).
+- Not run: scene consistency (required location/context inputs unavailable).
+- Not applicable: baseline linkage and severity progression (no prior inspection/claim sequence).
+
+The isolated internal corpus contains no other submitted image; no plate or EXIF
+is visible/present; no repairer pattern or previous vehicle history exists.
+The external comparison did run against its existing 400-image reference index.
+Missing metadata is not manipulation, and an empty isolated relationship/history
+pool is not evidence that the real-world vehicle has no history. The moderate
+amount benchmark is a heuristic, not a verified repair valuation.
+
+Required unresolved coverage is six checks after excluding the two zero-weight
+experiments. The agent nevertheless returned its saved `clear`/`approve` routing.
+That model output remains unchanged. The shared risk presentation contract blocks
+reassuring classification when coverage is incomplete; UI/PDF show neutral
+`Assessment incomplete`, no numeric score, and a recommendation to obtain missing
+evidence before relying on the assessment. This is a verified completed workflow
+with a partial assessment, not a fully cleared insurance claim.
+
+## Underwriting evidence blocker
+
+No verifiable authorized set of six distinct views of one vehicle, including an
+odometer and registration view, could be established in the inspected repository
+samples. The raw archive contains 2,300 images in only four damage/whole
+train/validation folders; there is no vehicle-set mapping or named odometer/view
+sequence. The curated metadata describes filtering/duplicates, not verified
+six-view vehicle identity. The visually inspected sample catalogue mixes vehicles.
+
+Unrelated cars, duplicate crops, arbitrary slot labels and AI-generated images
+were excluded. Therefore **no underwriting case, provider request, decision or
+PDF was created**. Earlier fixture/manual-review underwriting artifacts are not
+substituted for live evidence. Underwriting completion remains unverified.
+
+Next requirement: a legitimate authorized six-view set of the same vehicle, plus
+new explicit scoped authorization. This task's unused allowance is closed and
+cannot be carried into ordinary background processing.
+
+## Audited budget change and actual accounting
+
+The user's authorization allowed 30 NEW generation requests and cumulative cap
+37 while retaining seven historical attempts, for at most 24 hours or task end.
+`validation_budget.authorize` appended a budget revision and a separate task
+grant; it did not modify any historical event/recovery or clear the original stop.
+The grant records operator, reason, original/new ceilings, start/expiry, schema,
+qualifying attempt 7, and exact bound case/run IDs. Only the API-accepted claims
+job was bound. No case outcome was directly inserted.
+
+| Request | Operation | HTTP / finish | Fresh / reused |
+|---:|---|---|---|
+| 8 | Full-schema image perception | 200 / STOP | Fresh Gemini observation |
+| 9 | Agent requests claimant history | 200 / STOP | Fresh model turn; local database tool |
+| 10 | Agent requests saved perception | 200 / STOP | Fresh model turn; reused saved observation tool |
+| 11 | Final agent routing JSON | 200 / STOP | Fresh schema-valid decision |
+
+- Actual NEW generations: **4/30**. Metadata calls: **0**. Retries: **0**.
+- Total retained requests: **11 = 7 historical + 4 new**.
+- Cumulative audited ceiling: **37**. Unused task capacity: **26**, explicitly revoked when the grant was closed after claims completion and before PDF/UI verification.
+- Currently authorized generation: **0**. Normal provider generation remains stopped.
+- Daily controls/keys/history were preserved. Application headroom is not Google's remaining account/project quota; Google limits remain unknown.
+
+The scoped override raises only the audited worker allowance from the normal
+15 ceiling to 37. The ordinary pilot process setting remains 15 and its circuit
+remains stopped. An explicit lower process/kill limit still wins. Shared file
+locking checks grant status, expiry, schema, actual worker execution context,
+case/run binding, global attempt count, remaining task count and in-flight
+reservations before requests. Normal workers or unbound jobs cannot consume it.
+
+SDK attempts=1, redirects disabled and application recovery mode disable hidden
+retries and credential rotation. HTTP 400/401/403/404/429 stops the grant; two
+consecutive transient failures also stop it. There was no such failure in this
+live run. No billing, model/key switching, purchase or provider-limit bypass was
+used. The grant was closed early; its original expiry and close time are in the
+audit. Unused capacity cannot reopen it globally or survive as active permission.
+
+## Receipt and serialization repairs verified offline
+
+The production perception call now passes the same full `PerceptionObservation`
+JSON Schema as the previously verified probe. Local Pydantic validation is
+retained. Agent function declarations, tool IDs/signatures, function responses,
+STOP/empty/invalid-response handling, iteration caps and persistence were checked
+with the actual SDK and controlled transports before live execution.
+
+`provider_receipts.received` saves sanitized response metadata in the original
+ledger and an atomic private response checkpoint before parsing, cache/database
+writes or report work. Receipts retain actual requested/serving model, response
+ID, STOP reason, token counts, timing, HTTP status, source and case/run scope.
+Perception receipts carry the actual observation schema version; agent JSON has
+no separately versioned parser schema, so that receipt field remains null and
+its saved production policy version identifies the decision contract.
+
+All four real receipts report requested `gemini-3.5-flash`, serving
+`gemini-3.6-flash`, HTTP 200 and STOP, with actual response IDs and token usage.
+No metadata was reconstructed. Private response checkpoints omit submitted
+prompts/photos and explicit thought-text parts; opaque transport signatures are
+retained only where needed for faithful tool follow-ups. Artifact write failures
+were tested to stop without automatically generating again. The prior datetime
+artifact fix was regression-tested; no persistence reconciliation was necessary
+for these four calls.
+
+## PDF, UI and authorization verification
+
+The actual admin and customer tabs ran in one Chrome context with separate
+session storage. Customer ownership, outsider denial for the case and image,
+anonymous report denial and customer access denial to reviewer PDFs were checked.
+The reviewer loaded the private evidence photograph; the customer saw completed
+processing and an undecided human outcome. No reviewer decision was submitted.
+
+Laptop (1365 px) and mobile (390 px) layouts had no horizontal overflow. Their
+risk label matches the saved neutral contract. Preview blob bytes, API inline
+bytes, API download bytes and browser download bytes all have the same SHA-256;
+opening/downloading reports did not change request count (still 11).
+
+All nine saved PDF pages were extracted, rasterized and visually inspected.
+No words extend outside page bounds; no clipping/overlap or stretched evidence
+was found. Case/run, amount, evidence count, check states, excluded experiments,
+null numeric score and required coverage were cross-checked against saved data.
+
+**Viewer limitation:** headless Chrome loaded its native viewer frame and the
+verified PDF blob, but document pixels were not confirmed inside that native
+viewer. Native inline paint is not claimed as visually verified. The identical
+saved PDF itself rendered correctly in the independent PDF renderer; every page
+was inspected. Open/download remains available through the actual UI.
+
+Artifacts: [claims PDF](docs/gemini_diagnostics/live_validation/claims-live.pdf),
+[admin laptop](docs/gemini_diagnostics/live_validation/admin-laptop.png),
+[admin mobile](docs/gemini_diagnostics/live_validation/admin-mobile.png),
+[customer status](docs/gemini_diagnostics/live_validation/customer-status.png),
+[PDF front page](docs/gemini_diagnostics/live_validation/claims-front-page.png).
+These contain only fictional declarations and the authorized dataset photograph.
+No underwriting PDF exists for this task's evidence-blocked workflow.
+
+## Offline verification and focused changes
+
+- Provider/engine/serialization preflight: **226 passed, 10 live-dependent tests skipped**, 72.82 seconds.
+- Durable processing, customer authorization, saved PDF and risk regressions: **108 passed**, 448.11 seconds.
+- Final scoped-limit/expiry/receipt checks, including the lower-limit kill control: **18 passed**, 12.91 seconds.
+- Counts overlap; do not add them. Ordinary tests retained external-HTTP guards and disposable controls. Zero test Gemini calls. Existing deprecation warnings only.
+- No frontend application source was changed, so frontend checks were not needed.
+
+| File | Purpose |
+|---|---|
+| `FraudLens-2.0-Backend/src/validation_budget.py` | Explicit 37/30 revision, expiring schema/run scope, one in-flight request, stop rules and closure. |
+| `FraudLens-2.0-Backend/src/session_budget.py` | Validate and count scoped events/receipts through the original shared ledger. |
+| `FraudLens-2.0-Backend/src/durable_worker.py` | Derive provider scope from the actual claimed PostgreSQL job. |
+| `FraudLens-2.0-Backend/src/provider_receipts.py` | Safe receipts and atomic actual-response checkpoints before later persistence. |
+| `FraudLens-2.0-Backend/src/llm.py` | Disable retries/rotation for scoped validation; capture actual receipts/provenance. |
+| `FraudLens-2.0-Backend/src/perception.py` | Full structured production request and retained receipt provenance. |
+| `FraudLens-2.0-Backend/src/orchestrator.py` | Preserve real agent response provenance in saved run/audit records. |
+| `FraudLens-2.0-Backend/src/pilot_config.py` | Align/clear scoped validation settings with the reference environment. |
+| `FraudLens-2.0-Backend/scripts/diagnose_gemini.py` | Distinguish audited capacity, normal process cap and closed grant permission. |
+| `FraudLens-2.0-Backend/scripts/prepare_scoped_validation.py` | Prepare a new schema/reviewer, bind actual accepted jobs, close the grant. |
+| `FraudLens-2.0-Backend/scripts/verify_scoped_case.py` | Real API intake and ownership, saved PDF, two-tab and risk-display checks; refuse a mismatched API process. |
+| `FraudLens-2.0-Backend/test_validation_budget.py`, `conftest.py` | Offline scope, caps, expiry, concurrency, SDK/tool receipts, write failures and inherited-grant isolation. |
+| `GEMINI_DIAGNOSTICS.md`, `ANALYSIS_REPAIR_HANDOVER.md`, `docs/gemini_diagnostics/live-workflow-audit.json`, `docs/gemini_diagnostics/live_validation/` | Current evidence, artifacts and limitations. |
+
+## Safe next commands / restoration
+
+From the backend directory, read the current pilot state without making a model
+request (replace `<PILOT_API_PID>` with its actual Python process ID):
+
+```powershell
+.\venv\Scripts\python.exe -X utf8 scripts/diagnose_gemini.py --process-id <PILOT_API_PID> --plan-validation
+.\venv\Scripts\python.exe -X utf8 -m pytest -q test_validation_budget.py
+```
+
+Read the retained case through the saved PDF/audit. The case remains in its
+isolated schema. It will not appear in the restored original pilot's case list.
+`verify_scoped_case.py` requires the matching isolated API process and refuses
+the original pilot, preventing accidental submission into the wrong database.
+Do not reuse closed grants, reset ledgers, replay the qualifying probe or invoke
+historical reprocessing. A future underwriting run needs legitimate evidence
+and a new explicit expiring authorization; it is not authorized by unused slots.
+
+The original pilot schema/storage and ordinary process configuration were restored;
+current readiness, matching API/worker settings, unchanged original case/report/
+decision counts and closed-ledger state are recorded in the current audit.
+API `http://127.0.0.1:8001`; admin `http://127.0.0.1:5173/admin`.
+No old case/report/decision or provider-history prefix was rewritten. No push,
+deployment, billing enablement, key rotation or historical corpus processing.
+
+---
+
+# Historical record before this task (retained unchanged)
+
+The following counts, authorizations and workflow status describe earlier tasks.
+The scoped authorization and actual results above supersede their old blockers.
+
 # Corrected Gemini perception probe - 22 October 2026
 
 **Status: corrected live perception verified; full pipeline NOT verified.**

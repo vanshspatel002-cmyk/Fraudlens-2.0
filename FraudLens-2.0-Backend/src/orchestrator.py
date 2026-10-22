@@ -166,7 +166,8 @@ def process_case(
                         'fresh_provider' if cached is False else 'unrecorded'),
                         'model': getattr(response, 'model', 'unrecorded'),
                         'request_provenance': {key: (getattr(response, 'raw', None) or {}).get('request_provenance', {}).get(key)
-                            for key in ('session_attempt', 'requested_model', 'serving_model', 'timestamp')
+                            for key in ('session_attempt', 'requested_model', 'serving_model', 'timestamp',
+                                'provider_request_id','finish_reason','token_usage','http_status','latency_ms','started_at','source','schema','run_id','case_id')
                             if key in (getattr(response, 'raw', None) or {}).get('request_provenance', {})}})
                     return response
                 def __getattr__(self, name):

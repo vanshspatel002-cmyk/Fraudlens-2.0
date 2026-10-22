@@ -1,0 +1,415 @@
+{
+  "starting_commit": "666f16f6866efe88277897dc0c0080aec1c5da59",
+  "date_local": "2026-10-22",
+  "timezone": "Asia/Calcutta",
+  "isolated_schema": "fraudlens_validation_20261022",
+  "claims": {
+    "case_id": "case-03dd3c967b5b",
+    "run_id": "64dcf803f54c43dd8f13a7c039ed7924",
+    "status": "completed",
+    "stage": "complete",
+    "has_result": true,
+    "has_current_run_explanation": true,
+    "converged": true,
+    "computed_value": null,
+    "routing": {
+      "source": "model",
+      "converged": true,
+      "recorded_band": "clear",
+      "recommendation": "approve"
+    },
+    "coverage": {
+      "expected_check_ids": [
+        "internal_duplicate",
+        "external_corpus",
+        "exif_metadata",
+        "c2pa_credentials",
+        "scene_consistency",
+        "plate_ocr",
+        "ai_generation",
+        "digital_edit",
+        "threshold_gaming",
+        "damage_plausibility",
+        "entity_graph",
+        "baseline_linkage",
+        "severity_progression"
+      ],
+      "eligible_check_ids": [
+        "internal_duplicate",
+        "external_corpus",
+        "exif_metadata",
+        "c2pa_credentials",
+        "scene_consistency",
+        "plate_ocr",
+        "threshold_gaming",
+        "damage_plausibility",
+        "entity_graph",
+        "baseline_linkage",
+        "severity_progression"
+      ],
+      "missing_check_ids": [],
+      "check_states": {
+        "internal_duplicate": "inconclusive",
+        "external_corpus": "completed",
+        "exif_metadata": "inconclusive",
+        "c2pa_credentials": "inconclusive",
+        "scene_consistency": "not_run",
+        "plate_ocr": "inconclusive",
+        "ai_generation": "inconclusive",
+        "digital_edit": "inconclusive",
+        "threshold_gaming": "inconclusive",
+        "damage_plausibility": "completed",
+        "entity_graph": "completed",
+        "baseline_linkage": "not_applicable",
+        "severity_progression": "not_applicable"
+      },
+      "state_counts": {
+        "inconclusive": 7,
+        "completed": 3,
+        "not_run": 1,
+        "not_applicable": 2
+      },
+      "complete": false,
+      "material_complete": false
+    },
+    "stage_counts": {
+      "vision_sources": {
+        "perception_cache": 0,
+        "request_cache": 0,
+        "fresh_provider": 1,
+        "unavailable": 0
+      },
+      "agent_sources": {
+        "fresh_provider": 3
+      },
+      "trace_kinds": {
+        "tool_call": 2,
+        "llm_call": 1
+      },
+      "finding_verdicts": {
+        "inconclusive": 10,
+        "pass": 3
+      },
+      "finding_states": {
+        "inconclusive": 7,
+        "completed": 3,
+        "not_run": 1,
+        "not_applicable": 2
+      }
+    },
+    "finding_ids": [
+      "f63de903-7a2c-44ee-928a-22df6b02cacf",
+      "df212ba0-32f0-41eb-9368-af325a748b4f",
+      "e1ad4fd5-6856-4b65-9a5c-3d534954b90c",
+      "64b62f41-06b0-446f-8029-fb7a24711d0e",
+      "d8331ede-520d-48cb-9411-0726570edca3",
+      "21279eb9-6bbc-434d-8b8a-efad7938ace6",
+      "c8784283-54bf-4b31-8fc5-aa68660d9963",
+      "ad60020a-3a49-4679-b2f0-61743ca15982",
+      "ad0cb474-6c9a-4997-bb38-5b18b3580b2c",
+      "be2a23ac-d6f1-43ca-8e0e-d950ce4bd657",
+      "582d1045-dc48-4a86-9e0d-332925ab37bb",
+      "bd0dc26d-5af2-4c1b-8330-3a09844397e7",
+      "41362825-ba3c-4238-9994-c7ff6b4ff27f"
+    ],
+    "root_failure": {
+      "stage": null,
+      "error_category": null,
+      "attempt_count": null,
+      "attempted_network": null
+    },
+    "verification_status": "Live workflow verified",
+    "assessment_status": "incomplete",
+    "human_decision": "awaiting_reviewer",
+    "tools_executed": [
+      "get_claimant_history",
+      "requery_perception"
+    ],
+    "tool_results_verified": true,
+    "fresh_perception": 1,
+    "cached_perception": 0,
+    "fresh_agent_turns": 3,
+    "applicable_check_records": 13,
+    "receipt_attempts": [
+      8,
+      9,
+      10,
+      11
+    ],
+    "qualifying_schema": "fraudlens-visible-observations-2026-10-20-v1",
+    "observations": {
+      "damage_description": "A large dent and scuff marks are visible on the rear body panel below the red taillight.",
+      "damage_severity": "moderate",
+      "weather_observed": "unknown",
+      "road_condition": "not visible",
+      "shadow_direction": "none_visible",
+      "shadow_length": "none",
+      "lighting": "daylight",
+      "plate_text": "",
+      "scene_context": "Close-up view of damage to the rear corner of a dark-colored sedan.",
+      "anomaly_notes": ""
+    },
+    "api_ownership_verified": true,
+    "one_owner": true,
+    "no_human_decision_written": true,
+    "risk_neutral_matches_saved_coverage": true,
+    "decision_score": null,
+    "automated_recommendation": "approve"
+  },
+  "underwriting": {
+    "status": "Blocked",
+    "reason": "No verifiable same-vehicle six-view set including odometer and registration views could be established in the authorized local samples. Mixed damage/whole photos and AI-generated sets were not substituted.",
+    "case_created": false,
+    "generation_requests": 0,
+    "pdf_generated": false
+  },
+  "request_receipts": [
+    {
+      "session_attempt": 8,
+      "source": "fresh_provider",
+      "operation": "perception",
+      "requested_model": "gemini-3.5-flash",
+      "serving_model": "gemini-3.6-flash",
+      "timestamp": "2026-10-22T03:16:36.398062+00:00",
+      "started_at": "2026-10-22T03:16:29.332863+00:00",
+      "latency_ms": 7062,
+      "http_status": 200,
+      "http_attempts": 1,
+      "schema_version": "fraudlens-visible-observations-2026-10-20-v1",
+      "token_usage": {
+        "prompt_token_count": 1527,
+        "candidates_token_count": 97,
+        "total_token_count": 2129,
+        "thoughts_token_count": 505
+      },
+      "finish_reason": "STOP",
+      "provider_request_id": "DoDZauuNEca7mNMPscTxgQs",
+      "schema": "fraudlens_validation_20261022",
+      "run_id": "64dcf803f54c43dd8f13a7c039ed7924",
+      "case_id": "case-03dd3c967b5b"
+    },
+    {
+      "session_attempt": 9,
+      "source": "fresh_provider",
+      "operation": "agent",
+      "requested_model": "gemini-3.5-flash",
+      "serving_model": "gemini-3.6-flash",
+      "timestamp": "2026-10-22T03:17:20.998089+00:00",
+      "started_at": "2026-10-22T03:17:13.171839+00:00",
+      "latency_ms": 7828,
+      "http_status": 200,
+      "http_attempts": 1,
+      "schema_version": null,
+      "token_usage": {
+        "prompt_token_count": 4035,
+        "candidates_token_count": 13,
+        "total_token_count": 4398,
+        "thoughts_token_count": 350
+      },
+      "finish_reason": "STOP",
+      "provider_request_id": "OoDZas-gB6T6694Phd-NsQc",
+      "schema": "fraudlens_validation_20261022",
+      "run_id": "64dcf803f54c43dd8f13a7c039ed7924",
+      "case_id": "case-03dd3c967b5b"
+    },
+    {
+      "session_attempt": 10,
+      "source": "fresh_provider",
+      "operation": "agent",
+      "requested_model": "gemini-3.5-flash",
+      "serving_model": "gemini-3.6-flash",
+      "timestamp": "2026-10-22T03:17:24.552765+00:00",
+      "started_at": "2026-10-22T03:17:21.263689+00:00",
+      "latency_ms": 3281,
+      "http_status": 200,
+      "http_attempts": 1,
+      "schema_version": null,
+      "token_usage": {
+        "prompt_token_count": 4486,
+        "candidates_token_count": 67,
+        "total_token_count": 4600,
+        "thoughts_token_count": 47
+      },
+      "finish_reason": "STOP",
+      "provider_request_id": "QYDZap_zMfSE694Pro62iAg",
+      "schema": "fraudlens_validation_20261022",
+      "run_id": "64dcf803f54c43dd8f13a7c039ed7924",
+      "case_id": "case-03dd3c967b5b"
+    },
+    {
+      "session_attempt": 11,
+      "source": "fresh_provider",
+      "operation": "agent",
+      "requested_model": "gemini-3.5-flash",
+      "serving_model": "gemini-3.6-flash",
+      "timestamp": "2026-10-22T03:17:32.508058+00:00",
+      "started_at": "2026-10-22T03:17:25.022610+00:00",
+      "latency_ms": 7485,
+      "http_status": 200,
+      "http_attempts": 1,
+      "schema_version": null,
+      "token_usage": {
+        "prompt_token_count": 4837,
+        "candidates_token_count": 225,
+        "total_token_count": 6229,
+        "thoughts_token_count": 1167
+      },
+      "finish_reason": "STOP",
+      "provider_request_id": "RYDZasTzJs77694PnLXHmAY",
+      "schema": "fraudlens_validation_20261022",
+      "run_id": "64dcf803f54c43dd8f13a7c039ed7924",
+      "case_id": "case-03dd3c967b5b"
+    }
+  ],
+  "accounting": {
+    "historical_attempts": 7,
+    "task_limit": 30,
+    "cumulative_ceiling": 37,
+    "actual_generation_requests": 4,
+    "perception": 1,
+    "agent_turns": 3,
+    "tool_exchanges": 2,
+    "metadata_requests": 0,
+    "retries": 0,
+    "total_attempts": 11,
+    "unused_task_allowance_revoked": 26,
+    "grant_status": "closed",
+    "authorized_calls_now": 0,
+    "google_account_limits": "unknown; local ceiling is not Google entitlement"
+  },
+  "authorization": {
+    "policy": "isolated-two-case-validation-budget-2026-10-22-v1",
+    "created_at": 1792638630.1521842,
+    "expires_at": 1792724340.126643,
+    "closed_at": 1792639100.93581,
+    "operator": "user-authorized-20261022",
+    "reason": "User authorizes at most 30 new requests, cumulative 37; one isolated claims and one underwriting only if legitimate six-view same-vehicle evidence is available; task expiry and normal stop retained.",
+    "schema": "fraudlens_validation_20261022",
+    "jobs": {
+      "64dcf803f54c43dd8f13a7c039ed7924": {
+        "case_id": "case-03dd3c967b5b",
+        "kind": "claims",
+        "bound_at": 1792638946.198703
+      }
+    },
+    "close_reason": "Claims completed with fresh perception and real agent/tool execution; underwriting has no legitimate six-view evidence set. Close all unused authorization before read-only PDF/UI verification."
+  },
+  "preservation": {
+    "original_seven_events_unchanged": true,
+    "original_recoveries_unchanged": true,
+    "original_stop_unchanged": true,
+    "quota_history_and_event_prefix_unchanged": true,
+    "daily_cap_unchanged": true,
+    "historical_corpus_reprocessed": false
+  },
+  "ui_pdf": {
+    "case_id": "case-03dd3c967b5b",
+    "run_id": "64dcf803f54c43dd8f13a7c039ed7924",
+    "status": "completed",
+    "snapshot_id": "e87b0b2242ac1b27bd867a9202776f6f3e52367e2cfdc317ab79ae90acecc43f",
+    "same_saved_pdf_preview_download": true,
+    "sha256": "c28c97f7420e0639b0a74d58596639dfbe0fbdeb84fb97a42b7c7b4f3df8f8de",
+    "ownership_and_role_checks": true,
+    "risk_presentation": {
+      "version": "risk-presentation-2026-10-21-v1",
+      "run_id": "64dcf803f54c43dd8f13a7c039ed7924",
+      "policy_version": "agent-production-claims-2026-10-14-v3",
+      "processing_state": "completed",
+      "state": "incomplete",
+      "complete": false,
+      "category": null,
+      "recorded_band": "clear",
+      "label": "Assessment incomplete",
+      "score": null,
+      "score_scale": null,
+      "thresholds": null,
+      "position_basis": "category_only",
+      "basis": "Saved model routing",
+      "historical": false,
+      "scope": "Saved run and evidence only; later evidence requires its own assessment.",
+      "explanation": "Required check coverage is incomplete or was not recorded.",
+      "missing_check_ids": [
+        "internal_duplicate",
+        "exif_metadata",
+        "c2pa_credentials",
+        "scene_consistency",
+        "plate_ocr",
+        "ai_generation",
+        "digital_edit",
+        "threshold_gaming"
+      ]
+    },
+    "browser": {
+      "two_normal_tabs": true,
+      "risk_matches_saved_contract": true,
+      "laptop_mobile_no_overflow": true,
+      "preview_download_identical_saved_bytes": true,
+      "javascript_errors": [],
+      "native_pdf_content_pixels_verified": false,
+      "native_pdf_viewer_limitation": "Headless Chrome loaded the native viewer frame and the exact verified PDF blob, but document pixels were not confirmed there. The identical saved PDF was independently rasterized and all nine pages visually inspected."
+    },
+    "private_image_owner_and_outsider_checks": true
+  },
+  "pdf_layout": {
+    "pages": 9,
+    "text_extraction": "passed",
+    "out_of_page_words": 0,
+    "private_path_and_credential_scan": "passed",
+    "neutral_incomplete_banner_present": true,
+    "all_nine_pages_visually_inspected": true,
+    "main_values_cross_checked_against_saved_run": true
+  },
+  "offline_tests": {
+    "provider_engine_preflight": {
+      "passed": 226,
+      "live_skipped": 10,
+      "duration_seconds": 72.82
+    },
+    "external_model_calls_in_tests": 0,
+    "workflow_report_authorization": {
+      "passed": 108,
+      "duration_seconds": 448.11
+    },
+    "final_scoped_limit_followup": {
+      "passed": 18,
+      "duration_seconds": 12.91
+    },
+    "counts_overlap_do_not_add": true
+  },
+  "limits": [
+    "Schema validity is not accuracy evidence.",
+    "The close-up supports panel damage but not precise body style, registration, capture time, incident cause or full vehicle condition.",
+    "Assessment coverage is incomplete despite a converged completed processing job.",
+    "Optional AI/editing checks remain zero-weight experiments.",
+    "No separate version identifier exists for the agent JSON parser; its exact saved production policy version identifies that decision contract."
+  ],
+  "service_restoration": {
+    "api_health": {
+      "/health": 200,
+      "/ready": 200
+    },
+    "schema": "fraudlens_pilot",
+    "original_storage_restored": true,
+    "settings_and_credentials_match": true,
+    "validation_or_recovery_id_inherited": false,
+    "worker_ocr_warmup": "ready",
+    "one_worker_leadership_lock": true,
+    "queued_jobs": 0,
+    "running_jobs": 0,
+    "original_case_report_decision_counts_unchanged": true,
+    "pilot_counts": {
+      "cases": 825,
+      "api_jobs": 36,
+      "agent_decisions": 914,
+      "report_snapshots": 60,
+      "report_artifacts": 3
+    },
+    "original_seven_events_and_recoveries_preserved": true,
+    "session_attempts": 11,
+    "audited_cumulative_capacity": 37,
+    "normal_process_cap": 15,
+    "validation_grant": "closed",
+    "authorized_generation": 0,
+    "normal_generation_stopped": true
+  }
+}

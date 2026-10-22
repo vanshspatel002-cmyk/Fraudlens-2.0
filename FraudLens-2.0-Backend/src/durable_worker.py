@@ -102,7 +102,8 @@ class DurableWorker:
                     with runtime_store.connection(self.path) as conn:
                         job = runtime_store.claim_next(conn,leader_epoch=epoch)
                     if job:
-                        with runtime_store.execution(job,ownership_lost):
+                        from .validation_budget import execution as provider_execution
+                        with runtime_store.execution(job,ownership_lost), provider_execution(guard.schema, job):
                             self.execute(job['job_id'], job['case_id'])
                         try:
                             guard.execute('SELECT 1')

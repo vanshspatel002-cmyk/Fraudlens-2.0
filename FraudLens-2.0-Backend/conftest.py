@@ -27,6 +27,8 @@ def pytest_configure(config):
     patch.setenv('GEMINI_QUOTA_BUDGET',str(Path(config._fraudlens_test_controls.name)/'quota.json'))
     patch.setenv('GEMINI_QUOTA_CONSUMER','offline-test')
     patch.delenv('FRAUDLENS_RECOVERY_ID',raising=False)
+    patch.delenv('FRAUDLENS_VALIDATION_ID',raising=False)
+    patch.delenv('FRAUDLENS_RESPONSE_DIR',raising=False)
     import httpx
     from urllib.parse import urlsplit
     local = {'localhost', '127.0.0.1', '::1'}

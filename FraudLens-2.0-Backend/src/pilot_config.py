@@ -50,6 +50,7 @@ def load_pilot_environment(source, root=ROOT):
 def apply_pilot_environment(env):
     """Use exactly the reference's provider settings, including absent numbered keys."""
     names=set(CONFIG_NAMES+KEY_NAMES+('GEMINI_DAILY_QUOTA_PER_KEY','GOOGLE_API_KEY',
+        'FRAUDLENS_VALIDATION_ID','FRAUDLENS_RESPONSE_DIR',
         'GOOGLE_GENAI_USE_VERTEXAI','GOOGLE_GENAI_USE_ENTERPRISE','GOOGLE_GEMINI_BASE_URL','GOOGLE_VERTEX_BASE_URL',
         'HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY','SSL_CERT_FILE','SSL_CERT_DIR'))
     for name in names:
