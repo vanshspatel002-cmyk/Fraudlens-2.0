@@ -1,3 +1,208 @@
+# Corrected Gemini perception probe - 22 October 2026
+
+**Status: corrected live perception verified; full pipeline NOT verified.**
+Exactly ONE corrected-schema generation reached Google: HTTP 200, ten valid
+observation fields, no cache, zero transport/application retries and zero
+metadata requests. The application now records **7/15 attempts, 8 remaining
+slots, and zero additional generation permission**. Ordinary generation remains
+stopped. No claims/underwriting job, agent execution or report was run here.
+
+Starting commit: `8a534bf5388769c0eed8281de5da184f2bf3572d` on
+`repair/analysis-pipeline-20261020`. This document and the original
+[operator-recovery-audit.json](docs/gemini_diagnostics/operator-recovery-audit.json)
+were read first. That audit and the earlier configuration audit are unchanged.
+No applicable AGENTS.md was found. Unrelated staged/working edits remain separate.
+Current evidence: [corrected-schema-audit.json](docs/gemini_diagnostics/corrected-schema-audit.json).
+The preceding task's complete record is retained below as historical evidence.
+
+## Actual request and observation evidence
+
+The authorized request ran on **22 October, 06:58:51-06:59:05 IST**
+(01:28:51-01:29:05 UTC), using the unchanged `gemini-3.5-flash` identifier,
+`gemini3_defaults_v2` profile, Google SDK 2.18.1, actual decoded JPEG bytes,
+`PERCEPTION_PROMPT`, and all ten fields/enums of
+`fraudlens-visible-observations-2026-10-20-v1`.
+It used `data/curated/damaged/damaged_0045.jpg`, the previously authorized,
+visually inspected dataset image. No people or readable registration are visible.
+
+| Evidence | Actual result |
+|---|---|
+| HTTP attempts / status | 1 / 200; ledger attempt 7 |
+| Provider error code / invalid field paths | None returned on this successful response |
+| Structured output | Valid ten-field JSON; adapter and local Pydantic validation passed |
+| Wire contract | `json_schema_v1`: `responseJsonSchema`, JSON MIME, full schema preserved |
+| Image SHA-256 | `c23e423cba25e054ef448bfa92dc7b489c57d025f120128f3a275f4728b762a8` |
+| Exact serving-model version / response ID | Not retained; explicitly null |
+| Literal finish metadata / provider latency | Not retained; explicitly null |
+| Finish validation | Adapter requires STOP and passed validation before recording HTTP success |
+| Scope | Fresh image perception only; no agent or case-pipeline qualification |
+
+Actual retained observations describe severe glass damage with multiple holes,
+unknown weather, daylight, no clear directional shadow, an empty plate string,
+and an outdoor close-up. These broadly match the photograph. The model's **rear**
+orientation and **paved ground** description are not independently established
+from this small crop and remain uncertain. These observations do not establish
+cause, capture date, fraud, calibrated severity or general accuracy.
+
+### Local diagnostic persistence error, repaired without another request
+
+The live adapter returned successfully and `observations.json` was saved. The
+new artifact writer then attempted to JSON-serialize a dataclass containing
+`PerceptionRecord.created_at` as a datetime and raised TypeError. The original
+command therefore exited 1. Its original `probe-result.json` is retained, including
+its misleading generic post-request failure classification; it is not overwritten.
+This was a **local artifact error after HTTP success**, not a provider rejection
+or response-schema failure. The exact failure was reproduced offline.
+
+The writer now encodes the timestamp explicitly, saves a safe response receipt
+before later artifact work, and classifies persistence errors separately. Controlled
+tests cover successful persistence and a forced write failure. No second live
+request was made to test this fix.
+
+The actual observation file was revalidated offline and combined with the original
+request contract, image hash and append-only ledger into:
+
+- `<backend>/outputs/corrected_schema_20261022/probe/observations.json`: preserved actual observations.
+- `.../observation-record.json`: repaired record, full schema, request/model/image provenance and timing.
+- `.../reconciled-result.json`: audited reconciliation; original command exit remains disclosed.
+- `.../probe-result.json`: unchanged original diagnostic receipt.
+
+These artifacts are ignored private outputs, not application case records or
+provider caches. Exact serving version, response ID, provider latency and literal
+finish metadata were lost before receipt persistence; they cannot be recovered
+without inventing data. The reconstructed artifact records that limitation and
+uses the real ledger completion timestamp rather than pretending it is provider
+latency. STOP is a validated code-path fact, not retained literal metadata.
+
+## Correction-specific recovery and configuration
+
+`src/session_budget.py::authorize_schema_correction` appends a new, named operator
+grant for the recorded HTTP 400 at attempt 5. It records its previous recovery,
+original stop, correction commit `8a534bf5388769c0eed8281de5da184f2bf3572d`,
+registered correction ID, `json_schema_v1`, schema version, reason, expected attempt
+count and **one-request allowance**. It never clears or resets the circuit.
+
+The transport and gate share `src/provider_contract.py`: the exact full schema,
+prompt, image hash, model and profile must match. Generic chat, a changed image,
+legacy wire format, mismatched schema/model/profile, stale attempt counts,
+quota/manual stops, in-flight operations and repeated grants of this same
+correction are refused. Shared locking serializes the grant/reservation.
+The one allowance is consumed; the latest recovery is `probe_succeeded` and the
+original stop remains. A separately authorized bounded validation action would
+be required to permit future workflow calls; it was NOT performed here.
+
+The existing corrected SDK implementation was checked against actual HTTP payloads
+using MockTransport: `responseJsonSchema` equals the complete Pydantic JSON schema,
+`additionalProperties` is preserved, legacy `responseSchema` is absent, JPEG MIME
+and decoded bytes match, and SDK attempts=1 / redirects=false. Local JSON/enum
+validation remains inside the controlled request before success is recorded.
+No SDK/model/key changes were needed. The prior field-level 400 explanation
+remains unconfirmed; the successful corrected request establishes that this
+schema route works for this perception request.
+
+Strict pilot configuration was read from the running API and compared with the
+worker in memory: PostgreSQL `fraudlens_pilot`, Gemini, unchanged model/profile,
+original `outputs/pilot_validation/live_calls.json` and `quota_budget.json`, and
+matching credentials (presence/equality only; never printed or hashed). The API's
+in-process worker was disabled. Zero queued/running jobs were checked before
+pausing the dedicated worker; zero leadership locks were confirmed before the
+probe. Both controls were consistently backed up before authorization. All six
+original session events, both previous recoveries, quota event prefixes and
+quota history remain unchanged. The request appended attempt 7; cap remains 15.
+
+## Offline verification and changed files
+
+- Full regression after the persistence fix: **208 passed, 10 live-dependent tests skipped**, 75.52 seconds.
+- Final follow-up after preserving the separately authorized validation path: **138 passed**, 69.21 seconds.
+- These runs overlap; do not add their totals. All tests used isolated controls and external-HTTP guards. Zero offline Google calls.
+- Tests inspect real SDK wire serialization, required fields/enums, byte/MIME equality, validation failures and sanitized details, concurrent correction grants, history/cap retention, mismatched requests, single use, and artifact write failures.
+- Frontend files were not changed by this task; frontend checks were not required.
+
+| File | Focused change |
+|---|---|
+| `FraudLens-2.0-Backend/src/provider_contract.py` | Registered correction/wire version and non-secret schema/image/prompt fingerprints. |
+| `FraudLens-2.0-Backend/src/session_budget.py` | One-use HTTP 400 correction gate; exact request scope; existing explicit validation path retained. |
+| `FraudLens-2.0-Backend/src/llm.py` | Pass transport contract through normal controls; retain safe local validation issue codes. |
+| `FraudLens-2.0-Backend/scripts/recover_provider.py` | Explicit correction flags; observation/receipt artifacts; timestamp serialization and truthful persistence-error handling. |
+| `FraudLens-2.0-Backend/test_schema_correction.py` | SDK payload, gate/concurrency, persistence and failure regressions. |
+| `GEMINI_DIAGNOSTICS.md`, `ANALYSIS_REPAIR_HANDOVER.md`, `docs/gemini_diagnostics/corrected-schema-audit.json` | Current evidence, limitations and unexecuted validation plan. |
+
+## Prepared workflow plan - NOT executed
+
+Use a new isolated PostgreSQL schema, fictional accounts and authorized sample
+photographs: one claims image and six real views of the same underwriting vehicle.
+Select fresh image hashes absent from that schema's perception/request caches;
+the already used probe image or any cached result must not qualify as fresh.
+Photo-slot names alone cannot prove vehicle identity. No case acceptance,
+processing, agent follow-up or report generation is authorized in this task.
+
+| Stage | Absolute minimum | Bounded maximum |
+|---|---:|---:|
+| Fresh perception, 1 claims + 6 underwriting images | 7 | 14 including at most one schema retry per image |
+| Agent generation across both cases | 2 final-answer turns | 16, existing 8 iterations per case |
+| Total new workflow generations | **9** | **30** |
+
+To demonstrate an actual tool exchange in each case, budget at least **11**:
+seven images plus a tool-request turn and final-answer follow-up in each case.
+Local check/tool execution itself costs zero generations. Tool-result follow-ups,
+invalid-answer correction turns and final answers all count within each agent's
+8-turn cap. The 30-call ceiling assumes all SDK/application transport retries are
+disabled, no additional evidence/requery inference, no metadata requests, and an
+explicit overall allowance. It is a stopping bound, not a promise of convergence.
+
+Only **8** application slots remain: neither the 9-call floor nor the 11-call
+tool-exchange plan fits. This application's lifetime cap and its daily quota
+ledger are local controls; they are not Google's account/project RPM/TPM/RPD,
+entitlement or billing state. Actual Google headroom is unknown. This task made
+no metadata/quota-console request and changed no billing setting.
+
+**Proposed development-budget revision, NOT applied:** explicitly authorize and
+review a new `isolated-two-case-validation-budget-v1` policy with cumulative
+ceiling **37 = 7 retained attempts + up to 30 new workflow calls**, plus a separate
+30-call validation grant restricted to the new schema/run IDs and an expiry.
+Append operator, reason, old/new ceilings, time and scope to the existing audit;
+preserve every previous event, provider limit and key. The current hard-coded
+15 ceiling exists in multiple controls and rehearsal guards, so changing an
+environment value alone must not bypass it. A smaller 11-call plan needs a
+cumulative ceiling of 18 but may stop before agent convergence. Neither revision
+was implemented or authorized by this probe task. No reset, billing enablement
+or key rotation is proposed.
+
+After new explicit budget/workflow authorization: validate the Google account's
+limits without assuming that this successful request reserves future capacity;
+prepare the new schema and legitimate photo set; grant a bounded validation
+allowance separately; start API/worker with shared controls; submit one case of
+each type serially. Verify fresh observations, schema-valid agent decisions,
+recorded tool actions, real checks, saved explanation, report/run consistency and
+authorization in customer/admin views. Stop at the call ceiling or on a
+non-transient/repeated transient failure. Cache/fallback/partial runs do not pass.
+
+Read-only next command from the backend directory (`<API_PID>` is the current
+Python API process, not its launcher):
+
+```powershell
+.\venv\Scripts\python.exe -X utf8 scripts/diagnose_gemini.py --process-id <API_PID> --plan-validation
+```
+
+Do not rerun `--execute` or metadata for this spent task authorization. The same
+registered correction cannot be granted twice. Original ledgers and private
+response files must not be edited to manufacture another allowance.
+
+Services were restarted using the original pilot launcher and same stopped
+controls. Health/readiness returned 200; OCR warmed; one worker leadership lock
+and zero queued/running jobs were verified. API/worker settings match and the
+ledger remains at seven attempts; final evidence is in the current audit.
+API `http://127.0.0.1:8001`; admin `http://127.0.0.1:5173/admin`.
+No application case, report or decision was created or reprocessed. No push,
+deployment, cap increase, credential change or historical reprocessing occurred.
+
+---
+
+# Historical record from the preceding task (retained unchanged)
+
+The following section describes the state before the corrected probe above.
+Its attempt counts, spent authorizations and unverified status are historical.
+
 # Gemini operator recovery - 21 October 2026
 
 **Status: policy/configuration repaired; live perception is NOT verified.**

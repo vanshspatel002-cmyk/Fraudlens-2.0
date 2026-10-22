@@ -379,3 +379,41 @@ no push or deployment occurred. A future corrected probe needs new authorization
 and a correction-specific audited gate because the latest failure is HTTP 400.
 Another qualifying probe plus both fresh case types needs at least 10 requests,
 which exceeds the retained 9 slots before any agent tool follow-ups.
+
+## Corrected schema live probe - 22 October 2026
+
+Current status supersedes the preceding unverified-perception status:
+**corrected live perception verified; full pipeline NOT verified**.
+See [GEMINI_DIAGNOSTICS.md](GEMINI_DIAGNOSTICS.md) and
+[corrected-schema-audit.json](docs/gemini_diagnostics/corrected-schema-audit.json).
+One generation returned HTTP 200 with ten schema-valid observations; zero metadata
+calls/retries. Attempts are now 7/15, remaining slots 8, additional generation
+permission zero. Original six events, both prior recoveries, stop and quota history
+remain intact. A one-use correction-specific grant links attempt 5's HTTP 400 to
+commit 8a534bf and json_schema_v1; schema/prompt/image/model/profile are bound.
+Ordinary background generation remains stopped; no validation grant was issued.
+
+The live diagnostic saved actual observations but its new artifact writer failed
+on a datetime. That local serialization bug was reproduced and fixed offline.
+The original failed diagnostic receipt remains unchanged; a separate reconciliation
+and observation artifact use the real JSON, original image/contract and ledger.
+Exact serving version, response ID, provider latency and literal finish metadata
+were not retained and remain null. STOP validation passed inside the adapter.
+The photograph supports extensive glass damage, no plate and no clear directional
+shadow; rear orientation and the small ground strip remain uncertain. This is
+single-image integration evidence, not accuracy or fraud/pipeline qualification.
+
+Full offline regressions after persistence repair: 208 passed, 10 live-dependent
+skips. Final gate follow-up: 138 passed; totals overlap. Tests include actual SDK
+payloads, exact complete schema, single-use correction scope, concurrency, safe
+parsing diagnostics, datetime persistence and forced write failures. No test
+contacted Gemini. Services use the original pilot configuration and stopped
+controls; final restoration evidence is in the current audit.
+
+Prepared only: fresh claims/underwriting require at least 9 calls, 11 with a tool
+exchange in each, at most 30 under the documented schema/agent caps and disabled
+transport retries. Eight slots cannot cover both. A future explicitly authorized,
+append-only development policy could set cumulative ceiling 37 (7 retained + 30
+workflow calls), restricted validation scope and expiry. This is a proposal only;
+no cap, key, Google limit or billing change was made. No case, report, decision,
+historical reprocessing, push or deployment occurred.

@@ -370,7 +370,7 @@ class GeminiProvider(LLMProvider):
         label, secret = self._pool.current()
         return self._client_for(label, secret)
 
-    def _call_rotating(self, make_call, attempts: int = _RETRY_ATTEMPTS):
+    def _call_rotating(self, make_call, attempts: int = _RETRY_ATTEMPTS, request_contract=None):
         """
         Run `make_call(client)` against the key pool.
 
@@ -402,9 +402,9 @@ class GeminiProvider(LLMProvider):
                 from . import session_budget
                 from .analysis_diagnostics import failure_detail
                 try:
-                    session_budget.check()
+                    session_budget.check(request_contract=request_contract)
                     quota_budget.reserve_call(consumer,label,keys_configured=len(self._pool),model=self.model,kind="gemini")
-                    attempt = session_budget.reserve(self.model)
+                    attempt = session_budget.reserve(self.model, request_contract=request_contract)
                     self._last_attempt=attempt
                 except Exception as exc:
                     exc.analysis_failure=failure_detail(exc,'provider_control',attempt_count=request_attempts,attempted_network=request_attempts > 0,model=self.model)
@@ -551,9 +551,12 @@ class GeminiProvider(LLMProvider):
         # normal caller (src/perception.py included) gets the same
         # retry/backoff behaviour as before.
         image_bytes = Path(image_path).read_bytes()
+        from .provider_contract import SCHEMA_WIRE_VERSION, structured_image_contract
+        request_contract = structured_image_contract(response_schema.model_json_schema(),
+            hashlib.sha256(image_bytes).hexdigest(), prompt, self.model, self.request_profile) if response_schema is not None else None
         key = _vision_cache_key(image_bytes, prompt, self.model)
         if response_schema is not None:
-            key = hashlib.sha256(json.dumps({'vision_key':key,'response_schema':response_schema.model_json_schema(),'wire_contract':'json_schema_v1'},sort_keys=True).encode()).hexdigest()
+            key = hashlib.sha256(json.dumps({'vision_key':key,'response_schema':response_schema.model_json_schema(),'wire_contract':SCHEMA_WIRE_VERSION},sort_keys=True).encode()).hexdigest()
 
         if conn is not None:
             lookup_start = time.monotonic()
@@ -581,7 +584,7 @@ class GeminiProvider(LLMProvider):
             _validate_generation_response(response, structured=response_schema is not None, schema=response_schema)
             return response
 
-        response = self._call_rotating(_call, attempts=retry_attempts)
+        response = self._call_rotating(_call, attempts=retry_attempts, request_contract=request_contract)
         latency_ms = int((time.monotonic() - start) * 1000)
 
         result = LLMResponse(
@@ -680,14 +683,21 @@ def _validate_generation_response(response, structured=False, schema=None):
     blocked = metadata.get('block_reason') not in {None, 'BLOCK_REASON_UNSPECIFIED'}
     unusable = blocked or not candidates or finish != 'STOP'
     unusable |= not bool(_extract_text(response).strip() or _extract_tool_calls(response))
+    validation_issues = []
     if structured:
         if schema is not None:
             try:schema.model_validate_json(_extract_text(response))
-            except (ValueError,TypeError):unusable=True
+            except (ValueError,TypeError) as exc:
+                unusable=True
+                if hasattr(exc, 'errors'):
+                    allowed_fields=set(schema.model_fields)
+                    validation_issues=[{'field':item['loc'][0] if item.get('loc') and item['loc'][0] in allowed_fields else '$',
+                        'type':item['type']} for item in exc.errors(include_input=False,include_context=False,include_url=False)][:12]
         else:unusable |= getattr(response,'parsed',None) is None
     if unusable:
         error = GenerationResponseError('The generation was blocked, incomplete or empty; private response content omitted.')
         error.response_metadata = metadata
+        if validation_issues:error.response_metadata['validation_issues']=validation_issues
         raise error
 
 

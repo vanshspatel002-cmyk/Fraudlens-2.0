@@ -10,6 +10,7 @@ import time
 import threading
 import secrets
 import math
+import re
 from .quota_budget import QuotaBudgetExhausted, QuotaControlInvalid
 
 _request = threading.local()
@@ -96,7 +97,7 @@ def _change(callback):
                 lock.seek(0); msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
 
 
-def _allow(state):
+def _allow(state, request_contract=None):
     limit = min(15, max(0, int(os.environ.get('FRAUDLENS_LIVE_LIMIT', '15'))))
     if state['attempts'] >= limit:
         raise QuotaBudgetExhausted('Authorized live request cap reached; no network request attempted.')
@@ -108,6 +109,9 @@ def _allow(state):
             raise ProviderCircuitOpen('An earlier recovery cannot spend the latest operator allowance.')
         if recovery['reserved'] >= recovery['allowance']:
             raise QuotaBudgetExhausted('Audited recovery allowance reached; no network request attempted.')
+        if (recovery.get('kind') == 'request_schema_correction' and recovery['status'] != 'validation_authorized'
+                and request_contract != recovery.get('request_contract')):
+            raise ProviderCircuitOpen('Only the exact corrected perception request may spend this grant.')
 
 
 def recovery_eligibility(state, limit, *, operator=False, now=None):
@@ -184,9 +188,71 @@ def authorize_validation(recovery_id, maximum_additional_calls, reason):
     _change(update)
 
 
-def check():
+def authorize_schema_correction(reason, *, operator, previous_attempt, correction_commit,
+                                wire_version, request_contract, expected_attempts):
+    """Append ONE correction-bound probe for the recorded legacy-schema HTTP 400.
+
+    This explicit operator action is separate from transient recovery. The same
+    correction cannot be granted twice, irrespective of its outcome or cooldown.
+    It never clears the stop or permits general/background generation.
+    """
+    from .provider_contract import (SCHEMA_CORRECTION_COMMIT, SCHEMA_CORRECTION_ID,
+        SCHEMA_WIRE_VERSION, perception_correction_contract)
+    from .perception import PERCEPTION_SCHEMA_VERSION
+    if not os.environ.get('FRAUDLENS_LIVE_LEDGER'):
+        raise ValueError('The original live ledger is required for schema correction.')
+    if not isinstance(operator, str) or not operator.strip() or not isinstance(reason, str) or not reason.strip():
+        raise ValueError('Explicit operator and correction reason are required.')
+    if correction_commit != SCHEMA_CORRECTION_COMMIT or wire_version != SCHEMA_WIRE_VERSION:
+        raise ValueError('Only the registered, inspected schema correction is permitted.')
+    if type(previous_attempt) is not int or type(expected_attempts) is not int:
+        raise ValueError('Explicit previous and backed-up attempt numbers are required.')
+    image_hash = request_contract.get('image_sha256') if isinstance(request_contract, dict) else None
+    if not isinstance(image_hash, str) or not re.fullmatch(r'[a-f0-9]{64}', image_hash):
+        raise ValueError('A valid authorized image hash is required.')
+    expected = perception_correction_contract(image_hash, os.environ.get('GEMINI_MODEL'),
+        os.environ.get('FRAUDLENS_GEMINI_REQUEST_PROFILE'))
+    if (not expected['model'] or expected['request_profile'] != 'gemini3_defaults_v2'
+            or request_contract != expected):
+        raise ValueError('The complete corrected perception contract must match pilot settings.')
+
+    def update(state):
+        if state['attempts'] != expected_attempts:
+            raise ValueError('The backed-up attempt count changed; inspect controls first.')
+        cap = min(15, max(0, int(os.environ.get('FRAUDLENS_LIVE_LIMIT', '15'))))
+        if state['attempts'] >= cap:
+            raise QuotaBudgetExhausted('Original attempt cap prevents a correction probe.')
+        if state.get('stopped') != 'configuration failure or repeated provider failures':
+            raise ValueError('Only the recorded request-configuration stop can be corrected.')
+        if any(e['outcome'] == 'reserved' for e in state['events']):
+            raise ValueError('A provider operation is still in flight.')
+        if any(r.get('correction_id') == SCHEMA_CORRECTION_ID for r in state.get('recoveries', [])):
+            raise ValueError('This schema correction has already received its one-request grant.')
+        prior = state.get('recoveries', [])[-1] if state.get('recoveries') else None
+        generation = [e for e in state['events'] if e.get('kind') != 'model_metadata']
+        event = generation[-1] if generation else None
+        if (not prior or prior['status'] != 'failed' or prior.get('failure_outcome') != 'failure:400'
+                or not event or event['attempt'] != previous_attempt or event['outcome'] != 'failure:400'
+                or event.get('recovery_id') != prior['recovery_id'] or event.get('model') != expected['model']):
+            raise ValueError('The latest failed generation must be the specified recovery HTTP 400.')
+        recovery = {
+            'recovery_id': secrets.token_hex(12), 'requested_at': time.time(),
+            'reason': reason[:300], 'operator': operator[:100], 'original_stop': state['stopped'],
+            'base_attempts': state['attempts'], 'allowance': 1, 'reserved': 0, 'status': 'authorized',
+            'kind': 'request_schema_correction', 'correction_id': SCHEMA_CORRECTION_ID,
+            'correction_commit': correction_commit, 'wire_version': wire_version,
+            'previous_recovery_id': prior['recovery_id'], 'previous_failed_attempt': previous_attempt,
+            'previous_failure_outcome': event['outcome'], 'perception_schema_version': PERCEPTION_SCHEMA_VERSION,
+            'request_contract': dict(request_contract),
+        }
+        state.setdefault('recoveries', []).append(recovery)
+        return recovery['recovery_id']
+    return _change(update)
+
+
+def check(*, request_contract=None):
     """Avoid consuming research quota reservations when this session is stopped."""
-    _change(_allow)
+    _change(lambda state: _allow(state, request_contract))
 
 
 def reject_recovery_result(recovery_id, category):
@@ -230,9 +296,13 @@ def model_metadata_outcome(attempt,error=None):
     _change(update)
 
 
-def reserve(model):
+def reserve(model, *, request_contract=None):
     def update(state):
-        _allow(state)
+        _allow(state, request_contract)
+        current = _recovery(state)
+        if (current and current.get('kind') == 'request_schema_correction' and current['status'] != 'validation_authorized'
+                and model != current['request_contract']['model']):
+            raise ProviderCircuitOpen('The corrected probe must use the authorized pilot model.')
         state['attempts'] += 1
         event={'attempt': state['attempts'], 'model': model, 'time': time.time(), 'outcome': 'reserved'}
         recovery=_recovery(state)
@@ -240,6 +310,9 @@ def reserve(model):
             recovery['reserved']+=1
             if recovery['status']=='authorized':recovery['status']='probing'
             event['recovery_id']=recovery['recovery_id']
+            if recovery.get('kind') == 'request_schema_correction' and recovery['status'] != 'validation_authorized':
+                event.update(wire_version=recovery['wire_version'], correction_id=recovery['correction_id'],
+                    request_contract=dict(request_contract))
         state['events'].append(event)
         return state['attempts']
     attempt = _change(update)
