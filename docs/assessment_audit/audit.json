@@ -1,0 +1,111 @@
+{
+  "baseline": "f35aa755db6d5cc88c7746a3672a1aa118761ea1",
+  "generation_attempts_before": 15,
+  "generation_attempts_after": 15,
+  "task_generation_requests": 0,
+  "metadata_requests": 0,
+  "policy_status": "shadow_only",
+  "production_routing_changed": false,
+  "historical_jobs_enqueued": 0,
+  "original_reports_overwritten": false,
+  "production_database_writes": 0,
+  "postgres_tests": "disposable random schema only",
+  "underwriting_live_verified": false,
+  "performance_speedup_verified": false,
+  "native_signed_c2pa_verified": false,
+  "experimental_ai_native_verified": false,
+  "browser": [
+    {
+      "case": "claims-high",
+      "check": "preview/download use identical saved bytes; no analysis/decision request"
+    },
+    {
+      "case": "claims-high",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "claims-high",
+      "width": 390,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "underwriting-medium",
+      "check": "preview/download use identical saved bytes; no analysis/decision request"
+    },
+    {
+      "case": "underwriting-medium",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "underwriting-medium",
+      "width": 390,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "claims-incomplete",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "underwriting-incomplete",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "claims-low",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "claims-medium",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "stale-after-evidence",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "historical-completed",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    },
+    {
+      "case": "unknown-category",
+      "width": 1440,
+      "phase": "after",
+      "javascript_errors": 0
+    }
+  ],
+  "pdfs": [
+    {
+      "file": "claims-saved-replay.pdf",
+      "pages": 10,
+      "all_pages_rendered": true,
+      "text_and_image_bounds": "passed",
+      "image_aspect_ratios": "passed",
+      "first_page_label": "Assessment incomplete"
+    },
+    {
+      "file": "underwriting-fixture.pdf",
+      "pages": 10,
+      "all_pages_rendered": true,
+      "text_and_image_bounds": "passed",
+      "image_aspect_ratios": "passed",
+      "first_page_label": "Assessed risk: Medium"
+    }
+  ]
+}

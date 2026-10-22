@@ -1,6 +1,6 @@
 export type ReviewFinding = { verdict: string; check_status?: string };
 export type ReviewProcessing = { job_id?: string; status?: string; stage?: string; detail?: string };
-export type AssessmentExplanation = {routing?:{source?:string;converged?:boolean;model_recommendation?:string;recommendation?:string;effective_recommendation?:string;guard_applied?:boolean;guard_policy?:string};coverage?:{material_complete?:boolean;complete?:boolean;material_gap_ids?:string[]}};
+export type AssessmentExplanation = {shadow_assessment?:{status:string;version:string;concern_index:number|null;coverage:number|null;candidate_recommendation:string};routing?:{source?:string;converged?:boolean;model_recommendation?:string;recommendation?:string;effective_recommendation?:string;guard_applied?:boolean;guard_policy?:string};coverage?:{material_complete?:boolean;complete?:boolean;material_gap_ids?:string[]}};
 export type ReviewSummaryInput = {
   kind: string;
   registration?: string;

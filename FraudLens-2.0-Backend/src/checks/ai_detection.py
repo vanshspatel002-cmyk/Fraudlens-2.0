@@ -115,7 +115,7 @@ def get_pipeline() -> Any:
 
             _pipeline = pipeline("image-classification", model=MODEL_NAME, device=-1)
         except Exception as e:  # noqa: BLE001 - missing model, no network, incompatible transformers
-            _load_error = f"{type(e).__name__}: {e}"
+            _load_error = type(e).__name__  # Never persist cache paths, URLs or credential-bearing exceptions.
     return _pipeline
 
 

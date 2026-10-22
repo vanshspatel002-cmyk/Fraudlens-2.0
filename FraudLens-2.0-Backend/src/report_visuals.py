@@ -225,6 +225,9 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         summary_card=Table([[p(summary),[picture(inventory[0],width*.32,94),p('Saved evidence preview','caption')]]],colWidths=[width*.65,width*.35])
         summary_card.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0)]));story.append(summary_card)
     else:story.append(p(summary))
+    candidate=(report.get('assessment_explanation') or {}).get('shadow_assessment')
+    if candidate and report.get('report_template_version','').endswith('-v6'):
+        story.append(p('SHADOW ONLY · candidate concern R: '+str(candidate.get('concern_index'))+'; material coverage C: '+str(candidate.get('coverage'))+'. Unvalidated; production risk and human review unchanged.','small'))
     story.append(p('Main supported findings','h2'))
     concerns = list(dict.fromkeys(short(f.get('explanation'),175) for f in findings if finding_state(f)=='concern'))
     for text in concerns[:3]: story.append(p('• '+text,'small'))
@@ -393,6 +396,23 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     if excluded_ids:
         story += [p('Checks outside this run’s applicable policy','h2'),grid(['Registered check','Result / use'],[(CHECK_LABELS.get(key,key),'Not applicable to this policy / no contribution') for key in sorted(excluded_ids)],[.5,.5])]
 
+    shadow=explanation.get('shadow_assessment') if report.get('report_template_version','').endswith('-v6') else None
+    shadow_start=len(story)
+    if report.get('report_template_version','').endswith('-v6'):
+        story.append(p('Candidate assessment — SHADOW ONLY','h1'))
+        if not shadow:
+            story.append(p('This saved snapshot has no candidate calculation. No missing values are reconstructed.'))
+        else:
+            story.append(p('Unvalidated heuristic comparison. This does not replace production routing, the risk bar or human review. Neither axis is a fraud probability.'))
+            story.append(grid(['Concern index R','Material coverage C','Candidate action'],[(
+                str(shadow.get('concern_index')),str(shadow.get('coverage')),shadow.get('candidate_recommendation'))],[.30,.30,.40]))
+            story.append(p('R = 1 - product(1 - grouped maximum). C = sufficient applicable material requirements / applicable material requirements. Mandatory gaps prevent candidate clearance regardless of the average.','small'))
+            story.append(grid(['Correlation group','Saved maximum a × e'],[(k,str(v)) for k,v in shadow.get('groups',{}).items()],[.65,.35]))
+            story.append(p('Worked saved calculation: R = 1 - '+ ' × '.join('('+str(round(1-v,4))+')' for v in shadow.get('groups',{}).values())+' = '+str(shadow.get('concern_index'))+'. C = '+str(shadow.get('coverage_numerator'))+' / '+str(shadow.get('coverage_denominator'))+' = '+str(shadow.get('coverage'))+'.','small'))
+            story.append(grid(['Check / group','Strength / parameter','Coverage sufficient'],[(row['check_id']+' / '+str(row['group']),str(row['e'])+' / '+str(row['a']),str((shadow.get('material_requirements',{}).get(row['check_id']) or {}).get('evidence_sufficient','Optional / not applicable'))) for row in shadow.get('checks',[])],[.45,.25,.30]))
+            story.append(p('Mandatory gaps: '+(', '.join(shadow.get('mandatory_gaps') or []) or 'None recorded')+'. Garage alerts are separate. All candidate operating points are unvalidated.','small'))
+    if shadow:
+        story.insert(shadow_start,PageBreak())
     story += [p('How the assessment was calculated','h1')]
     if not explanation:
         story.append(p('A structured calculation explanation was not recorded. No score or contribution is reconstructed.'))

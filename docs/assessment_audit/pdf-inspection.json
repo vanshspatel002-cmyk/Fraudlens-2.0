@@ -1,0 +1,18 @@
+[
+  {
+    "file": "claims-saved-replay.pdf",
+    "pages": 10,
+    "all_pages_rendered": true,
+    "text_and_image_bounds": "passed",
+    "image_aspect_ratios": "passed",
+    "first_page_label": "Assessment incomplete"
+  },
+  {
+    "file": "underwriting-fixture.pdf",
+    "pages": 10,
+    "all_pages_rendered": true,
+    "text_and_image_bounds": "passed",
+    "image_aspect_ratios": "passed",
+    "first_page_label": "Assessed risk: Medium"
+  }
+]

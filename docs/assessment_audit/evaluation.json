@@ -1,0 +1,304 @@
+[
+  {
+    "kind": "claims",
+    "scenario": "clean_authored",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "approve",
+    "candidate": "candidate_clear",
+    "R": 0.0,
+    "C": 1.0,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "claims",
+    "scenario": "supported_reuse",
+    "baseline_band": "desk_review",
+    "baseline_sum": 0.6198863636363636,
+    "guard_replay": "approve",
+    "candidate": "investigate",
+    "R": 0.8,
+    "C": 1.0,
+    "simple_group_max": 0.8,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "claims",
+    "scenario": "repeated_findings",
+    "baseline_band": "escalate_siu",
+    "baseline_sum": 3.0994318181818183,
+    "guard_replay": "approve",
+    "candidate": "investigate",
+    "R": 0.8,
+    "C": 1.0,
+    "simple_group_max": 0.8,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "claims",
+    "scenario": "correlated_reuse",
+    "baseline_band": "escalate_siu",
+    "baseline_sum": 1.4198863636363637,
+    "guard_replay": "approve",
+    "candidate": "investigate",
+    "R": 0.8,
+    "C": 1.0,
+    "simple_group_max": 0.8,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "claims",
+    "scenario": "missing_internal_duplicate",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.875,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "internal_duplicate"
+    ]
+  },
+  {
+    "kind": "claims",
+    "scenario": "missing_external_corpus",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.875,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "external_corpus"
+    ]
+  },
+  {
+    "kind": "claims",
+    "scenario": "missing_scene_consistency",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.875,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "scene_consistency"
+    ]
+  },
+  {
+    "kind": "claims",
+    "scenario": "missing_plate_ocr",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.875,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "plate_ocr"
+    ]
+  },
+  {
+    "kind": "claims",
+    "scenario": "missing_damage_plausibility",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.875,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "damage_plausibility"
+    ]
+  },
+  {
+    "kind": "claims",
+    "scenario": "missing_entity_graph",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.875,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "entity_graph"
+    ]
+  },
+  {
+    "kind": "claims",
+    "scenario": "missing_baseline_linkage",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.875,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "baseline_linkage"
+    ]
+  },
+  {
+    "kind": "claims",
+    "scenario": "missing_severity_progression",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.875,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "severity_progression"
+    ]
+  },
+  {
+    "kind": "claims",
+    "scenario": "optional_unavailable",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "approve",
+    "candidate": "candidate_clear",
+    "R": 0.0,
+    "C": 1.0,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "clean_authored",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "approve",
+    "candidate": "candidate_clear",
+    "R": 0.0,
+    "C": 1.0,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "supported_reuse",
+    "baseline_band": "desk_review",
+    "baseline_sum": 0.6198863636363636,
+    "guard_replay": "approve",
+    "candidate": "investigate",
+    "R": 0.8,
+    "C": 1.0,
+    "simple_group_max": 0.8,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "repeated_findings",
+    "baseline_band": "escalate_siu",
+    "baseline_sum": 3.0994318181818183,
+    "guard_replay": "approve",
+    "candidate": "investigate",
+    "R": 0.8,
+    "C": 1.0,
+    "simple_group_max": 0.8,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "correlated_reuse",
+    "baseline_band": "escalate_siu",
+    "baseline_sum": 1.4198863636363637,
+    "guard_replay": "approve",
+    "candidate": "investigate",
+    "R": 0.8,
+    "C": 1.0,
+    "simple_group_max": 0.8,
+    "mandatory_gaps": []
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "missing_internal_duplicate",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.8,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "internal_duplicate"
+    ]
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "missing_external_corpus",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.8,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "external_corpus"
+    ]
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "missing_scene_consistency",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.8,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "scene_consistency"
+    ]
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "missing_plate_ocr",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.8,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "plate_ocr"
+    ]
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "missing_entity_graph",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "request_evidence",
+    "candidate": "request_evidence",
+    "R": 0.0,
+    "C": 0.8,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": [
+      "entity_graph"
+    ]
+  },
+  {
+    "kind": "underwriting",
+    "scenario": "optional_unavailable",
+    "baseline_band": "clear",
+    "baseline_sum": 0,
+    "guard_replay": "approve",
+    "candidate": "candidate_clear",
+    "R": 0.0,
+    "C": 1.0,
+    "simple_group_max": 0.0,
+    "mandatory_gaps": []
+  }
+]

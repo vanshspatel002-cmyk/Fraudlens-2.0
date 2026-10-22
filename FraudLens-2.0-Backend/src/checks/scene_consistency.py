@@ -412,11 +412,12 @@ class SceneConsistencyCheck(Check):
 
     def run(self, ctx: CheckContext) -> list[Finding]:
         case = ctx.case
-        # No coordinates means no sun position and no weather history -
-        # there is no question to ask, so no finding is emitted at all
-        # rather than an INCONCLUSIVE that would sit in every report.
+        # A missing prerequisite is explicit insufficiency, never a clean check.
         if case.latitude is None or case.longitude is None or case.declared_time is None:
-            return []
+            return [Finding(check_id=self.check_id,case_id=case.case_id,category=self.category,
+                verdict=Verdict.INCONCLUSIVE,confidence=0.0,
+                explanation='Incident coordinates and an interpretable incident time are required; no solar or weather comparison was made.',
+                evidence={'execution_state':'inconclusive','missing_requirements':[name for name in ('latitude','longitude','declared_time') if getattr(case,name) is None]})]
 
         perceived = [image for image in ctx.images if image.content_hash in ctx.perception]
         if not perceived:

@@ -1,5 +1,10 @@
 # Normal local operation — 22 October 2026
 
+Subsequent offline audit: [dependency/parameter/assessment handover](docs/ASSESSMENT_AUDIT_HANDOVER.md).
+No new generation was authorized or performed for that audit. New calculations
+are shadow-only; production routing remains unchanged. Updated PDFs are labelled
+saved-result replay and underwriting fixture, not fresh live qualification.
+
 **Claims: Live workflow verified through the ordinary customer UI. Underwriting:
 live validation deferred; shared behavior verified with controlled fixtures.**
 This update supersedes the earlier stopped-operation handover below without

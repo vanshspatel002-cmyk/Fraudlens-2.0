@@ -26,7 +26,8 @@ LEGACY_RENDERER_VERSION = "fraudlens-pdf-2026-10-18-v1"
 READER_V2_VERSION = "fraudlens-pdf-2026-10-20-v2"
 READER_V3_VERSION = "fraudlens-pdf-2026-10-21-v3"
 READER_V4_VERSION = "fraudlens-pdf-2026-10-21-v4"
-RENDERER_VERSION = "fraudlens-pdf-2026-10-22-v5"
+READER_V5_VERSION = "fraudlens-pdf-2026-10-22-v5"
+RENDERER_VERSION = "fraudlens-pdf-2026-10-22-v6"
 ARTIFACT_SCHEMA = """CREATE TABLE IF NOT EXISTS report_artifacts (
     snapshot_id TEXT PRIMARY KEY REFERENCES report_snapshots(snapshot_id),
     renderer_version TEXT NOT NULL, pdf_base64 TEXT, sha256 TEXT,
@@ -554,10 +555,10 @@ def _render_pdf_v2(report, snapshot_id, generated_at, keep_headings=False):
 
 
 def render_pdf(report, snapshot_id, generated_at):
-    if report.get('report_template_version') in {RENDERER_VERSION, READER_V4_VERSION}:
+    if report.get('report_template_version') in {RENDERER_VERSION, READER_V5_VERSION, READER_V4_VERSION}:
         from .report_visuals import render_visual_report
         return render_visual_report(report, snapshot_id, generated_at,
-                                    revised=report.get('report_template_version')==RENDERER_VERSION)
+                                    revised=report.get('report_template_version')!=READER_V4_VERSION)
     if report.get('report_template_version')==READER_V3_VERSION:
         return _render_pdf_v2(report,snapshot_id,generated_at,keep_headings=True)
     if report.get('report_template_version')==READER_V2_VERSION:
@@ -602,7 +603,7 @@ def install(app):
             return _metadata(row,artifact)
         created = time.time()
         declared_version = payload.get('report_template_version')
-        renderer_version = declared_version if declared_version in {RENDERER_VERSION, READER_V4_VERSION, READER_V3_VERSION, READER_V2_VERSION} else LEGACY_RENDERER_VERSION
+        renderer_version = declared_version if declared_version in {RENDERER_VERSION, READER_V5_VERSION, READER_V4_VERSION, READER_V3_VERSION, READER_V2_VERSION} else LEGACY_RENDERER_VERSION
         try:
             content = render_pdf(payload,snapshot_id,created)
             checksum = hashlib.sha256(content).hexdigest()

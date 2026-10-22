@@ -88,6 +88,12 @@ def main():
                 if args.phase=='after':
                     expected=report['assessment_presentation']['label']
                     expect(page.locator('.risk-indicator')).to_contain_text(expected)
+                    shadow=(report.get('assessment_explanation') or {}).get('shadow_assessment')
+                    if shadow:
+                        panel=page.get_by_role('complementary',name='Shadow candidate assessment')
+                        expect(panel).to_contain_text(str(shadow['concern_index']).removesuffix('.0'))
+                        expect(panel).to_contain_text(str(shadow['coverage']).removesuffix('.0'))
+                        expect(panel).to_contain_text('shadow only')
                     if not report['assessment_presentation']['complete']:
                         expect(page.locator('.risk-marker')).to_have_count(0)
                         expect(page.locator('.risk-indicator-heading')).not_to_contain_text('Score')

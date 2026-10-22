@@ -2229,6 +2229,11 @@ def submit_case(
                        "agent_type must be 'claims' or 'underwriting'.",
                        [ErrorDetail(field="agent_type", reason=f"got {agent_type!r}")])
 
+    if ((latitude is None) != (longitude is None) or
+            (latitude is not None and not (-90 <= latitude <= 90)) or
+            (longitude is not None and not (-180 <= longitude <= 180))):
+        raise ApiError(422, 'INVALID_COORDINATES', 'Provide both finite incident coordinates within valid latitude/longitude bounds, or omit both.')
+
     if len(images or []) > 12:
         raise ApiError(422, "TOO_MANY_IMAGES", "Upload at most 12 photographs.")
     with tempfile.TemporaryDirectory(prefix="fraudlens_upload_gate_") as tmp:

@@ -51,6 +51,11 @@ export default function CaseReview({detail,userRole,busy,humanAction,onHumanActi
         <div><dt>Effective system routing</dt><dd>{detail.assessmentExplanation.routing.effective_recommendation.replaceAll('_',' ')}{detail.assessmentExplanation.routing.guard_applied ? ' · material evidence guard applied' : ''}</dd></div>
         {!!detail.assessmentExplanation.coverage?.material_gap_ids?.length && <div><dt>Material missing evidence</dt><dd>{detail.assessmentExplanation.coverage.material_gap_ids.map(key=>key.replaceAll('_',' ')).join(', ')}</dd></div>}
       </dl>}
+      {detail.assessmentExplanation?.shadow_assessment && <aside aria-label="Shadow candidate assessment">
+        <h3>Candidate assessment — shadow only</h3>
+        <p>Saved concern index: {detail.assessmentExplanation.shadow_assessment.concern_index ?? 'Not assessable'}. Material coverage: {detail.assessmentExplanation.shadow_assessment.coverage ?? 'Not assessable'}.</p>
+        <p>{detail.assessmentExplanation.shadow_assessment.candidate_recommendation.replaceAll('_',' ')} · {detail.assessmentExplanation.shadow_assessment.version}. Unvalidated heuristic; neither axis is a fraud probability. Production routing and human review remain separate.</p>
+      </aside>}
       <ReportPanel key={detail.id+'-'+detail.version} caseId={detail.id} runId={detail.runId} processingStatus={detail.processing?.status} compact />
       {!!detail.reportHistory.length && <details className="review-history"><summary>Earlier reports and reviews</summary><label className="field"><span>Report history</span><select aria-label="Report history" defaultValue="" onChange={event=>{const snapshot=event.target.value;event.target.value='';if(snapshot)onHistory(snapshot);}}><option value="">Choose an earlier report</option>{detail.reportHistory.map(item=><option key={item.snapshot_id} value={item.snapshot_id}>{reviewDate(new Date(item.created_at*1000).toISOString())} · {item.snapshot_id.slice(0,12)}</option>)}</select></label></details>}
     </section>

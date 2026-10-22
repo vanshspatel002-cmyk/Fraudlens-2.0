@@ -474,6 +474,11 @@ prefixes remain retained. No billing, purchase, key rotation, provider-limit
 bypass, historical reprocessing, push or deployment occurred. Future underwriting
 requires the real six-view evidence and new explicit scoped authorization.
 
+Later offline dependency/parameter/candidate-policy work is documented in
+[ASSESSMENT_AUDIT_HANDOVER.md](docs/ASSESSMENT_AUDIT_HANDOVER.md). It preserves this
+live history, introduces no generation or historical batch, and keeps the new
+two-axis calculation shadow-only. Underwriting live validation remains deferred.
+
 ## 22 October 2026 — normal local operation supersedes the stopped handover
 
 Baseline `835ae28103060c0a087da63eac4a979d22bfd47f` on
