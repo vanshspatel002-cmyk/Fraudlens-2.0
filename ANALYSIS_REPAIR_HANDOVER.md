@@ -38,7 +38,7 @@ available and matched their hashes. All 130 stored perception rows passed the
 current compatibility check; 1,238 distinct image hashes still need perception.
 
 Consistent backups and detailed read-only audits are private at
-`D:\projects\FraudLens-2.0-preservation\pipeline-before-20261020T140930Z-85cf36`:
+`<repository>-preservation\pipeline-before-20261020T140930Z-85cf36`:
 24 application tables, 5,624 filesystem files, separately verified application
 evidence, original provider controls/configuration, and the exact initial index.
 Backups and private evidence remain outside Git.
@@ -148,7 +148,7 @@ Use the preserved configuration and provider controls. Build before model warmup
 on this 8 GB computer. The normal application uses the original PostgreSQL pilot:
 
 ```powershell
-Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+Set-Location <repository>\FraudLens-2.0-Backend
 .\scripts\start_pilot.ps1 -Database postgresql -Schema fraudlens_pilot -Port 8001 -NoWorker
 # In another terminal, after API startup:
 .\scripts\start_pilot.ps1 -Database postgresql -Schema fraudlens_pilot -WorkerOnly
@@ -161,7 +161,7 @@ when deliberately reopening it. The private rehearsal configuration contains
 locally generated test credentials; it is not a default application account.
 
 ```powershell
-Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Frontend
+Set-Location <repository>\FraudLens-2.0-Frontend
 $env:FRAUDLENS_NODE22_HOME = 'D:\tools\FraudLens-node22\node-v22.23.3-win-x64'
 $env:VITE_API_BASE_URL = 'http://127.0.0.1:8001'
 .\scripts\node22.ps1 -Task typecheck
@@ -473,3 +473,94 @@ pilot are checked against the preflight. Isolated live data and original audit
 prefixes remain retained. No billing, purchase, key rotation, provider-limit
 bypass, historical reprocessing, push or deployment occurred. Future underwriting
 requires the real six-view evidence and new explicit scoped authorization.
+
+## 22 October 2026 — normal local operation supersedes the stopped handover
+
+Baseline `835ae28103060c0a087da63eac4a979d22bfd47f` on
+`repair/analysis-pipeline-20261020`; no later commit was discarded. The latest
+user explicitly authorized normal local operation, an audited controls migration,
+and at most thirty new attempts. The historical eleven attempts and all original
+recovery/grant/quota records remain intact. The ordinary pilot no longer depends
+on a fresh diagnostic grant or its old fifteen-request lifetime ceiling.
+
+**Claims: Live workflow verified. Underwriting: live validation deferred; shared
+software fixture verification passed. Historical reprocessing: prepared only.**
+
+One fictional ordinary customer UI claim, `case-e4f345a50f26`, was accepted into
+`fraudlens_pilot` with ownership and a durable job. Its first run
+`5964e717c7d04b50b3078dbff25730fd` retained an actual 503 failure. A reviewer UI
+retry completed run `bbb9ed14d1c28c961b74093212aa8a6e` with one fresh full-schema
+perception, two fresh agent turns and one real `get_claimant_history` exchange.
+The qualifying stages were not cached. Model routing was escalation, triggered
+by expected reuse of the authorized public sample in the existing pilot corpus.
+This does not prove fraud or improved accuracy. Material plate, scene/context and
+external-image gaps keep UI/PDF neutral and incomplete despite completed execution.
+The new fictional reviewer requested evidence; the customer saw `awaiting_evidence`.
+No original human decision was touched.
+
+Operating policy `local-operation-2026-10-22-v1` persists in the original ledger:
+one active case, daily thirty attempts, per-case sixteen across runs, eight agent
+turns, two bounded application attempts, transport retries disabled, two-second
+pacing. A manual pause persists; two transient failures open a circuit with one
+serialized recovery request after thirty minutes. Authentication/model/quota
+errors block unchanged requests. Original stricter quota controls still apply.
+Session admission and quota reservation share atomic lock ordering. Tests have
+no external model access by default. Local limits do not establish Google quota.
+
+Four new attempts were used (one 503, three successful generation responses):
+fifteen cumulative; twenty-six unused task attempts close at handover. Normal
+operation remains enabled independently under daily/per-case controls; no
+diagnostic or historical workload is scheduled. At closure, local daily headroom
+was fifteen, selected-key reservation headroom nine, actual Google quota unknown.
+API and worker were restarted from the same original pilot configuration after
+the final receipt/accounting fixes. No generic probe/metadata request was repeated.
+
+Coverage policy `material-evidence-2026-10-22-v2` separates execution, applicability
+and sufficiency. EXIF/C2PA, zero-weight experiments and research repairer-pattern
+observations are advisory. Absent eligible history is not applicable, never a
+verified clean history. Material requirements remain enforced. Original model
+recommendation, effective deterministic guard and human decision are separate.
+Production routing has no additive numeric score or fraud probability.
+
+Renderer `fraudlens-pdf-2026-10-22-v5` adds concise material gaps/effective action,
+real evidence comparisons and labelled INR heuristic bars. It explicitly says no
+independent repair estimate/invoice was verified. Original artifacts remain
+unchanged. Current claims snapshot:
+`bba138dd00efbc74e298c7ed1ea803e97c1862b867bd9d455ee44bafa82537c1`.
+Its PDF and representative underwriting fixture are nine pages each; every page
+was rendered and inspected. Browser preview/download bytes matched. Headless
+Chrome's native viewer did not paint pages, so manual/native preview pixels were
+not verified. Controlled UI fixtures covered category boundaries, unknown/missing
+scores, failures, stale/history and desktop/mobile behavior without model calls.
+
+Provider regressions: 159 passed, 7 live-only skipped. Workflow/customer/report/
+risk regressions: 130 passed. Runs overlap. Frontend typecheck/build passed.
+Acceptance 42.765 s, successful worker pipeline 164.601 s, peak worker RSS about
+986 MiB; local experimental classifier cold loading took 78.248 s. CPU model
+warmup and database round trips remain bottlenecks on this 8 GiB machine. No
+timeout increase conceals them. Restart the local production Node preview after
+a build to avoid stale manifest/asset hashes and failed hydration.
+Final restart: API warmup 663.875 s, peak about 1.56 GiB; dependency import and
+CLIP initialization were severely constrained by available memory. The service
+eventually became ready. This remaining cold-start limitation is explicitly
+reported; no timeout or model/quota setting was relaxed.
+
+Private consistent backups cover all 26 original tables and both provider
+controls. Every original business row, report, decision, finding and account was
+unchanged. Existing login cleanup removed five expired admin and one expired
+customer session; none of the accounts were removed. The original audit had
+825 cases, 800 legacy/no-durable-run and 25 genuinely failed/partial cases.
+No-run records display as not recorded. The claims-only dry-run proposes new run
+IDs, validates evidence/cache compatibility, checkpoints state and requires an
+explicit future operator action. Its minimum estimate is 1,625 calls and its
+per-case-cap bound 10,688; zero historical jobs were queued. Self/temporal
+exclusion and retrospective labels apply, preserving earlier decisions/reports.
+
+Exact files/purposes: [implementation record](docs/NORMAL_OPERATION_WORKLOG.md).
+Startup, persisted pause/resume, conservative settings, safe read-only historical
+command and rollback: [operating guide](docs/NORMAL_OPERATION.md).
+Actual IDs, receipts/accounting, software verification and evidence limitations:
+[diagnostics](GEMINI_DIAGNOSTICS.md), [sanitized audit](docs/normal_operation/audit.json).
+Downloadable samples/screenshots: [artifacts](docs/normal_operation/README.md).
+Rollback begins with a persisted pause; never restore an older ledger over new
+provider history. No push, deployment, billing, key rotation or bulk reprocessing.

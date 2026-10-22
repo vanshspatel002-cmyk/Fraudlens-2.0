@@ -1,0 +1,475 @@
+{
+  "date": "2026-10-22",
+  "branch": "repair/analysis-pipeline-20261020",
+  "base_commit": "835ae28103060c0a087da63eac4a979d22bfd47f",
+  "claims": {
+    "result": "Live workflow verified",
+    "schema": "fraudlens_pilot",
+    "case_id": "case-e4f345a50f26",
+    "run_id": "bbb9ed14d1c28c961b74093212aa8a6e",
+    "earlier_failed_run": "5964e717c7d04b50b3078dbff25730fd",
+    "execution": "completed",
+    "fresh_perception": 1,
+    "perception_cache_qualification": 0,
+    "fresh_agent_turns": 2,
+    "real_tool_exchanges": 1,
+    "actual_tool": "get_claimant_history",
+    "converged": true,
+    "model_routing": "escalate_siu / escalate",
+    "effective_routing": "escalate",
+    "assessment_sufficient": false,
+    "material_gaps": [
+      "external_corpus",
+      "scene_consistency",
+      "plate_ocr"
+    ],
+    "numeric_production_score": null,
+    "human_action": "request_more_evidence",
+    "customer_status": "awaiting_evidence",
+    "sample_is_fictional": true,
+    "authorized_sample": "data/curated/damaged/damaged_0002.jpg",
+    "qualification_limits": "The sample already exists in the pilot reference corpus. Exact reuse is expected; observations and fictional declarations do not establish accuracy or fraud.",
+    "browser_verification": {
+      "two_normal_tabs": true,
+      "risk_matches_saved_contract": true,
+      "laptop_mobile_no_overflow": true,
+      "preview_download_identical_saved_bytes": true,
+      "javascript_errors": [],
+      "case_id": "case-e4f345a50f26",
+      "run_id": "bbb9ed14d1c28c961b74093212aa8a6e",
+      "snapshot_id": "bba138dd00efbc74e298c7ed1ea803e97c1862b867bd9d455ee44bafa82537c1",
+      "human_action": "request_more_evidence",
+      "customer_outcome_verified": true,
+      "ownership_verified": true,
+      "pdf_sha256": "7d7a52d113b50d31dcc5280716487daf0756379d08c24041be04c6f31afbde57"
+    },
+    "acceptance_seconds": 42.765,
+    "successful_pipeline_seconds": 164.601,
+    "worker_peak_rss_bytes": 1034375168,
+    "api_warm_seconds": 118.197
+  },
+  "underwriting": {
+    "result": "Deferred: live verification not performed",
+    "shared_software": "Controlled fixtures only",
+    "fixture_pdf_pages": 9
+  },
+  "controls": {
+    "version": "local-operation-2026-10-22-v1",
+    "mode": "normal",
+    "circuit": null,
+    "limits": {
+      "daily_attempts": 30,
+      "case_attempts": 16,
+      "agent_turns": 8,
+      "concurrent_cases": 1,
+      "retry_attempts": 2,
+      "pacing_seconds": 2,
+      "cooldown_seconds": 1800
+    },
+    "task": {
+      "base_attempts": 11,
+      "ceiling": 41,
+      "status": "closed",
+      "finished_at": 1792651870.0604196,
+      "final_attempts": 15
+    },
+    "starting_attempts": 11,
+    "final_attempts": 15,
+    "new_attempts": 4,
+    "unused_task_allowance": 26,
+    "historical_11_events_and_recovery_grants_unchanged": true,
+    "google_account_quota": "Not established by local ledgers"
+  },
+  "actual_requests": [
+    {
+      "attempt": 12,
+      "outcome": "failure:503",
+      "requested_model": "gemini-3.5-flash",
+      "http_status": 503,
+      "error_category": "provider_http_error"
+    },
+    {
+      "attempt": 13,
+      "outcome": "success",
+      "requested_model": "gemini-3.5-flash",
+      "serving_model": "gemini-3.6-flash",
+      "http_status": 200,
+      "operation": "perception",
+      "finish_reason": "STOP",
+      "latency_ms": 5625,
+      "source": "fresh_provider",
+      "token_usage": {
+        "prompt_token_count": 1570,
+        "candidates_token_count": 98,
+        "total_token_count": 2179,
+        "thoughts_token_count": 511
+      }
+    },
+    {
+      "attempt": 14,
+      "outcome": "success",
+      "requested_model": "gemini-3.5-flash",
+      "serving_model": "gemini-3.6-flash",
+      "http_status": 200,
+      "operation": "agent",
+      "finish_reason": "STOP",
+      "latency_ms": 4532,
+      "source": "fresh_provider",
+      "token_usage": {
+        "prompt_token_count": 4199,
+        "candidates_token_count": 13,
+        "total_token_count": 4873,
+        "thoughts_token_count": 661
+      }
+    },
+    {
+      "attempt": 15,
+      "outcome": "success",
+      "requested_model": "gemini-3.5-flash",
+      "serving_model": "gemini-3.6-flash",
+      "http_status": 200,
+      "operation": "agent",
+      "finish_reason": "STOP",
+      "latency_ms": 7358,
+      "source": "fresh_provider",
+      "token_usage": {
+        "prompt_token_count": 4963,
+        "candidates_token_count": 206,
+        "total_token_count": 6364,
+        "thoughts_token_count": 1195
+      }
+    }
+  ],
+  "database_preservation": {
+    "admin_actions": {
+      "before": 27,
+      "after": 28,
+      "old_rows_changed_or_removed": 0
+    },
+    "agent_decisions": {
+      "before": 914,
+      "after": 916,
+      "old_rows_changed_or_removed": 0
+    },
+    "api_jobs": {
+      "before": 36,
+      "after": 38,
+      "old_rows_changed_or_removed": 0
+    },
+    "applicant_grants": {
+      "before": 25,
+      "after": 26,
+      "old_rows_changed_or_removed": 0
+    },
+    "audit_log": {
+      "before": 1113,
+      "after": 1125,
+      "old_rows_changed_or_removed": 0
+    },
+    "cache_entries": {
+      "before": 108,
+      "after": 110,
+      "old_rows_changed_or_removed": 0
+    },
+    "cases": {
+      "before": 825,
+      "after": 826,
+      "old_rows_changed_or_removed": 0
+    },
+    "case_owners": {
+      "before": 4,
+      "after": 5,
+      "old_rows_changed_or_removed": 0
+    },
+    "claimants": {
+      "before": 800,
+      "after": 800,
+      "old_rows_changed_or_removed": 0
+    },
+    "customer_accounts": {
+      "before": 1,
+      "after": 3,
+      "old_rows_changed_or_removed": 0
+    },
+    "evidence_batches": {
+      "before": 36,
+      "after": 37,
+      "old_rows_changed_or_removed": 0
+    },
+    "evidence_requests": {
+      "before": 14,
+      "after": 15,
+      "old_rows_changed_or_removed": 0
+    },
+    "findings": {
+      "before": 14858,
+      "after": 14884,
+      "old_rows_changed_or_removed": 0
+    },
+    "images": {
+      "before": 1473,
+      "after": 1474,
+      "old_rows_changed_or_removed": 0
+    },
+    "image_artifacts": {
+      "before": 0,
+      "after": 0,
+      "old_rows_changed_or_removed": 0
+    },
+    "migration_imports": {
+      "before": 1,
+      "after": 1,
+      "old_rows_changed_or_removed": 0
+    },
+    "organizations": {
+      "before": 1,
+      "after": 1,
+      "old_rows_changed_or_removed": 0
+    },
+    "perception_records": {
+      "before": 130,
+      "after": 131,
+      "old_rows_changed_or_removed": 0
+    },
+    "processing_results": {
+      "before": 36,
+      "after": 38,
+      "old_rows_changed_or_removed": 0
+    },
+    "report_artifacts": {
+      "before": 3,
+      "after": 5,
+      "old_rows_changed_or_removed": 0
+    },
+    "report_snapshots": {
+      "before": 60,
+      "after": 63,
+      "old_rows_changed_or_removed": 0
+    },
+    "reviewer_accounts": {
+      "before": 2,
+      "after": 3,
+      "old_rows_changed_or_removed": 0
+    },
+    "schema_migrations": {
+      "before": 2,
+      "after": 2,
+      "old_rows_changed_or_removed": 0
+    },
+    "submission_receipts": {
+      "before": 25,
+      "after": 26,
+      "old_rows_changed_or_removed": 0
+    }
+  },
+  "session_cleanup": "Existing login flows removed five expired admin sessions and one expired customer session. No account was deleted; original cases, evidence, findings, decisions, jobs, results, audit rows and report artifacts were unchanged.",
+  "historical_plan": {
+    "baseline_cases": 825,
+    "claims": 668,
+    "underwriting": 157,
+    "legacy_without_durable_run": 800,
+    "failed_or_partial_cases": 25,
+    "failed_runs": 36,
+    "missing_evidence_files": 0,
+    "claims_estimated_minimum_calls": 1625,
+    "claims_estimated_maximum_calls": 10688,
+    "unique_compatible_vision_misses": 957,
+    "historical_jobs_enqueued": 0
+  },
+  "final_services": {
+    "api_worker_config_consistent": true,
+    "schema": "fraudlens_pilot",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash",
+    "request_profile": "gemini3_defaults_v2",
+    "key_present": true,
+    "session_ledger": "outputs/pilot_validation/live_calls.json",
+    "quota_ledger": "outputs/pilot_validation/quota_budget.json",
+    "diagnostic_grants_absent": true,
+    "api_pid": 4176,
+    "worker_pid": 4000,
+    "services": {
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 1.343
+      },
+      "ready": {
+        "http_status": 200,
+        "elapsed_seconds": 0.579
+      },
+      "frontend": {
+        "http_status": 200,
+        "elapsed_seconds": 0.015
+      }
+    },
+    "queued_or_running_jobs": 0,
+    "generation_attempts": 15,
+    "mode": "normal",
+    "circuit": null,
+    "task_status": "closed",
+    "expired_session_cleanup_verified": true,
+    "final_api_warmup_seconds": 663.875,
+    "final_api_peak_rss_bytes": 1677897728
+  },
+  "headroom_at_task_closure": {
+    "pacific_quota_day": "2026-10-21",
+    "normal_daily_attempts_remaining": 15,
+    "selected_key_local_reservations_remaining": 9,
+    "google_account_remaining": "Unknown"
+  },
+  "verification": {
+    "provider_regressions": "159 passed, 7 skipped",
+    "workflow_regressions": "130 passed",
+    "frontend_typecheck": "passed",
+    "frontend_production_build": "passed",
+    "fixture_browser": [
+      {
+        "case": "claims-high",
+        "check": "preview/download use identical saved bytes; no analysis/decision request"
+      },
+      {
+        "case": "claims-high",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "claims-high",
+        "width": 390,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "underwriting-medium",
+        "check": "preview/download use identical saved bytes; no analysis/decision request"
+      },
+      {
+        "case": "underwriting-medium",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "underwriting-medium",
+        "width": 390,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "claims-incomplete",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "underwriting-incomplete",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "claims-low",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "claims-medium",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "stale-after-evidence",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "historical-completed",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      },
+      {
+        "case": "unknown-category",
+        "width": 1440,
+        "phase": "after",
+        "javascript_errors": 0
+      }
+    ],
+    "pdf_all_pages": [
+      {
+        "file": "claims-high.pdf",
+        "pages": 10,
+        "all_pages_rendered": true,
+        "text_and_image_bounds": "passed",
+        "image_aspect_ratios": "passed",
+        "first_page_label": "Assessed risk: High"
+      },
+      {
+        "file": "claims-incomplete.pdf",
+        "pages": 10,
+        "all_pages_rendered": true,
+        "text_and_image_bounds": "passed",
+        "image_aspect_ratios": "passed",
+        "first_page_label": "Assessment incomplete"
+      },
+      {
+        "file": "claims-live.pdf",
+        "pages": 9,
+        "all_pages_rendered": true,
+        "text_and_image_bounds": "passed",
+        "image_aspect_ratios": "passed",
+        "first_page_label": "Assessment incomplete"
+      },
+      {
+        "file": "claims-low.pdf",
+        "pages": 10,
+        "all_pages_rendered": true,
+        "text_and_image_bounds": "passed",
+        "image_aspect_ratios": "passed",
+        "first_page_label": "Assessed risk: Low"
+      },
+      {
+        "file": "claims-medium.pdf",
+        "pages": 10,
+        "all_pages_rendered": true,
+        "text_and_image_bounds": "passed",
+        "image_aspect_ratios": "passed",
+        "first_page_label": "Assessed risk: Medium"
+      },
+      {
+        "file": "underwriting-incomplete.pdf",
+        "pages": 9,
+        "all_pages_rendered": true,
+        "text_and_image_bounds": "passed",
+        "image_aspect_ratios": "passed",
+        "first_page_label": "Assessment incomplete"
+      },
+      {
+        "file": "underwriting-medium.pdf",
+        "pages": 9,
+        "all_pages_rendered": true,
+        "text_and_image_bounds": "passed",
+        "image_aspect_ratios": "passed",
+        "first_page_label": "Assessed risk: Medium"
+      }
+    ],
+    "pdf_visual_inspection": "Every page of actual claims and representative underwriting fixture inspected",
+    "native_browser_pdf_pixels": "Not verified: headless native viewer did not paint pages; saved bytes and standalone rendered pages verified",
+    "external_calls_in_ordinary_tests": 0
+  },
+  "artifacts": {
+    "claims-live.pdf": "7d7a52d113b50d31dcc5280716487daf0756379d08c24041be04c6f31afbde57",
+    "underwriting-fixture.pdf": "da27df3c061b47fbe3abcc8bb10bd939c0b4fdd536a1a87940ff2af3ad0590ee",
+    "admin-claims-laptop.png": "5d7053413cd2a9bd12400c24b8a6e45fc5d6439a4c3f21bb52751c9f602d16de",
+    "admin-claims-mobile.png": "f154c1b46240aa3f5a1d2216e0fa9f6c49b56d355f342686e5a261a593b00c48",
+    "customer-outcome.png": "2aed5096d541f47a4c2b9ed769e7bf3a69d64c500776035ff4c3b409390e17a1",
+    "claims-front.png": "70bfba6a1a6775f727da1db2bc2f66c0396365ba0e045206f5958f4fde3e88b9",
+    "claims-amount-comparison.png": "0fc7e2d0af99d1e7518ba45f1c6e1524d21d1679a7aec5bf5902ef075aad8c05",
+    "claims-registration-and-reuse.png": "7fa66c78d3dab3402fb489fa419622d92b5f2840fc61b12d105404087126496b",
+    "underwriting-fixture-metadata-relationships.png": "9c3d16ed01c0e90fb7054b5e5de87e66d2a24bd6926ba2b589dd119277cee1b3",
+    "underwriting-fixture-header.png": "979087702e629425c4ec2321b4b4d0441888a9eb949811aec454c23f49233be2"
+  }
+}

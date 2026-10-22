@@ -65,6 +65,8 @@ def _validate_state(state):
         raise QuotaControlInvalid('The existing session ledger is invalid; restore its audit history before any provider request.')
     from .validation_budget import validate_state
     validate_state(state)
+    from .operating_policy import validate
+    validate(state)
 
 
 def _change(callback):
@@ -100,6 +102,10 @@ def _change(callback):
 
 
 def _allow(state, request_contract=None):
+    if state.get('operation'):
+        from .operating_policy import allow
+        allow(state)
+        return None
     from .validation_budget import allow
     validation = allow(state)
     if validation:
@@ -302,15 +308,26 @@ def model_metadata_outcome(attempt,error=None):
     _change(update)
 
 
-def reserve(model, *, request_contract=None):
+def reserve(model, *, request_contract=None, charge=None):
+    if charge is not None and not os.environ.get('FRAUDLENS_LIVE_LEDGER'):
+        raise QuotaControlInvalid('A shared session ledger is required for coordinated reservation.')
     def update(state):
         validation = _allow(state, request_contract)
+        # Lock order is session -> quota, including operator backups. Rejected
+        # concurrent workers cannot consume a stray daily quota reservation.
+        if charge is not None:
+            charge()
         current = _recovery(state)
         if (current and current.get('kind') == 'request_schema_correction' and current['status'] != 'validation_authorized'
                 and model != current['request_contract']['model']):
             raise ProviderCircuitOpen('The corrected probe must use the authorized pilot model.')
         state['attempts'] += 1
         event={'attempt': state['attempts'], 'model': model, 'time': time.time(), 'outcome': 'reserved'}
+        if request_contract is not None:
+            event['request_contract'] = dict(request_contract)
+        if state.get('operation'):
+            from .operating_policy import reserve as reserve_operation
+            reserve_operation(state, event)
         if validation:
             from .validation_budget import reserve as reserve_validation
             reserve_validation(validation, event)
@@ -340,6 +357,10 @@ def outcome(error=None, *, attempt=None):
         code = getattr(error, 'code', None)
         event['outcome'] = 'success' if error is None else f'failure:{code or type(error).__name__}'
         event['completed_at']=time.time()
+        if event.get('operation_version'):
+            from .operating_policy import outcome as operating_outcome
+            operating_outcome(state, event, error)
+            return
         from .validation_budget import outcome as validation_outcome
         validation_outcome(state, event, error)
         recovery=next((r for r in state.get('recoveries',[]) if r['recovery_id']==event.get('recovery_id')),None)
@@ -360,11 +381,12 @@ def outcome(error=None, *, attempt=None):
     _change(update)
 
 
-def save_receipt(attempt, receipt):
+def save_receipt(attempt, receipt, request_contract=None):
     """Safe response metadata added before validation or result persistence."""
     def update(state):
         event = next((e for e in state['events'] if e['attempt'] == attempt), None)
-        if not event or event['outcome'] != 'reserved' or not event.get('validation_id'):
+        if not event or event['outcome'] != 'reserved' or not (event.get('validation_id') or event.get('operation_version')):
             raise ValueError('No scoped in-flight request exists for this receipt.')
         event['receipt'] = dict(receipt)
+        event['request_contract'] = request_contract
     _change(update)

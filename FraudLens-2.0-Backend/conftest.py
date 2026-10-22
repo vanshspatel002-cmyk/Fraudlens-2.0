@@ -29,6 +29,8 @@ def pytest_configure(config):
     patch.delenv('FRAUDLENS_RECOVERY_ID',raising=False)
     patch.delenv('FRAUDLENS_VALIDATION_ID',raising=False)
     patch.delenv('FRAUDLENS_RESPONSE_DIR',raising=False)
+    # Normal operation is ledger-owned; the empty test session path above
+    # prevents tests inheriting its migration or spending a real task allowance.
     import httpx
     from urllib.parse import urlsplit
     local = {'localhost', '127.0.0.1', '::1'}

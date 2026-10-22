@@ -886,6 +886,7 @@ class ReportDeclaration(BaseModel):
 class CaseReportOut(BaseModel):
     assessment_presentation: Optional[dict[str, Any]] = None
     assessment_explanation: Optional[dict[str, Any]] = None
+    assessment_context: Optional[Literal['current','historical']] = None
     report_template_version: Optional[str] = None
     submitted_at: Optional[str] = None
     evidence_inventory: list[dict[str, Any]] = Field(default_factory=list)
@@ -1408,6 +1409,7 @@ def _build_report(conn,case_id):
                 assessment_explanation=event.details.get('assessment_explanation')
                 break
     report = CaseReportOut(case_id=case_id,declaration=_report_declaration(case),
+        assessment_context='historical' if (job or {}).get('retrospective') else 'current',
         assessment_explanation=assessment_explanation,
         findings_by_category=grouped,finding_groups=groups,agent_recommendation=decision,
         agent_narrative=decision.summary if decision else None,
@@ -1966,6 +1968,12 @@ def _set_job(job_id: str, **fields: Any) -> None:
             runtime_store.fence(conn, job_id)
         job = runtime_store.get_job(conn, job_id) or {"job_id": job_id}
         previous_status = job.get('status')
+        if fields.get('stage') and fields['stage'] != job.get('stage'):
+            now = time.time()
+            stages = job.setdefault('stage_timings', [])
+            if stages and 'finished_at' not in stages[-1]:
+                stages[-1].update(finished_at=now, elapsed_seconds=round(now-stages[-1]['started_at'],3))
+            stages.append({'stage':fields['stage'],'started_at':now})
         job.update(fields)
         # Diagnostics remain run-specific when copied into reports/audit views.
         # Never mutate earlier saved results or provider-ledger events.
@@ -2024,8 +2032,10 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                     continue
                 try:
                     provenance = {}
+                    from . import operating_policy
+                    perception_attempts = operating_policy.limits()['retry_attempts'] if operating_policy.enabled() else 1
                     with span('pipeline.perception_image'):
-                        record = perceive_image(conn, image, provider, retry_attempts=1, provenance=provenance, release_transactions=True)
+                        record = perceive_image(conn, image, provider, retry_attempts=perception_attempts, provenance=provenance, release_transactions=True)
                     conn.commit()
                     perception_sources[provenance.get('source', 'unavailable')] += 1
                     if not perception_record_usable(record):
@@ -2517,6 +2527,12 @@ customer_auth.install(app)
 
 @app.get('/v1/operations',tags=['config'])
 def operations(_admin: str=Depends(require_admin),conn: sqlite3.Connection=Depends(get_conn)):
+    from . import session_budget
+    provider_controls = session_budget._change(lambda state: {
+        'attempts':state['attempts'], 'mode':(state.get('operation') or {}).get('mode','diagnostic'),
+        'limits':(state.get('operation') or {}).get('limits'),
+        'circuit':(state.get('operation') or {}).get('circuit'),
+        'task':(state.get('operation') or {}).get('task')})
     jobs=[json.loads(row[0]) for row in conn.execute("SELECT payload FROM api_jobs WHERE status IN ('failed','interrupted') ORDER BY rowid DESC LIMIT 10")]
     created = db.json_text(conn,'payload','created_at')
     if db.is_postgres(conn):
@@ -2524,6 +2540,7 @@ def operations(_admin: str=Depends(require_admin),conn: sqlite3.Connection=Depen
     oldest=conn.execute('SELECT MIN(COALESCE('+created+",updated_at)) FROM api_jobs WHERE status='queued'").fetchone()[0]
     worker=getattr(app.state,'worker',None)
     return {'organization_id':'local','tenant_isolation':False,
+        'provider_controls':provider_controls,
         'database_backend':'postgresql' if db.is_postgres(conn) else 'sqlite',
         'worker_active_in_this_process':bool(worker and worker.thread and worker.thread.is_alive()),
         'worker_leader_in_this_process':bool(worker and worker.lock),

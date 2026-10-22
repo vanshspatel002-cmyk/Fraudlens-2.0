@@ -389,9 +389,12 @@ class GeminiProvider(LLMProvider):
         from google.genai import errors as genai_errors
 
         recovery_mode=bool(os.environ.get('FRAUDLENS_RECOVERY_ID') or os.environ.get('FRAUDLENS_VALIDATION_ID'))
+        from . import operating_policy
+        normal_mode = operating_policy.enabled()
         request_attempts = 0
         attempt_history = []
         if recovery_mode:attempts=1
+        elif normal_mode:attempts=min(attempts, operating_policy.limits()['retry_attempts'])
         while True:
             label, secret = self._pool.current()
             client = self._client_for(label, secret)
@@ -402,9 +405,15 @@ class GeminiProvider(LLMProvider):
                 from . import session_budget
                 from .analysis_diagnostics import failure_detail
                 try:
+                    if normal_mode:operating_policy.pace()
                     session_budget.check(request_contract=request_contract)
-                    quota_budget.reserve_call(consumer,label,keys_configured=len(self._pool),model=self.model,kind="gemini")
-                    attempt = session_budget.reserve(self.model, request_contract=request_contract)
+                    def charge():
+                        quota_budget.reserve_call(consumer,label,keys_configured=len(self._pool),model=self.model,kind="gemini")
+                    if os.environ.get('FRAUDLENS_LIVE_LEDGER'):
+                        attempt = session_budget.reserve(self.model, request_contract=request_contract, charge=charge)
+                    else:
+                        charge()
+                        attempt = session_budget.reserve(self.model, request_contract=request_contract)
                     self._last_attempt=attempt
                 except Exception as exc:
                     exc.analysis_failure=failure_detail(exc,'provider_control',attempt_count=request_attempts,attempted_network=request_attempts > 0,model=self.model)
@@ -435,13 +444,13 @@ class GeminiProvider(LLMProvider):
                 has_spare_key = not self._pool.all_exhausted() and len(self._pool) > 1
                 result = _call_with_retry(
                     _budgeted_call, attempts=attempts,
-                    retry_rate_limits=not has_spare_key,
+                    retry_rate_limits=not (has_spare_key or normal_mode),
                 )
                 _record_key_call(label, ok=True)
                 _debug(f"call served by {label}")
                 return result
             except genai_errors.APIError as e:
-                if recovery_mode:
+                if recovery_mode or normal_mode:
                     raise  # No key rotation or repeated automatic recovery probes.
                 if not is_rate_limit_error(e):
                     raise
@@ -494,6 +503,9 @@ class GeminiProvider(LLMProvider):
         conn: Optional[sqlite3.Connection] = None,
     ) -> LLMResponse:
         key = _chat_cache_key(messages, tools, self.model)
+        self._agent_turn_index = getattr(self, '_agent_turn_index', 0) + 1
+        checkpoint_contract = {'agent_request_digest':key,'profile':self.request_profile,
+                               'agent_turn':self._agent_turn_index}
 
         if conn is not None:
             lookup_start = time.monotonic()
@@ -514,11 +526,15 @@ class GeminiProvider(LLMProvider):
                 config=config,
             )
             from .provider_receipts import received
-            received(self, response, 'agent')
+            received(self, response, 'agent', request_contract=checkpoint_contract)
             _validate_generation_response(response)
             return response
 
-        response = self._call_rotating(_call)
+        from .provider_receipts import reconcile
+        self._reconciled=False
+        response = reconcile(self, 'agent', checkpoint_contract)
+        if response is None:response = self._call_rotating(_call, request_contract=checkpoint_contract)
+        else:_validate_generation_response(response)
         latency_ms = int((time.monotonic() - start) * 1000)
 
         result = LLMResponse(
@@ -526,7 +542,7 @@ class GeminiProvider(LLMProvider):
             tool_call=_extract_tool_call(response),
             raw=_response_to_dict(response),
             model=self.model,
-            cached=False,
+            cached=self._reconciled,
             latency_ms=latency_ms,
             model_content=_extract_model_content(response),
             tool_calls=_extract_tool_calls(response),
@@ -535,7 +551,7 @@ class GeminiProvider(LLMProvider):
 
         if conn is not None:
             db.cache_set(conn, _CHAT_NAMESPACE + self._request_cache_suffix, key, _response_to_cache_entry(result))
-        _record_usage(cache_hit=False, latency_ms=latency_ms)
+        _record_usage(cache_hit=self._reconciled, latency_ms=latency_ms)
 
         return result
 
@@ -592,7 +608,11 @@ class GeminiProvider(LLMProvider):
             _validate_generation_response(response, structured=response_schema is not None, schema=response_schema)
             return response
 
-        response = self._call_rotating(_call, attempts=retry_attempts, request_contract=request_contract)
+        from .provider_receipts import reconcile
+        self._reconciled=False
+        response = reconcile(self, 'perception', request_contract)
+        if response is None:response = self._call_rotating(_call, attempts=retry_attempts, request_contract=request_contract)
+        else:_validate_generation_response(response, structured=response_schema is not None, schema=response_schema)
         latency_ms = int((time.monotonic() - start) * 1000)
 
         result = LLMResponse(
@@ -600,7 +620,7 @@ class GeminiProvider(LLMProvider):
             tool_call=_extract_tool_call(response),
             raw=_response_to_dict(response),
             model=self.model,
-            cached=False,
+            cached=self._reconciled,
             latency_ms=latency_ms,
             model_content=_extract_model_content(response),
             tool_calls=_extract_tool_calls(response),
@@ -609,7 +629,7 @@ class GeminiProvider(LLMProvider):
 
         if conn is not None:
             db.cache_set(conn, _VISION_NAMESPACE + self._request_cache_suffix, key, _response_to_cache_entry(result))
-        _record_usage(cache_hit=False, latency_ms=latency_ms)
+        _record_usage(cache_hit=self._reconciled, latency_ms=latency_ms)
 
         return result
 
@@ -760,12 +780,14 @@ def _request_provenance(response,provider):
     result = {'session_attempt':getattr(provider,'_last_attempt',None),
         'requested_model':provider.model,'serving_model':getattr(response,'model_version',None),
         'timestamp':datetime.now(timezone.utc).isoformat(), **response_metadata(response)}
-    if os.environ.get('FRAUDLENS_VALIDATION_ID'):
+    from .operating_policy import enabled
+    if os.environ.get('FRAUDLENS_VALIDATION_ID') or enabled():
         from . import session_budget
         # The receipt has already been persisted; read-only lookup cannot emit a request.
         state = json.loads(Path(os.environ['FRAUDLENS_LIVE_LEDGER']).read_text(encoding='utf8'))
         event = next((e for e in state['events'] if e['attempt'] == result['session_attempt']), {})
         result.update(event.get('receipt', {}))
+        if getattr(provider, '_reconciled', False):result['source']='response_checkpoint'
     return result
 
 

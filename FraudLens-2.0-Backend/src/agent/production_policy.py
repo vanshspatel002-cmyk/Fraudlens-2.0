@@ -56,11 +56,20 @@ outputs as INCONCLUSIVE and retains their original observations for audit.
 
 def production_policy(agent_type):
     prior=production_policy_v2(agent_type)
-    return replace(prior,policy_version='agent-production-'+agent_type+'-2026-10-14-v3',
+    from ..operating_policy import limits
+    return replace(prior,policy_version='agent-production-'+agent_type+'-2026-10-22-v4',
+        max_iterations=min(prior.max_iterations, limits()['agent_turns']),
         system_prompt=prior.system_prompt+'''
 REGULATORY BOUNDARY: the configured INR 50,000 billing threshold is a preserved
 research benchmark. Current legal applicability and insurer procedures have
 not been verified. Do not state that a surveyor is legally mandatory or that
 a billing pattern proves regulatory evasion. Report the recorded garage
 pattern and request independent corroboration.
+MATERIAL EVIDENCE: EXIF and C2PA are optional provenance, and zero-weight
+experiments do not block completeness. An absent historical comparison is
+not applicable, not proof of clean history. Unresolved applicable identity,
+image comparison, incident context or damage checks prevent actionable clearance.
+The system preserves your recommendation but applies a separately recorded
+material-evidence routing guard. Never present a severity/amount heuristic as
+a verified repair estimate or insurer/legal rule.
 ''')

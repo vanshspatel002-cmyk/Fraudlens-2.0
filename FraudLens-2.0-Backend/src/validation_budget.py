@@ -16,7 +16,8 @@ _scope = ContextVar('provider_validation_scope', default=None)
 
 @contextmanager
 def execution(schema, job):
-    token = _scope.set({'schema': schema, 'run_id': job['job_id'], 'case_id': job['case_id']})
+    token = _scope.set({'schema': schema, 'run_id': job['job_id'], 'case_id': job['case_id'],
+                       **({'retrospective':True, 'batch_id':job.get('batch_id')} if job.get('retrospective') else {})})
     try:
         yield
     finally:

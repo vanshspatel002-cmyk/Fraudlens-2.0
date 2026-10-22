@@ -113,6 +113,18 @@ def summarize(env):
         result['validation_grant'].update(expires_at=iso(grant['expires_at']),
             currently_authorized=max(0,grant['allowance']-grant['reserved']) if grant['status']=='active' and time.time()<grant['expires_at'] else 0)
     filename = env.get('GEMINI_QUOTA_BUDGET','outputs/quota_budget.json')
+    if result.get('session') and 'state' in locals() and state.get('operation'):
+        operation=state['operation']; task=operation.get('task') or {}
+        result['normal_operation']={key:operation.get(key) for key in ('version','mode','schema','limits','circuit','task')}
+        result['session'].pop('normal_process_cap',None)
+        result['session']['legacy_diagnostic_limit']=cap
+        for name in ['recovery_status','recovery_finished_at','new_recovery_permitted','recovery_block_reason']:
+            if name in result['session']:result['session']['historical_'+name]=result['session'].pop(name)
+        result['session'].update(cap=task.get('ceiling') if task.get('status')=='active' else None,
+            headroom=max(0,task['ceiling']-state['attempts']) if task.get('status')=='active' else None,
+            stop=(operation.get('circuit') or {}).get('category'),
+            historical_diagnostic_stop=state['stopped'],authorized_now=None,
+            allowance_note='Normal worker admission is bounded by daily/per-case controls and the separate quota ledger; local headroom is not Google quota.')
     if Path(filename).is_file():
         state=json.loads(Path(filename).read_text(encoding='utf8'));quota_budget._validate_state(state)
         result['daily']={'recorded_day':state['quota_day'],'current_pacific_day':quota_budget.pacific_quota_day(),

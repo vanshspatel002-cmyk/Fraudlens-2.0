@@ -1,4 +1,164 @@
-# Isolated live workflow validation - 22 October 2026
+# Normal local operation — 22 October 2026
+
+**Claims: Live workflow verified through the ordinary customer UI. Underwriting:
+live validation deferred; shared behavior verified with controlled fixtures.**
+This update supersedes the earlier stopped-operation handover below without
+removing its historical evidence. Baseline: branch `repair/analysis-pipeline-20261020`,
+commit `835ae28103060c0a087da63eac4a979d22bfd47f`. Applicable instructions, the
+current handover, this document and `live-workflow-audit.json` were inspected before
+editing. No applicable AGENTS.md was found. Unrelated staged/working edits remain
+separate.
+
+The original session ledger now contains an explicit, append-audited operating
+migration, not a reset. All eleven historical generation events, stop text,
+recoveries, closed validation grants and quota history were preserved. Normal
+workers use the original PostgreSQL pilot schema and shared controls. The old
+15-attempt diagnostic ceiling no longer permanently disables ordinary operation.
+Unbound diagnostics and historical jobs cannot borrow normal job access.
+
+## Actual ordinary claims result
+
+| Item | Observed / persisted result |
+|---|---|
+| Schema | `fraudlens_pilot`, existing pilot, not the isolated validation schema |
+| Presentation case | `case-e4f345a50f26`, fictional applicant/declarations |
+| First run | `5964e717c7d04b50b3078dbff25730fd`; actual HTTP 503 `UNAVAILABLE`, failed run retained |
+| Explicit reviewer retry | `bbb9ed14d1c28c961b74093212aa8a6e`; completed/complete, one durable acquisition attempt |
+| Qualified perception | One fresh Gemini response; ten-field full schema validated; zero cached qualifications |
+| Actual agent execution | Two fresh turns, one real `get_claimant_history` tool exchange, converged output |
+| Model routing, preserved | `escalate_siu` / `escalate`, numeric score null |
+| Effective routing | Escalate retained; material-evidence guard prevents actionable clearance |
+| Material gaps | `external_corpus`, `scene_consistency`, `plate_ocr` |
+| UI/PDF risk | Assessment incomplete; neutral bar, category null, no numeric score |
+| Human action | Fictional reviewer requested evidence on this new case only; customer status `awaiting_evidence` |
+| Report | Nine pages, `fraudlens-pdf-2026-10-22-v5`; snapshot `bba138dd00efbc74e298c7ed1ea803e97c1862b867bd9d455ee44bafa82537c1` |
+| PDF SHA-256 | `7d7a52d113b50d31dcc5280716487daf0756379d08c24041be04c6f31afbde57` |
+
+The authorized photograph `data/curated/damaged/damaged_0002.jpg` visibly shows
+scuffs/denting on a dark vehicle panel, with no readable registration. No prior
+compatible observation or request cache supplied its qualifying perception. The
+same public sample already exists in the pilot image corpus: its exact duplicate
+finding is expected and does not establish fraud, detection accuracy, vehicle
+identity or the fictional incident. Recorded moderate damage is supported as a
+qualitative observation; indoor lighting/floor interpretations are not independently
+authenticated. No fabricated boxes, estimates or confidence measurements were added.
+
+## Request accounting and retained receipts
+
+Starting attempts: **11**. New attempts: **4**. Final cumulative attempts: **15**.
+Task authorization was at most 30 new attempts, cumulative ceiling 41. The unused
+26 expire with task closure; there is no scheduled diagnostic or batch workload.
+One actual 503 was followed by successful perception and two successful agent
+turns. No generic probe or model metadata request was repeated. All successful
+receipts precede downstream artifact work and retain actual model/response ID,
+finish reason, timing and token counts. Nothing missing was reconstructed.
+
+| Attempt | Operation | HTTP / finish | Requested / serving model | HTTP timing |
+|---|---|---|---|---|
+| 12 | Perception | 503 / `UNAVAILABLE` | `gemini-3.5-flash` / not returned | Failure retained |
+| 13 | Perception | 200 / `STOP` | `gemini-3.5-flash` / `gemini-3.6-flash` | 5,625 ms |
+| 14 | Agent tool turn | 200 / `STOP` | Same requested / serving identifiers | 4,532 ms |
+| 15 | Agent final turn | 200 / `STOP` | Same requested / serving identifiers | 7,358 ms |
+
+SDK: Google GenAI 2.18.1; unchanged full `response_json_schema` contract and
+`gemini3_defaults_v2` request profile. No SDK transport retry, credentials change,
+model substitution, billing action or provider-limit bypass occurred. Requested
+and serving identifiers are reported as returned, not treated as interchangeable.
+
+Initial operating settings: one active case, 30 attempts per Pacific day, 16 per
+case across runs, eight agent turns, at most two application attempts per call,
+two-second pacing, and one half-open recovery after a 30-minute transient-circuit
+cooldown. Authentication/access, invalid request/model and quota rejections block
+unchanged calls. The existing quota ledger remains stricter where applicable:
+20 per configured key/day and 100 aggregate configured pool/consumer budget.
+At closure the ledgers record 15 session attempts this quota day and 11 primary-key
+reservations: application daily headroom 15; selected-key local headroom 9. These
+are local reservations, **not a statement of remaining Google account quota**.
+Normal code does not rotate to another key after rejection.
+
+The first failed presentation run used the earlier running implementation's
+one-attempt perception path. The final worker now loads the centralized bounded
+retry policy. That final retry/accounting path was verified offline; no extra
+generation was spent merely to repeat it. Successful live processing proves this
+case's call path, not guaranteed provider availability or assessment accuracy.
+
+## Local repairs and verification
+
+- `operating_policy.py` owns the audited normal-mode migration, budgets, pause,
+  circuit and task closure. Session admission and quota reservation share the
+  original atomic lock ordering, including concurrent rejection tests.
+- `provider_receipts.py` checkpoints actual replies before parsing/storage.
+  Exact same-run requests reconcile saved replies instead of generating again;
+  a changed-input replay of an already received agent turn blocks for local
+  reconciliation. Lost response bytes require inspection, not another request.
+- Coverage policy `material-evidence-2026-10-22-v2` separates execution,
+  applicability and material sufficiency. EXIF/C2PA, zero-weight experiments and
+  research repairer-pattern signals are advisory. No eligible historical match
+  means not applicable, not verified clean history. Material identity/context
+  requirements remain visible. Original model output and human decisions remain
+  separate from the saved deterministic clearance guard.
+- Renderer v5 uses real saved comparisons, metadata and INR heuristic bars;
+  excludes invented production contributions/probabilities and states that no
+  independent repair estimate/invoice was verified. Earlier PDFs are preserved.
+- Provider regressions: **159 passed, 7 live-only skipped**. Workflow/customer/
+  reports/risk regressions: **130 passed**. These runs overlap; counts must not
+  be added as unique tests. Frontend typecheck and production build passed.
+  Ordinary tests blocked external requests; no Gemini quota was used by tests.
+- Fixture browser checks covered Low/Medium/High, missing score/category,
+  incomplete/failed, stale and historical assessments, claims/underwriting and
+  laptop/mobile layouts. Real UI checks covered ownership, outsider/anonymous
+  denials, reviewer/customer tabs, report bytes and the customer outcome update.
+- Every page of the actual claims and representative underwriting fixture PDFs
+  was rendered and visually inspected; extraction, bounds and aspect checks passed.
+  Chrome opened the preview dialog/native viewer but headless pages stayed blank.
+  Inline/attachment/download bytes were verified identical; manual native-preview
+  pixels remain unverified. No claims of manual visual browser verification.
+
+Measured bottlenecks: acceptance 42.765 s (vehicle admission 19.687 s), successful
+worker pipeline 164.601 s, worker peak RSS approximately 986 MiB. The zero-weight
+local AI classifier cold load/check took 78.248 s; checks, model import/weight
+loading and PostgreSQL round trips dominate, not just the 17.515 s of successful
+provider HTTP time. API warmup measured 118.197 s in one restart and 418.631 s
+from a colder start on this 8 GiB host. No timeout was increased to hide these
+costs. A production frontend must restart after build so its asset manifest
+matches the rebuilt files; otherwise hydration can fail despite healthy APIs.
+The final handover restart was slower: **663.875 seconds** of model warmup,
+including 278.811 seconds importing dependencies and 354.811 seconds initializing
+CLIP, peak API RSS about 1.56 GiB. Available memory fell below 1 GiB during this
+startup. The API eventually became ready; this is a remaining local performance
+constraint, not a provider outage, and is not hidden behind a higher timeout.
+
+## Preservation, historical preparation and next commands
+
+A private repeatable-read backup covered all 26 pilot tables before writes.
+Comparison retained every original case, image, finding, agent/human decision,
+job, result, audit row, account and report snapshot/artifact unchanged. Login's
+existing expiry cleanup removed five expired admin sessions and one expired
+customer session; no account was removed. New rows belong to the fictional UI
+test, its ownership/access checks, runs, receipts and reports.
+
+Historical audit: 825 cases before this new case, including 668 claims and 157
+underwriting; 800 have no durable run, not a recorded failed run. Twenty-five
+cases have 36 failed runs. All 1,473 evidence references were available. The
+claims-only private dry-run manifest estimates at least 1,625 calls (957 distinct
+compatible-cache misses plus 668 minimum agent calls), up to a 10,688 per-case-cap
+bound. These estimates depend on later cache/evidence state and variable agent
+turns. **Zero historical jobs were queued.** Reviewed outcomes, original runs and
+reports remain preserved; future historical runs use self-exclusion, submission
+time cutoffs and retrospective labels. Underwriting historical/live validation
+remains deferred, without a request for photographs in this task.
+
+Use [normal operating commands and rollback](docs/NORMAL_OPERATION.md),
+[sanitized audit](docs/normal_operation/audit.json) and
+[PDFs/screenshots](docs/normal_operation/README.md). `operate_provider.py status`
+loads the actual API process configuration; `pause` persists a manual stop.
+Normal operation is resumed after final service verification and task closure;
+no automated workload is scheduled. Historical enqueue requires a future explicit
+operator command; it was not executed. No push or deployment was performed.
+
+---
+
+# Earlier isolated live workflow validation - 22 October 2026
 
 **Claims: Live workflow verified. Underwriting: Blocked by evidence availability.**
 The claims job completed with fresh structured Gemini perception, actual checks,

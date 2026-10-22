@@ -111,6 +111,21 @@ class RelationshipGraph(Flowable):
             c.setFont('FraudLens', 7); c.drawCentredString(self.width*.51, y+5, safe_text(', '.join(fields))[:48])
 
 
+class AmountComparison(Flowable):
+    """A labelled INR axis; neither damage percentage nor risk score."""
+    def __init__(self, amount, threshold, width):
+        super().__init__(); self.amount=amount; self.threshold=threshold; self.width=width; self.height=58
+
+    def draw(self):
+        c=self.canv; w=self.width-8; scale=max(self.amount,self.threshold,1)*1.15
+        c.setFillColor(PALE);c.rect(0,20,w,13,fill=1,stroke=0)
+        c.setFillColor(TEAL);c.rect(0,20,w*self.amount/scale,13,fill=1,stroke=0)
+        x=w*self.threshold/scale;c.setStrokeColor(INK);c.setDash(2,2);c.line(x,17,x,39);c.setDash()
+        c.setFont('FraudLens',8);c.setFillColor(INK)
+        c.drawString(0,45,f'Declared INR {self.amount:,.0f} | Heuristic concern threshold INR {self.threshold:,.0f}')
+        c.drawString(0,5,'0 INR');c.drawRightString(w,5,f'{scale:,.0f} INR (axis maximum)')
+
+
 class PatternBar(Flowable):
     def __init__(self, value, benchmark, width):
         super().__init__(); self.value = value; self.benchmark = benchmark; self.width = width; self.height = 47
@@ -127,7 +142,7 @@ class PatternBar(Flowable):
         c.setFont('FraudLens', 7); c.drawRightString(w, 37, '0–100% of this garage’s recorded claims; not risk')
 
 
-def render_visual_report(report, snapshot_id, generated_at):
+def render_visual_report(report, snapshot_id, generated_at, revised=False):
     from .report_pdf import _font_names, _timestamp, CHECK_LABELS, CHECK_PURPOSES, RENDERER_VERSION
     regular, bold = _font_names()
     width = A4[0]-32*mm
@@ -182,7 +197,12 @@ def render_visual_report(report, snapshot_id, generated_at):
     # All frozen registered checks remain represented, including excluded ones.
     excluded_ids = set(coverage)-check_ids
     required_ids = set((explanation.get('coverage') or {}).get('eligible_check_ids') or expected or check_ids)
+    requirements = (explanation.get('coverage') or {}).get('requirements') or {}
+    if revised and requirements:
+        required_ids = {key for key, row in requirements.items() if row.get('required') and row.get('applicable')}
     count_states = Counter((coverage.get(key) or {}).get('state', ((explanation.get('coverage') or {}).get('check_states') or {}).get(key,'not_run')) for key in required_ids)
+    required_executed = sum(bool(requirements[key].get('executed')) for key in required_ids) if revised and requirements else count_states.get('completed',0)
+    required_unresolved = len((explanation.get('coverage') or {}).get('material_gap_ids', [])) if revised and requirements else sum(value for key,value in count_states.items() if key not in {'completed','not_applicable'})
     concern_count = sum(finding_state(f)=='concern' for f in findings)
     human = report.get('admin_action') or {}; human_current = bool(human and human.get('reviewed_run_id') == report.get('run_id') and report.get('run_id'))
     kind = declaration.get('agent_type','case')
@@ -212,10 +232,18 @@ def render_visual_report(report, snapshot_id, generated_at):
     if len(concerns)>3: story.append(p(f'{len(concerns)-3} further concern observation(s) are grouped in the check results.','caption'))
     story += [p('Evidence / check coverage — separate from risk','h2'),
               grid(['Photographs','Required execution coverage','Required unresolved inputs'],[(str(len(inventory)),
-                    str(count_states.get('completed',0))+' completed check(s)',
-                    str(sum(value for key,value in count_states.items() if key not in {'completed','not_applicable'}))+' unresolved check(s)')]),
+                    str(required_executed)+(' executed check(s)' if revised else ' completed check(s)'),
+                    str(required_unresolved)+' unresolved check(s)')]),
               p('Optional and zero-weight experimental results are shown separately; they do not create a numerical risk score.','caption')]
     next_action = 'Review the evidence and missing inputs; request specific new evidence before relying on an incomplete assessment.' if not assessment.get('complete') else (report.get('agent_recommendation') or {}).get('recommendation','Human review required').replace('_',' ')
+    if revised:
+        if report.get('assessment_context')=='historical':
+            story.append(p('Retrospective assessment: history comparisons use the recorded submission cutoff. Previous reports and human decisions are retained.','small'))
+        gaps = (explanation.get('coverage') or {}).get('material_gap_ids', assessment.get('missing_check_ids', []))
+        story += [p('Material missing evidence','h2'),p(', '.join(CHECK_LABELS.get(key,key) for key in gaps) or 'No unresolved material check recorded. Optional evidence limitations still apply.','small')]
+        effective_action = str(routing.get('effective_recommendation') or 'Human review required').replace('_',' ')
+        next_action = ('System routing: '+effective_action+'. '+next_action if not assessment.get('complete')
+                       else 'System routing: '+effective_action+'. A reviewer must independently decide the application.')
     story += [p('Recommended reviewer action','h2'),p(next_action)]
     if human:
         label = 'Human decision for this analysis: ' if human_current else 'Historical human decision: '
@@ -306,6 +334,14 @@ def render_visual_report(report, snapshot_id, generated_at):
             graph += [grid(['Evidence','Recorded amount / pattern'],measurements(group,('amount','band_low','band_high','garage_claim_count','garage_in_band_pct','minimum_garage_claims')),[.24,.76]),
                       p('The implemented billing band is a research benchmark, not a verified legal rule. This is a garage pattern, not a claimant fraud probability.','caption')]
             return graph
+        if revised and check_id=='damage_plausibility':
+            item=observed[0]; band=item.get('plausible_range_inr') or []
+            rows=[('Observed severity',item.get('severity_used')),('Declared amount (INR)',item.get('claim_amount_inr'))]
+            if len(band)==2:
+                rows += [('Configured heuristic band (INR)',str(band)),('Concern threshold (INR)',band[1]*item.get('ceiling_tolerance',1.5) if finite(band[1]) else 'No finite ceiling')]
+            return [grid(['Saved input / benchmark','Value'],rows,[.55,.45]),
+                AmountComparison(item.get('claim_amount_inr'),band[1]*item.get('ceiling_tolerance',1.5),width) if len(band)==2 and finite(band[1]) and finite(item.get('claim_amount_inr')) else p('No comparable finite amount scale was recorded.','caption'),
+                p('Configured severity/amount research heuristic only. No independent repair estimate or invoice has been verified; vehicle value, parts and labour can differ.','caption')]
         keys = {
             'damage_plausibility':('claim_amount_inr','severity_used','observed_severities','ratio_to_ceiling','ceiling_tolerance'),
             'scene_consistency':('declared_time_basis','observed_shadow_direction','expected_shadow_direction','shadow_bearing_difference_deg','observed_weather','expected_weather','weather_status','lighting_status','shadow_status'),
@@ -337,7 +373,7 @@ def render_visual_report(report, snapshot_id, generated_at):
             content.append(p('Evidence examined: '+(', '.join(evidence_labels) if evidence_labels else 'No completed evidence measurement was recorded.'),'caption'))
             content += check_graphic(check_id,group,state)
             parameters={key:value for row in calculations.get(check_id,[]) for key,value in (row.get('rule_parameters') or {}).items() if not isinstance(value,(list,dict))}
-            if parameters:
+            if parameters and (not revised or check_id in {'internal_duplicate','external_corpus','plate_ocr'}):
                 content.append(p('Saved decision parameters: '+ '; '.join(key.replace('_',' ')+' = '+str(value) for key,value in parameters.items()),'caption'))
             statements=list(dict.fromkeys(safe_text(f.get('explanation')) for f in group if f.get('explanation')))
             if statements: content.append(p('Interpretation: '+' '.join(short(text,230) for text in statements[:2]),'small'))
@@ -345,6 +381,11 @@ def render_visual_report(report, snapshot_id, generated_at):
             if not group: uncertainty='Missing requirement: this check was not run; its result cannot be treated as a pass.'
             elif state in {'failed','not_run','not_applicable','inconclusive'}: uncertainty='Uncertain: the recorded state does not establish an applicable clean or concerning conclusion.'
             else: uncertainty='Uncertain: this observation does not establish the full application or intent.'
+            if revised and check_id in requirements:
+                req=requirements[check_id]
+                uncertainty = ('Coverage: material requirement; '+('sufficient for this comparison.' if req.get('evidence_sufficient') else 'evidence remains insufficient.')
+                               if req.get('required') else 'Coverage: optional / advisory; does not block material completeness.')
+                if not req.get('applicable'):uncertainty += ' No applicable historical comparison is established; this is not a passed history check.'
             content += [p(uncertainty,'caption'),Spacer(1,7)]
             story.append(KeepTogether(content))
     unknown=check_ids-set(key for _,members in GROUPS for key in members)
@@ -357,6 +398,11 @@ def render_visual_report(report, snapshot_id, generated_at):
         story.append(p('A structured calculation explanation was not recorded. No score or contribution is reconstructed.'))
     else:
         story.append(p(aggregation.get('rule') or 'No aggregation rule was saved.'))
+        if revised:
+            story.append(grid(['Model output (unchanged)','Effective system routing','Guard / human boundary'],[(
+                str(routing.get('recorded_band'))+' / '+str(routing.get('model_recommendation',routing.get('recommendation'))),
+                routing.get('effective_recommendation') or 'Unrecorded in this snapshot',
+                (routing.get('guard_policy') or 'No guard policy recorded')+'. Human approval/rejection is separate.')],[.34,.30,.36]))
         if aggregation.get('valid_numeric_score') and finite(aggregation.get('computed_value')):
             story.append(p('Saved heuristic score: '+str(aggregation['computed_value'])+'. Not a fraud probability.'))
             if not assessment.get('complete'):

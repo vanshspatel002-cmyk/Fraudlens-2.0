@@ -79,7 +79,8 @@ def audit(conn, output: Path):
         if not job: state = 'legacy_no_durable_run'
         elif job['status'] == 'completed' and result and bool(result['converged']):
             explanation=explanations.get(job['job_id']) or {}
-            state='completed_partial_evidence' if explanation.get('coverage',{}).get('material_complete') is False else 'completed_converged'
+            sufficient=explanation.get('coverage',{}).get('material_complete')
+            state='completed_partial_evidence' if sufficient is False else 'completed_usable_assessment' if sufficient is True else 'completed_sufficiency_unrecorded'
         elif job['status'] in {'failed', 'interrupted'}: state = 'failed_or_partial'
         else: state = job['status']
         blockers = []

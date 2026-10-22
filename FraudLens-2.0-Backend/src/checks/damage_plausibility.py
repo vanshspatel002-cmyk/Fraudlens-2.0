@@ -159,8 +159,8 @@ class DamagePlausibilityCheck(Check):
             return finding(
                 Verdict.PASS,
                 0.5,
-                f"The photographs show severe damage, which is consistent with a claim of "
-                f"₹{case.claim_amount:,.0f}.",
+                "Recorded severity is severe; this configured heuristic has no finite upper band. "
+                "No independent repair estimate or invoice has been verified.",
             )
 
         ratio = case.claim_amount / ceiling
@@ -176,15 +176,15 @@ class DamagePlausibilityCheck(Check):
                 Verdict.CONCERN,
                 confidence,
                 f"The claim is for ₹{case.claim_amount:,.0f}, but the photographs show "
-                f"{severity} damage, which typically costs up to about ₹{ceiling:,.0f} to repair "
+                f"{severity} damage. The configured research heuristic ceiling is INR {ceiling:,.0f} "
                 f"- the claim is {ratio:.1f}x that figure.",
             )
 
         return finding(
             Verdict.PASS,
             min(0.75, 0.45 + (1.0 - min(ratio, 1.0)) / 2.0),
-            f"The claim of ₹{case.claim_amount:,.0f} is consistent with the {severity} damage "
-            f"visible in the photographs.",
+            f"Within the configured {severity} severity/amount heuristic band; "
+            "no independent repair estimate or invoice has been verified.",
         )
 
 

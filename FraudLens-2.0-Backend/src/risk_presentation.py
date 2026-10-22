@@ -52,7 +52,7 @@ def assessment_presentation(report):
     source = routing.get('source') or 'unrecorded'
     basis = 'Saved model routing' if source == 'model' else 'Saved research baseline' if source == 'rules_baseline' else 'Saved assessment unavailable'
     states = coverage.get('check_states') or {}
-    missing = [key for key, value in states.items() if value not in {'completed', 'not_applicable'}]
+    missing = coverage.get('material_gap_ids', [key for key, value in states.items() if value not in {'completed', 'not_applicable'}])
     return {
         'version': VERSION, 'run_id': run_id, 'policy_version': explanation.get('policy_version') or report.get('policy_version'),
         'processing_state': state, 'state': 'historical' if valid and historical else 'completed' if valid else 'stale' if stale else 'incomplete',
@@ -65,4 +65,7 @@ def assessment_presentation(report):
         'scope': 'Saved run and evidence only; later evidence requires its own assessment.',
         'explanation': ' '.join(reasons) if reasons else (routing.get('recorded_narrative') or 'The recorded routing category is shown without implying a numeric position.'),
         'missing_check_ids': missing,
+        'model_recommendation':routing.get('model_recommendation', routing.get('recommendation')),
+        'effective_recommendation':routing.get('effective_recommendation', routing.get('recommendation')),
+        'coverage_policy':coverage.get('version'),
     }
