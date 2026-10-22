@@ -403,11 +403,14 @@ async function request(path: string, options: RequestInit = {}, scope: 'reviewer
     imageUrls.forEach(url => URL.revokeObjectURL(url)); imageUrls.clear();
     window.dispatchEvent(new Event('fraudlens-session-expired'));
   }
-  if (!r.ok)
-    throw new Error(
+  if (!r.ok) {
+    const failure = new Error(
       [stringValue(message || error), detailText].filter(Boolean).join(" ") ||
         "The request could not be completed. Please try again.",
     );
+    Object.assign(failure,{details});
+    throw failure;
+  }
   return j as ApiRecord;
 }
 const band = (b?: string) =>
@@ -468,7 +471,7 @@ function mapFormData(input: FormData) {
     t = String(input.get("incidentTime") || "00:00");
   if (d) out.set("declared_time", new Date(d + "T" + t + ":00+05:30").toISOString());
   for (const [k, v] of input.entries())
-    if (k.startsWith("photo:") && v instanceof File) out.append("images", v, v.name);
+    if (k.startsWith("photo:") && v instanceof File) {out.append("images", v, v.name); out.append("photo_slots", k.slice(6));}
   return out;
 }
 async function caseDetail(id: string) {

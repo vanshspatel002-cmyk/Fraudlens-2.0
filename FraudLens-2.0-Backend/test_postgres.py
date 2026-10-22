@@ -15,8 +15,8 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 from psycopg import sql
-from src import api, db, ingest, pg_migrations, runtime_store, vehicle_gate
-from test_pilot_workflow import auth, submit, photo
+from src import api, db, ingest, pg_migrations, runtime_store, vehicle_gate,photo_admission
+from test_pilot_workflow import auth, submit, photo,initial_files
 import test_pilot_workflow as workflows
 import test_durable_pilot as durable
 import test_customer_workflow as customers
@@ -81,6 +81,9 @@ def client(pg_schema, tmp_path, monkeypatch):
     score=SimpleNamespace(accepted=True,to_dict=lambda:{'accepted':True})
     monkeypatch.setattr(vehicle_gate,'classify_uploads',lambda paths,names:[score for _ in paths])
     monkeypatch.setattr(ingest,'_default_embedder',SimpleNamespace(embed=lambda path:[1.,0.]))
+    from src import photo_admission
+    monkeypatch.setattr(photo_admission,'infer',lambda path,slot:('accepted','Controlled semantic fixture',[1.,0.],{}))
+    photo_admission._cache.clear()
     with TestClient(api.app) as value:
         yield value
 
@@ -111,8 +114,8 @@ def test_postgres_concurrent_submission_replays_one_acceptance(client):
     key=str(uuid.uuid4())
     def send(_):
         return client.post('/v1/cases',headers={'Idempotency-Key':key},
-            data={'agent_type':'claims','policy_number':'POL-123'},
-            files={'images':('photo.png',photo(),'image/png')})
+            data={'agent_type':'claims','policy_number':'POL-123','photo_slots':list(photo_admission.SLOTS['claims'])},
+            files=initial_files())
     with ThreadPoolExecutor(max_workers=2) as pool:
         results=list(pool.map(send,range(2)))
     assert [r.status_code for r in results]==[201,201]
@@ -372,12 +375,12 @@ def test_postgres_uncertain_submission_preserves_files_and_replays_safely(client
     key=str(uuid.uuid4())
     def send():
         return client.post('/v1/cases',headers={'Idempotency-Key':key},
-            data={'agent_type':'claims','policy_number':'POL-123'},
-            files={'images':('photo.png',photo(),'image/png')})
+            data={'agent_type':'claims','policy_number':'POL-123','photo_slots':list(photo_admission.SLOTS['claims'])},
+            files=initial_files())
     first=send()
     assert injected and first.status_code==503
     assert first.json()['code']=='SUBMISSION_SAVE_UNCONFIRMED'
-    assert len(list(api.UPLOAD_DIR.rglob('*.png')))==1
+    assert len(list(api.UPLOAD_DIR.rglob('*.png')))==4
     with runtime_store.connection('postgresql') as conn:
         assert conn.execute('SELECT count(*) FROM cases').fetchone()[0]==int(timing=='after')
     retry=send()
@@ -402,7 +405,7 @@ def test_postgres_uncertain_supplement_preserves_committed_evidence(client,monke
     assert tracked['status']=='evidence_received' and tracked['evidence_request'] is None
     with runtime_store.connection('postgresql') as conn:
         paths=[__import__('pathlib').Path(i.path) for i in db.get_images_for_case(conn,receipt['case_id'])]
-        assert len(paths)==2 and all(p.is_file() for p in paths)
+        assert len(paths)==5 and all(p.is_file() for p in paths)
         assert runtime_store.latest_job(conn,receipt['case_id'])['status']=='queued'
 
 

@@ -1,0 +1,60 @@
+{
+  "start_commit": "d8bb8a741c86c885070b158b01d1a71faaa7d471",
+  "policy": "initial-photo-admission-2026-10-22-v2",
+  "new_gemini_calls": 0,
+  "historical_provider_attempts": 15,
+  "provider_controls_changed": false,
+  "database_scope": "Isolated SQLite plus disposable PostgreSQL regression schemas; no pilot case changes",
+  "backend_admission_and_customer_targeted": {
+    "passed": 43,
+    "seconds": 368.17,
+    "model": "controlled"
+  },
+  "backend_workflow_and_report": {
+    "passed": 85,
+    "seconds": 774.27,
+    "model": "controlled"
+  },
+  "postgres_targeted": {
+    "passed": 5,
+    "deselected": 105,
+    "seconds": 76.48,
+    "model": "controlled",
+    "database": "actual disposable PostgreSQL schema"
+  },
+  "frontend_typecheck": "passed",
+  "frontend_production_build": "passed",
+  "browser": {
+    "configurations_passed": 4,
+    "widths": [
+      1365,
+      390
+    ],
+    "touch": true,
+    "api": "fully intercepted controlled fixtures",
+    "model_calls": 0,
+    "checks": [
+      "exact four/six counts",
+      "slot rejection",
+      "duplicate normalized-hash response",
+      "delayed replacement/removal invalidation",
+      "preview URL revocation",
+      "form fields preserved",
+      "form readiness after invalid-file replacement",
+      "keyboard focus",
+      "mobile remove touch",
+      "no horizontal overflow",
+      "final slot error retained"
+    ]
+  },
+  "screenshot_inspection": "All four upload panels inspected; wrapping instructions, explicit fixture captions and aspect-preserved placeholders",
+  "native_limits": [
+    "Only 3 of 6 real exterior photos accepted; other 3 requested replacement",
+    "All 4 damage photos accepted",
+    "All 7 packaged negative categories rejected",
+    "Authored blur/printed-photo/screen controls abstained; not authenticity verification",
+    "No legitimate mounted-plate or odometer positive fixture",
+    "No verified full native four/six-slot acceptance",
+    "Underwriting live AI deferred"
+  ]
+}

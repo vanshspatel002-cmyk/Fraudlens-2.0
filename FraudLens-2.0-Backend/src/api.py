@@ -119,11 +119,9 @@ async def lifespan(_app):
     finally:
         conn.close()
     if os.environ.get('FRAUDLENS_WARM_MODELS') == '1':
-        from src.ingest import _default_embedder
-        from src.vehicle_gate import _text_embeddings
+        from src.photo_admission import warmup
         with span('startup.admission_warmup'):
-            _default_embedder._ensure_loaded()
-            _text_embeddings(_default_embedder)
+            _app.state.photo_validator_ready=warmup()
     from src.durable_worker import DurableWorker
     worker = DurableWorker(DB_PATH, _run_pipeline)
     _app.state.worker = worker
@@ -175,6 +173,8 @@ def _client_ip(request: Request) -> str:
 
 
 def _rate_limit_key(request: Request) -> tuple[Optional[str], int]:
+    if request.method == 'POST' and request.url.path == '/v1/photos/validate':
+        return 'photo_validation', RATE_LIMIT_TRACK_MAX
     if request.method == "POST" and request.url.path in {"/v1/auth/login", "/v1/customer/auth/login", "/v1/customer/auth/register"}:
         return "login", 5
     if request.method == "POST" and (request.url.path == "/v1/cases" or request.url.path.endswith('/evidence')):
@@ -2170,6 +2170,23 @@ def _build_case(case_id: str, agent_type: str, claim_type: Optional[str],
         bank_account_last4=bank_account_last4)
 
 
+@app.post('/v1/photos/validate',tags=['cases'])
+def validate_initial_photo(request: Request, agent_type: str=Form(...),slot: str=Form(...),
+                           image: UploadFile=File(...),conn: sqlite3.Connection=Depends(get_conn)):
+    from . import photo_admission
+    account=customer_auth.authenticate(conn,request.headers.get('authorization'))
+    actor=photo_admission.actor_key(account,request.headers.get('authorization'))
+    conn.rollback()  # No inference while a database transaction is held open.
+    try:
+        with tempfile.TemporaryDirectory(prefix='fraudlens_prevalidate_') as directory:
+            return photo_admission.validate(image.file.read(5*1024*1024+1),image.content_type,
+                agent_type,slot,actor,directory).to_dict()
+    except photo_admission.InvalidPhoto as error:
+        raise ApiError(422,'INVALID_PHOTO',str(error),[ErrorDetail(field=slot,reason=str(error))]) from None
+    except photo_admission.ValidatorUnavailable as error:
+        raise ApiError(503,'VALIDATOR_UNAVAILABLE',str(error),[ErrorDetail(field=slot,reason='Retry this photograph; the local validator is unavailable or busy.')]) from None
+
+
 @app.post("/v1/cases", response_model=SubmitCaseOut, status_code=201, tags=["cases"],
           responses={422: {"model": ErrorResponse}})
 def submit_case(
@@ -2210,6 +2227,7 @@ def submit_case(
     garage_id: Optional[str] = Form(None),
     latitude: Optional[float] = Form(None),
     longitude: Optional[float] = Form(None),
+    photo_slots: Optional[list[str]] = Form(None,description='New initial claims require the four claims slot IDs; underwriting the six underwriting IDs. One unique ID per image, in the same multipart order. Omission is only compatible with replay of an existing committed receipt.'),
     images: Optional[list[UploadFile]] = File(None),
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> SubmitCaseOut:
@@ -2234,76 +2252,53 @@ def submit_case(
             (longitude is not None and not (-180 <= longitude <= 180))):
         raise ApiError(422, 'INVALID_COORDINATES', 'Provide both finite incident coordinates within valid latitude/longitude bounds, or omit both.')
 
-    if len(images or []) > 12:
-        raise ApiError(422, "TOO_MANY_IMAGES", "Upload at most 12 photographs.")
+    from . import photo_admission, vehicle_gate
+    # A retry of an already committed application is not a new initial intake.
+    # Preserve uncertain-commit recovery, including older photo contracts.
+    if idempotency_key:
+        replay_key=runtime_store.digest('submission:'+idempotency_key)
+        existing=conn.execute('SELECT * FROM submission_receipts WHERE receipt_key=?',(replay_key,)).fetchone()
+        if existing:
+            replay_hashes=[]
+            for upload in images or []:
+                content=upload.file.read(5*1024*1024+1);upload.file.seek(0)
+                if not content or len(content)>5*1024*1024:
+                    raise ApiError(422,'INVALID_IMAGE_SIZE','Each photograph must be nonempty and at most 5 MB.')
+                replay_hashes.append(hashlib.sha256(content).hexdigest())
+            replay_fields=dict(submission_fields)
+            if photo_slots is None:replay_fields.pop('photo_slots',None)
+            replay_fingerprint=runtime_store.digest(json.dumps({'fields':replay_fields,'images':replay_hashes},sort_keys=True,default=str))
+            if existing['fingerprint']!=replay_fingerprint:
+                raise ApiError(409,'IDEMPOTENCY_CONFLICT','This submission key was used with different evidence or details.')
+            return SubmitCaseOut(**json.loads(existing['response']))
+    try:
+        photo_admission.assignments(agent_type,photo_slots or [],len(images or []))
+    except photo_admission.InvalidPhoto as error:
+        raise ApiError(422,'INVALID_PHOTO_SLOTS',str(error),[ErrorDetail(field='images',reason=str(error))]) from None
+    actor=photo_admission.actor_key(account,request.headers.get('authorization'))
+    conn.rollback()
     with tempfile.TemporaryDirectory(prefix="fraudlens_upload_gate_") as tmp:
-        tmp_dir = Path(tmp)
-        staged: list[tuple[Path, str]] = []
-        for upload in images or []:
-            if not upload.filename:
-                continue
-            safe_name = Path(upload.filename).name
-            target = tmp_dir / uuid.uuid4().hex
-            # Sync read: this endpoint is deliberately not async, so the
-            # request's sqlite connection stays on one thread.
-            content = upload.file.read(5 * 1024 * 1024 + 1)
-            if not content or len(content) > 5 * 1024 * 1024:
-                raise ApiError(422, "INVALID_IMAGE_SIZE", "Each photograph must be nonempty and at most 5 MB.")
-            target.write_bytes(content)
+        tmp_dir=Path(tmp);staged=[];scores=[];hashes=set();errors=[]
+        for position,(upload,slot) in enumerate(zip(images,photo_slots)):
+            directory=tmp_dir/str(position);directory.mkdir()
+            content=upload.file.read(5*1024*1024+1)
             try:
-                from PIL import Image as PILImage
-                with PILImage.open(target) as picture:
-                    if picture.format not in {"JPEG", "PNG", "WEBP"} or picture.width * picture.height > 25_000_000:
-                        raise ValueError("unsupported image format or dimensions")
-                    extension={'JPEG':'.jpg','PNG':'.png','WEBP':'.webp'}[picture.format]
-                    picture.verify()
-                decoded_target=target.with_suffix(extension)
-                target.rename(decoded_target); target=decoded_target
-            except Exception as exc:
-                raise ApiError(422, "INVALID_IMAGE", "Upload valid JPEG, PNG or WebP photographs up to 25 megapixels.") from exc
-            staged.append((target, safe_name))
-
-        if not staged:
-            raise ApiError(422, "VEHICLE_IMAGE_REQUIRED",
-                           "At least one vehicle image must be uploaded before a case can be created.",
-                           [ErrorDetail(field="images", reason="no uploaded image files")])
-
-        from src import vehicle_gate
-
-        try:
-            scores = vehicle_gate.classify_uploads(
-                [path for path, _name in staged],
-                [name for _path, name in staged],
-            )
-        except Exception as first_error:  # noqa: BLE001 - retry once, then report and move on
-            try:
-                scores = vehicle_gate.classify_uploads(
-                    [path for path, _name in staged],
-                    [name for _path, name in staged],
-                )
-            except Exception as second_error:  # noqa: BLE001
-                raise ApiError(
-                    422,
-                    "VEHICLE_IMAGE_VALIDATION_FAILED",
-                    f"Could not validate the uploaded images as vehicle photos: {type(second_error).__name__}.",
-                    [ErrorDetail(field="images",
-                                 reason=f"first attempt {type(first_error).__name__}; retry {type(second_error).__name__}")],
-                ) from second_error
-
-        if not any(score.accepted for score in scores):
-            best = max(scores, key=lambda s: s.margin)
-            raise ApiError(
-                422,
-                "VEHICLE_IMAGE_REQUIRED",
-                "Upload at least one image that clearly shows a vehicle.",
-                [ErrorDetail(
-                    field="images",
-                    reason=(f"best vehicle margin {best.margin:.3f} is below "
-                            f"floor {vehicle_gate.VEHICLE_MARGIN_FLOOR:.3f} or vehicle score "
-                            f"{best.vehicle_score:.3f} is below threshold "
-                            f"{vehicle_gate.VEHICLE_SCORE_THRESHOLD:.3f}"),
-                )],
-            )
+                score=photo_admission.validate(content,upload.content_type,agent_type,slot,actor,directory)
+                if score.normalized_hash in hashes:
+                    errors.append(ErrorDetail(field=slot,reason='This exact normalized photograph is already assigned to another slot.'))
+                hashes.add(score.normalized_hash)
+                if score.state!='accepted':errors.append(ErrorDetail(field=slot,reason=score.reason))
+                # Preserve original bytes/EXIF for analysis; admission uses the
+                # oriented decoded image and provides its reusable embedding.
+                suffix={'image/jpeg':'.jpg','image/png':'.png','image/webp':'.webp'}[upload.content_type]
+                target=directory/('original'+suffix);target.write_bytes(content)
+                staged.append((target,Path(upload.filename or 'photograph').name));scores.append(score)
+            except photo_admission.InvalidPhoto as error:
+                errors.append(ErrorDetail(field=slot,reason=str(error)))
+            except photo_admission.ValidatorUnavailable as error:
+                raise ApiError(503,'VALIDATOR_UNAVAILABLE',str(error),[ErrorDetail(field=slot,reason='Retry this photograph; validation could not complete.')]) from None
+        if errors:
+            raise ApiError(422,'PHOTO_ADMISSION_FAILED','Replace the indicated photographs. No case was accepted.',errors)
 
         case_id = f"case-{uuid.uuid4().hex[:12]}"
         job_id = uuid.uuid4().hex
@@ -2356,7 +2351,8 @@ def submit_case(
             case_id=case_id,
             details={"vehicle_score_threshold": vehicle_gate.VEHICLE_SCORE_THRESHOLD,
                      "declared_time_basis": 'aware_instant' if declared_time is not None and declared_time.utcoffset() is not None else 'unverified',
-                     "margin_floor": vehicle_gate.VEHICLE_MARGIN_FLOOR,
+                     "minimum_subject_margin": photo_admission.MIN_SUBJECT_MARGIN,
+                     "photo_slots": photo_slots, "validation_version": photo_admission.VERSION,
                      "scores": [score.to_dict() for score in scores]},
         ))
 

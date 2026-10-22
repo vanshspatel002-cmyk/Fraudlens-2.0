@@ -1,0 +1,478 @@
+{
+  "cold_clip_ready_seconds": 293.195,
+  "version": "initial-photo-admission-2026-10-22-v2",
+  "new_gemini_calls": 0,
+  "examples": [
+    {
+      "name": "normal-car-1",
+      "basis": "existing corpus passenger-vehicle candidate",
+      "seconds": 3.674,
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "9f1895c5425c996655321395387127a5b4d2062ec16587a7910d6ccf8d009bb3",
+      "normalized_hash": "b686ea08f8745ae0567b3dc68ab966d81e15af403738b27b45fc0c3d038ed792",
+      "scores": {
+        "subject_similarity": 0.23075658169996835,
+        "competing_similarity": 0.2060072963308989,
+        "subject_margin": 0.02474928536906945,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "normal-car-2",
+      "basis": "existing corpus passenger-vehicle candidate",
+      "seconds": 0.503,
+      "slot": "vehicle_overview",
+      "state": "needs_replacement",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "f6daaed6c896fe8e9094657a5e8be4230b65275e83790785e09ca52ba7f138e5",
+      "normalized_hash": "25fdc6d18b82e84379c51e3574761d9aa1bd4cd40c98b90a98fd920d3942a10a",
+      "scores": {
+        "subject_similarity": 0.20072528080069396,
+        "competing_similarity": 0.21672729986632872,
+        "subject_margin": -0.016002019065634754,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "normal-car-3",
+      "basis": "existing corpus passenger-vehicle candidate",
+      "seconds": 0.633,
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "9541ffbd90302d67acc2a37673c9dffc26b7e0d72d577cd8f330c2656f9ff995",
+      "normalized_hash": "e7ac3b63c7cb46631d0e27bc81a6f8c5c459af3521e13339f2735c540b3db416",
+      "scores": {
+        "subject_similarity": 0.2523118300540391,
+        "competing_similarity": 0.2317828017943647,
+        "subject_margin": 0.020529028259674426,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "normal-car-4",
+      "basis": "existing corpus passenger-vehicle candidate",
+      "seconds": 0.529,
+      "slot": "vehicle_overview",
+      "state": "needs_replacement",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "69324131023e9b7915f05317ee8ab143eae4164ddde6089e7680d33f5ac05294",
+      "normalized_hash": "dd1a6a1502105fcd2d0f24bfeac7c5802a01676cd0a4c2bfe65405f370ac78bf",
+      "scores": {
+        "subject_similarity": 0.24153398847361832,
+        "competing_similarity": 0.2473379438968455,
+        "subject_margin": -0.005803955423227175,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "normal-car-5",
+      "basis": "existing corpus passenger-vehicle candidate",
+      "seconds": 0.616,
+      "slot": "vehicle_overview",
+      "state": "needs_replacement",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "d5e1a447871da2c894d4c0c1461bde80cd18852dae35ccafc27517323e8d84bd",
+      "normalized_hash": "50204996f7cc2dbc3385b769a1c14ea7a74e63b7ba4f2285948047df82633318",
+      "scores": {
+        "subject_similarity": 0.19121402905924675,
+        "competing_similarity": 0.19434655801022505,
+        "subject_margin": -0.0031325289509782916,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "normal-car-6",
+      "basis": "existing corpus passenger-vehicle candidate",
+      "seconds": 0.558,
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "d00dcba02562b667548f225cb10fd045b48e5d76243016ce4fb33d63dabbe42e",
+      "normalized_hash": "bced484bec6ee213aab4a70207d29dba1f024d88c8c612a3f66f2d92d524f82e",
+      "scores": {
+        "subject_similarity": 0.22381264126661207,
+        "competing_similarity": 0.1896224499289469,
+        "subject_margin": 0.03419019133766518,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "damage-1",
+      "basis": "existing corpus damage photograph",
+      "seconds": 2.979,
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "7001d6b1fd47c3396250bf5fd512a93369df3201844b31f2a832a9e2fd7f523e",
+      "normalized_hash": "eda4f1cda233de543ad1791edae5c8a39ff278b85058c219d5993a01aef470eb",
+      "scores": {
+        "subject_similarity": 0.33651608378681724,
+        "competing_similarity": 0.2691605818257572,
+        "subject_margin": 0.06735550196106005,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "damage-2",
+      "basis": "existing corpus damage photograph",
+      "seconds": 0.546,
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "4e6c97685d997662bb57174f3aeb3e193ee2b65d65a68f0ee63c07d9374af803",
+      "normalized_hash": "6c4ef1007cca2f3cb79cfdbbcc73eb06a04839bd26a6e98995c3841966b20367",
+      "scores": {
+        "subject_similarity": 0.3416826728997671,
+        "competing_similarity": 0.2709664273983235,
+        "subject_margin": 0.07071624550144362,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "damage-3",
+      "basis": "existing corpus damage photograph",
+      "seconds": 0.578,
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "2da69834408f2300cf0b1b2b166f943abc75a55045de1360cede787392c885a0",
+      "normalized_hash": "cd914e85c0e50812eb1758e085b8391a269d5196d516580b507a7601abb0bc1a",
+      "scores": {
+        "subject_similarity": 0.2514915014350241,
+        "competing_similarity": 0.2263958776810847,
+        "subject_margin": 0.025095623753939367,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "damage-4",
+      "basis": "existing corpus damage photograph",
+      "seconds": 0.416,
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "e78c5c5587fd668f7e8e83c9bb330885935ee37f697d491388bd2d1053755688",
+      "normalized_hash": "d911dc087b448149243c63d9be76125ff3c963806c17b94b894e6c2948059755",
+      "scores": {
+        "subject_similarity": 0.33155051138222824,
+        "competing_similarity": 0.25792016454939615,
+        "subject_margin": 0.0736303468328321,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "person",
+      "basis": "packaged real negative",
+      "seconds": 0.452,
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "88431cd9653ccd539741b555fb0a46b61558b301d4110412b5bc28b5e3ea6cb5",
+      "normalized_hash": "2f4d170c16264a2a2d30a48190a2bdc35f336021259e438c79092b54018d42aa",
+      "scores": {
+        "subject_similarity": 0.07950761776306646,
+        "competing_similarity": 0.1767480705736731,
+        "subject_margin": -0.09724045281060663,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "animal",
+      "basis": "packaged real negative",
+      "seconds": 0.424,
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "596aa1e7cb875eb79f437e310381d26b338a81c2da23439704a73c4651e8c4bb",
+      "normalized_hash": "893732ec8fbb0d4fff97dc78a39524aea2b1bef0f9f0ce91b562f4af8a19dabf",
+      "scores": {
+        "subject_similarity": 0.10265401488164559,
+        "competing_similarity": 0.2727403684662939,
+        "subject_margin": -0.1700863535846483,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "food",
+      "basis": "packaged real negative",
+      "seconds": 0.445,
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "cc02f8ca188b167c775a7101b5d767d1e71792cf762c33d6fa15a4599b5a8de7",
+      "normalized_hash": "619f9338592f71b683e88efe664cd1db875d38ecff292b04bca7b2352115e696",
+      "scores": {
+        "subject_similarity": 0.13300241179729036,
+        "competing_similarity": 0.20030764464225678,
+        "subject_margin": -0.06730523284496642,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "scenery",
+      "basis": "packaged real negative",
+      "seconds": 0.436,
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "b6b6022426b38936c43a4ac09635cd78af074e90f42ffa8227ac8b7452d39f89",
+      "normalized_hash": "6b759e667e0052c17b546d21159663e565543052694ec4a4dfad13a92a3be735",
+      "scores": {
+        "subject_similarity": 0.14673568318805302,
+        "competing_similarity": 0.2113705606954578,
+        "subject_margin": -0.06463487750740476,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "motorcycle",
+      "basis": "packaged real negative",
+      "seconds": 0.682,
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "db18e9c4157617403c3537a6ba355dfeafe9a7eabb6b9b94cb33f6525dd49179",
+      "normalized_hash": "79a89a78823586a716b2141f5873e597202ea9e3cc53efea442392392f33660e",
+      "scores": {
+        "subject_similarity": 0.14703524296152082,
+        "competing_similarity": 0.2949854999246991,
+        "subject_margin": -0.14795025696317826,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "document",
+      "basis": "packaged real negative",
+      "seconds": 0.441,
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "341a6f0a61557662b02734a9b6e56ec33a915b2c41886b97509dedf2a43b47a3",
+      "normalized_hash": "8bca84e6682cd9784c4817931f09eb235eecd6db57627ffdeefe5e4518696877",
+      "scores": {
+        "subject_similarity": 0.137585816785264,
+        "competing_similarity": 0.20716532664051734,
+        "subject_margin": -0.06957950985525335,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "object",
+      "basis": "packaged real negative",
+      "seconds": 0.438,
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "f8d773fc9cfa6f4d8e5942dc34d0a0788fcaed2a4fefbbed0aef5398d7ef4cba",
+      "normalized_hash": "f8e57b6421f0df2f01e7e60b0cd4e3c9dc824424bc30d614bdfe5c5df09e869f",
+      "scores": {
+        "subject_similarity": 0.15197764359826083,
+        "competing_similarity": 0.21755048455841788,
+        "subject_margin": -0.06557284096015706,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "blurry",
+      "basis": "authored degradation/negative control",
+      "seconds": 0.458,
+      "slot": "vehicle_overview",
+      "state": "needs_replacement",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "fc48f642c101d3e24f6cfed29610cb4a64ea02ed22adabd01a436f1e7fc2b6b2",
+      "normalized_hash": "31a3ebc664c4138b3ccbef9417c032d7948fd2248e051c5382c03bbc955b867e",
+      "scores": {
+        "subject_similarity": 0.2795233270299839,
+        "competing_similarity": 0.26077735844391875,
+        "subject_margin": 0.018745968586065143,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "printed-car-document",
+      "basis": "authored degradation/negative control",
+      "seconds": 0.607,
+      "slot": "vehicle_overview",
+      "state": "needs_replacement",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "dec4f78987339daa31b73a05172b91821d7d1ca5027f05e97c3179240bdfca0c",
+      "normalized_hash": "fdb5cc0b26bbcc15dc5bd9ae1e395850a08054a2c6d22e11e5b861236c16dd63",
+      "scores": {
+        "subject_similarity": 0.28200234453807005,
+        "competing_similarity": 0.27837736767585664,
+        "subject_margin": 0.0036249768622134138,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "screenshot-car",
+      "basis": "authored degradation/negative control",
+      "seconds": 0.553,
+      "slot": "vehicle_overview",
+      "state": "needs_replacement",
+      "accepted": false,
+      "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+      "validation_version": "initial-photo-admission-2026-10-22-v2",
+      "content_hash": "d499a0a3202c40fe5382a4d5809fadb5b3a3ae1c7c8885dcea6e20ef7c486cf7",
+      "normalized_hash": "68241b5e1c335e91d0db086c7021c9c0098bd76ef7fac3fc4d59adc722381f8c",
+      "scores": {
+        "subject_similarity": 0.24517520764896164,
+        "competing_similarity": 0.24263770980983498,
+        "subject_margin": 0.0025374978391266567,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "name": "blank",
+      "basis": "authored degradation/negative control",
+      "seconds": 0.002,
+      "state": "rejected",
+      "reason": "Blank image: replace it with a clear vehicle photograph."
+    },
+    {
+      "name": "tiny",
+      "basis": "authored degradation/negative control",
+      "seconds": 0.002,
+      "state": "rejected",
+      "reason": "Retake at least 64 pixels on each side, up to 25 megapixels."
+    },
+    {
+      "name": "corrupt",
+      "basis": "authored degradation/negative control",
+      "seconds": 0.129,
+      "state": "rejected",
+      "reason": "Image cannot be decoded. Retake or export a valid JPEG, PNG or WebP."
+    }
+  ],
+  "batch_throughput": {
+    "4": {
+      "seconds": 2.274,
+      "states": [
+        "accepted",
+        "needs_replacement",
+        "accepted",
+        "needs_replacement"
+      ],
+      "basis": "Warm serial local inference throughput, heterogeneous generic exterior inputs; not initial acceptance"
+    },
+    "6": {
+      "seconds": 3.203,
+      "states": [
+        "accepted",
+        "needs_replacement",
+        "accepted",
+        "needs_replacement",
+        "needs_replacement",
+        "accepted"
+      ],
+      "basis": "Warm serial local inference throughput, heterogeneous generic exterior inputs; not initial acceptance"
+    }
+  },
+  "limitations": {
+    "plate": "No inspected legitimate mounted-plate fixture supplied; OCR/parser controlled tests only.",
+    "odometer": "No inspected legitimate dashboard-mileage fixture supplied; explicit retake on unreadable text.",
+    "same_vehicle": "Not established. Neither slot labels nor embeddings authenticate identity.",
+    "blur": "No independently calibrated universal blur cutoff; unreadable OCR slots abstain. Exterior blur reliability remains a limitation."
+  }
+}

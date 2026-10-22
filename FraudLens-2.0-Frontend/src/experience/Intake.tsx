@@ -3,14 +3,9 @@ import { Shell, Icon, Safety, useConfig, api } from "./shared";
 import Field from "./FieldSuggestions";
 import { sampleSuggestions, todayForInput, vehicleDependencyWarning } from "./sampleSuggestions";
 import { CustomerGate } from "./CustomerSession";
-const angles = [
-  "Front left",
-  "Front right",
-  "Rear left",
-  "Rear right",
-  "Odometer",
-  "Registration plate",
-];
+import {photoSlots} from './photoSlots';
+import {customerFetch} from './customer-api';
+type PhotoValidation={state:'checking'|'accepted'|'rejected'|'needs_replacement';reason:string;normalized_hash?:string};
 type SubmitResult = {
   id: string;
   job_id?: string;
@@ -33,6 +28,21 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
     config = useConfig();
   const [vehicle, setVehicle] = useState({ make: "", model: "", variant: "" });
   const submissionInFlight = useRef(false);
+  const slots=photoSlots[kind];
+  const formRef=useRef<HTMLFormElement>(null);
+  const [formReady,setFormReady]=useState(false);
+  const [photoStates,setPhotoStates]=useState<Record<string,PhotoValidation>>({});
+  const revisions=useRef<Record<string,number>>({});
+  const validationQueue=useRef<Promise<void>>(Promise.resolve());
+  useEffect(()=>()=>{Object.keys(revisions.current).forEach(key=>{revisions.current[key]++;});},[]);
+  const accepted=slots.filter(slot=>photoStates[slot.id]?.state==='accepted').length;
+  const photosReady=accepted===slots.length;
+  function updateFormReady(){const form=formRef.current;if(form)setFormReady(form.checkValidity() && !validate(form));}
+  function removePhoto(key:string){
+    revisions.current[key]=(revisions.current[key]||0)+1;
+    setFiles(old=>{const next={...old};delete next[key];return next;});
+    setPhotoStates(old=>{const next={...old};delete next[key];return next;});
+  }
   const samples = (name: string) => sampleSuggestions(name, { kind, ...vehicle });
   const vehicleWarning = vehicleDependencyWarning(vehicle.make, vehicle.model, vehicle.variant);
   const [files, setFiles] = useState<Record<string, File>>({}),
@@ -42,6 +52,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
     [jobStatus, setJobStatus] = useState(""),
     [result, setResult] = useState<SubmitResult | null>(null),
     [submissionKey] = useState(() => (typeof crypto !== "undefined" ? crypto.randomUUID() : ""));
+  useEffect(()=>updateFormReady(),[files]);
   useEffect(() => {
     const urls = Object.fromEntries(
       Object.entries(files).map(([k, f]) => [k, URL.createObjectURL(f)]),
@@ -50,13 +61,28 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
     return () => Object.values(urls).forEach(URL.revokeObjectURL);
   }, [files]);
   function choose(key: string, f?: File) {
-    setError("");
-    if (!f) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(f.type) || f.size > maxUploadBytes) {
-      setError("Choose a JPG, PNG or WebP photograph under 5 MB.");
-      return;
+    if(!f)return;
+    setError('');const revision=(revisions.current[key]||0)+1;revisions.current[key]=revision;
+    setFiles(old=>({...old,[key]:f}));
+    if(!['image/jpeg','image/png','image/webp'].includes(f.type)||!f.size||f.size>maxUploadBytes){
+      setPhotoStates(old=>({...old,[key]:{state:'rejected',reason:'Choose a nonempty JPEG, PNG or WebP up to 5 MB.'}}));return;
     }
-    setFiles((old) => ({ ...old, [key]: f }));
+    setPhotoStates(old=>({...old,[key]:{state:'checking',reason:'Waiting for local vehicle and slot validation…'}}));
+    validationQueue.current=validationQueue.current.catch(()=>{}).then(async()=>{
+      if(revisions.current[key]!==revision)return;
+      const body=new FormData();body.set('agent_type',kind);body.set('slot',key);body.set('image',f,f.name);
+      let result:PhotoValidation;
+      try{
+        result=await (await customerFetch('/v1/photos/validate',{method:'POST',body})).json() as PhotoValidation;
+        if(!['accepted','rejected','needs_replacement'].includes(result.state))throw new Error('Validation did not return a usable result. Retry this photograph.');
+      }catch(error){result={state:'needs_replacement',reason:(error as Error).message};}
+      if(revisions.current[key]!==revision)return;
+      setPhotoStates(old=>{
+        if(result.state==='accepted' && result.normalized_hash && Object.entries(old).some(([slot,v])=>slot!==key && v.state==='accepted' && v.normalized_hash===result.normalized_hash))
+          result={...result,state:'rejected',reason:'This exact photograph is already assigned to another slot. Choose a distinct photograph.'};
+        return {...old,[key]:result};
+      });
+    });
   }
   function validate(form: HTMLFormElement) {
     const data = new FormData(form);
@@ -134,14 +160,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
       );
       return;
     }
-    if (!claims && angles.some((a) => !files[a])) {
-      setError("Upload all four corners, the odometer and the registration plate.");
-      return;
-    }
-    if (!Object.keys(files).length) {
-      setError("Upload at least one photograph of the vehicle.");
-      return;
-    }
+    if(!photosReady){setError(`${claims?'Claims':'Underwriting'} require ${slots.length} accepted photographs.`);return;}
     const validation = validate(e.currentTarget);
     if (validation) {
       setError(validation);
@@ -168,6 +187,12 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
       );
     } catch (err) {
       setError((err as Error).message);
+      const details=(err as Error & {details?:{field?:string;reason?:string}[]}).details;
+      if(Array.isArray(details))setPhotoStates(old=>{
+        const next={...old};
+        details.forEach(item=>{if(item.field && slots.some(s=>s.id===item.field))next[item.field]={state:'needs_replacement',reason:item.reason||'Replace this photograph.'};});
+        return next;
+      });
     } finally {
       submissionInFlight.current = false;
       setBusy(false);
@@ -241,7 +266,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
               </a>
             </section>
           ) : (
-            <form className="intake-form" method="post" onSubmit={submit}>
+            <form ref={formRef} onInput={updateFormReady} onChange={updateFormReady} className="intake-form" method="post" onSubmit={submit}>
               {config && !config.intake && (
                 <div className="notice">
                   Applications are not open yet. You can review the form; no case will be accepted
@@ -444,22 +469,10 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
               </fieldset>
               <fieldset>
                 <legend>05 / Vehicle photographs</legend>
-                <p className="help">
-                  Images are decoded and indexed. A local classifier requires at least one likely
-                  vehicle view; it cannot establish authenticity. Missing EXIF metadata is neutral.
-                  {!claims &&
-                    " View labels are your declarations; this system does not verify six views of the same vehicle."}
-                </p>
+                <p className="help">{claims?'Claims require 4 accepted photographs.':'Underwriting requires 6 accepted photographs.'} Each slot is checked separately. Passing does not prove authenticity, ownership, capture date or that all views show one vehicle. Missing EXIF is neutral.</p>
+                <p role="status">{accepted} of {slots.length} photographs accepted.</p>
                 <div className="upload-grid">
-                  {(claims
-                    ? [
-                        "Damage overview",
-                        "Damage close-up",
-                        "Registration plate",
-                        "Additional view",
-                      ]
-                    : angles
-                  ).map((label) => (
+                  {slots.map(({id:label,label:title,instruction}) => (
                     <div className="upload-item" key={label}>
                       <label className="upload-slot">
                         {previews[label] ? (
@@ -467,8 +480,9 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
                         ) : (
                           <Icon name="upload" size={25} />
                         )}
-                        <strong>{label}</strong>
-                        <span>{files[label] ? files[label].name : "Choose photograph"}</span>
+                        <strong>{title} — required</strong>
+                        <span style={{whiteSpace:'normal',overflow:'visible',textOverflow:'clip',overflowWrap:'anywhere'}}>{instruction}</span>
+                        <span style={{whiteSpace:'normal',overflow:'visible',textOverflow:'clip',overflowWrap:'anywhere'}}>{files[label] ? 'Replace photograph: '+files[label].name : "Choose photograph"}</span>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -476,22 +490,18 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
                             choose(label, e.target.files?.[0]);
                             e.currentTarget.value = "";
                           }}
-                          aria-label={"Upload " + label}
+                          aria-label={"Upload " + title}
                         />
                       </label>
+                      <p role="status" aria-live="polite">{photoStates[label] ? `${photoStates[label].state.replaceAll('_',' ')}: ${photoStates[label].reason}` : 'Required: choose one photograph.'}</p>
+                      {files[label] && photoStates[label]?.state!=='checking' && <button type="button" onClick={()=>choose(label,files[label])}>Recheck {title.toLowerCase()}</button>}
                       {files[label] && (
                         <button
                           className="upload-remove"
                           type="button"
-                          onClick={() =>
-                            setFiles((previous) => {
-                              const next = { ...previous };
-                              delete next[label];
-                              return next;
-                            })
-                          }
+                          onClick={() => removePhoto(label)}
                         >
-                          Remove {label.toLowerCase()} photograph
+                          Remove {title.toLowerCase()} photograph
                         </button>
                       )}
                     </div>
@@ -516,7 +526,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
                   {jobStatus}
                 </p>
               )}
-              <button className="submit-case" type="submit" disabled={!hydrated || busy}>
+              <button className="submit-case" type="submit" disabled={!hydrated || busy || !photosReady || !formReady}>
                 {busy
                   ? "Validating and submitting…"
                   : "Submit " + (claims ? "claim" : "application")}

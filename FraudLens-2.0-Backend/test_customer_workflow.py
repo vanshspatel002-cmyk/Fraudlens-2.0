@@ -6,7 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 
 import pytest
-from test_pilot_workflow import client, auth, photo, submit
+from test_pilot_workflow import client, auth, photo, submit,initial_files
+from src.photo_admission import SLOTS
 from src import api, db, runtime_store
 
 
@@ -21,8 +22,8 @@ def owned_submit(client, headers, kind='claims', key=None):
     return client.post('/v1/cases', headers={**headers, 'Idempotency-Key': key or str(uuid.uuid4())},
         data={'agent_type': kind, 'vehicle_registration': 'MH12AB1234', 'policy_number':'SAMPLE-POLICY',
               'person_name':'Alex Sample', 'person_contact':'alex.sample@example.com',
-              'declaration_notes':'Fictional applicant statement; no model findings.'},
-        files={'images':('sample.png',photo(),'image/png')})
+              'declaration_notes':'Fictional applicant statement; no model findings.','photo_slots':list(SLOTS[kind])},
+        files=initial_files(kind))
 
 
 def finish(case_id, status='completed'):
@@ -149,7 +150,7 @@ def test_customer_additional_evidence_and_request_ownership(client):
     assert send(other).status_code==401
     assert send(owner).status_code==200
     updated=client.get('/v1/customer/cases/'+case_id,headers=owner).json()
-    assert updated['outcome'] is None and updated['processingStatus']=='queued' and len(updated['images'])==2
+    assert updated['outcome'] is None and updated['processingStatus']=='queued' and len(updated['images'])==5
     assert any(event['title']=='Additional photographs received' for event in updated['timeline'])
 
 

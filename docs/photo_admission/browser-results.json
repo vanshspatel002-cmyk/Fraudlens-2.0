@@ -1,0 +1,46 @@
+[
+  {
+    "kind": "claims",
+    "width": 1365,
+    "exact_slots": 4,
+    "stale_replacement_removal": "passed",
+    "form_and_other_images_preserved": true,
+    "keyboard_focus": true,
+    "mobile_no_overflow": true,
+    "javascript_errors": 0,
+    "real_model_calls": 0
+  },
+  {
+    "kind": "claims",
+    "width": 390,
+    "exact_slots": 4,
+    "stale_replacement_removal": "passed",
+    "form_and_other_images_preserved": true,
+    "keyboard_focus": true,
+    "mobile_no_overflow": true,
+    "javascript_errors": 0,
+    "real_model_calls": 0
+  },
+  {
+    "kind": "underwriting",
+    "width": 1365,
+    "exact_slots": 6,
+    "stale_replacement_removal": "passed",
+    "form_and_other_images_preserved": true,
+    "keyboard_focus": true,
+    "mobile_no_overflow": true,
+    "javascript_errors": 0,
+    "real_model_calls": 0
+  },
+  {
+    "kind": "underwriting",
+    "width": 390,
+    "exact_slots": 6,
+    "stale_replacement_removal": "passed",
+    "form_and_other_images_preserved": true,
+    "keyboard_focus": true,
+    "mobile_no_overflow": true,
+    "javascript_errors": 0,
+    "real_model_calls": 0
+  }
+]

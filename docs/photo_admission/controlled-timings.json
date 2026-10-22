@@ -1,0 +1,16 @@
+{
+  "claims": {
+    "source": "Controlled semantic model, actual isolated SQLite/API persistence",
+    "prevalidation_seconds": 0.07538730000123905,
+    "durable_acceptance_seconds": 0.8923939999986032,
+    "initial_files": 4,
+    "final_model_calls": 0
+  },
+  "underwriting": {
+    "source": "Controlled semantic model, actual isolated SQLite/API persistence",
+    "prevalidation_seconds": 0.09356389999993553,
+    "durable_acceptance_seconds": 0.37985160000062024,
+    "initial_files": 6,
+    "final_model_calls": 0
+  }
+}

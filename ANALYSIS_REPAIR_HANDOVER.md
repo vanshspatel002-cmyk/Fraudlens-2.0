@@ -569,3 +569,10 @@ Actual IDs, receipts/accounting, software verification and evidence limitations:
 Downloadable samples/screenshots: [artifacts](docs/normal_operation/README.md).
 Rollback begins with a persisted pause; never restore an older ledger over new
 provider history. No push, deployment, billing, key rotation or bulk reprocessing.
+
+22 October 2026 upload-admission update: new initial claims require four accepted
+explicit slots and underwriting six preserved slots. Every photograph is checked
+locally; supplementary-evidence counts and historical cases remain intact.
+Policy, actual classifier limitations, safe cache bindings and verification:
+[photograph admission handover](docs/PHOTO_ADMISSION_HANDOVER.md).
+No Gemini request or provider-control migration was part of this upload change.

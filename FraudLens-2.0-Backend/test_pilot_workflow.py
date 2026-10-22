@@ -6,8 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageDraw
 from src import api, db, ingest, runtime_store, vehicle_gate
+from src import photo_admission
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -25,18 +26,26 @@ def client(tmp_path, monkeypatch):
     score = SimpleNamespace(accepted=True, to_dict=lambda: {'accepted': True})
     monkeypatch.setattr(vehicle_gate, 'classify_uploads', lambda paths, names: [score for p in paths])
     monkeypatch.setattr(ingest, '_default_embedder', SimpleNamespace(embed=lambda path: [1.0, 0.0]))
+    monkeypatch.setattr(photo_admission,'infer',lambda path,slot: ('accepted','Controlled semantic fixture',[1.0,0.0],{}))
+    photo_admission._cache.clear()
     with TestClient(api.app) as c:
         yield c
 
 def photo(color='red'):
     buf = io.BytesIO()
-    PILImage.new('RGB', (32, 32), color).save(buf, format='PNG')
+    image=PILImage.new('RGB',(128,128),color)
+    ImageDraw.Draw(image).rectangle((10,10,45,65),fill='white')
+    image.save(buf,format='PNG')
     return buf.getvalue()
+
+def initial_files(kind='claims'):
+    colors=['red','green','orange','purple','gray','brown']
+    return [('images',(f'photo-{i}.png',photo(colors[i]),'image/png')) for i in range(len(photo_admission.SLOTS[kind]))]
 
 def submit(client, kind='claims', files=None):
     return client.post('/v1/cases', data={'agent_type': kind, 'vehicle_registration': 'MH12AB1234',
-        'policy_number': 'POL-123', 'person_name': 'Test applicant'},
-        files=files or [('images', ('photo.png', photo(), 'image/png'))])
+        'policy_number': 'POL-123', 'person_name': 'Test applicant','photo_slots':list(photo_admission.SLOTS[kind])},
+        files=files or initial_files(kind))
 
 def auth(client):
     response = client.post('/v1/auth/login', json={'email': 'reviewer@example.com', 'password': 'correct-password'})
@@ -80,7 +89,7 @@ def test_applicant_admin_workflow(client, kind):
     response = submit(client, kind)
     assert response.status_code == 201, response.text
     case_id = response.json()['case_id']
-    assert response.json()['images_received'] == 1
+    assert response.json()['images_received'] == len(photo_admission.SLOTS[kind])
     assert client.get('/v1/cases').status_code == 401
     headers = auth(client)
     assert client.get('/v1/cases', headers=headers).json()['items'][0]['case_id'] == case_id
@@ -100,14 +109,16 @@ def test_applicant_admin_workflow(client, kind):
 
 def test_duplicate_filenames(client):
     r = submit(client, files=[('images', ('same.png', photo('red'), 'image/png')),
-                             ('images', ('same.png', photo('blue'), 'image/png'))])
+                             ('images', ('same.png', photo('blue'), 'image/png')),
+                             ('images', ('same.png', photo('green'), 'image/png')),
+                             ('images', ('same.png', photo('orange'), 'image/png'))])
     assert r.status_code == 201, r.text
     conn = db.connect(api.DB_PATH)
     try:
         images = db.get_images_for_case(conn, r.json()['case_id'])
-        assert len(images) == 2
-        assert len({i.path for i in images}) == 2
-        assert len({Path(i.path).read_bytes() for i in images}) == 2
+        assert len(images) == 4
+        assert len({i.path for i in images}) == 4
+        assert len({Path(i.path).read_bytes() for i in images}) == 4
     finally: conn.close()
 
 def test_ingestion_rollback(client, monkeypatch):
@@ -123,7 +134,8 @@ def test_ingestion_rollback(client, monkeypatch):
 
 def test_invalid_uploads(client):
     for content in [b'not an image', b'x' * (5 * 1024 * 1024 + 1)]:
-        assert submit(client, files=[('images', ('bad.png', content, 'image/png'))]).status_code == 422
+        files=initial_files();files[0]=('images',('bad.png',content,'image/png'))
+        assert submit(client,files=files).status_code==422
 
 def test_job_persistence_restart(client):
     r = submit(client).json()

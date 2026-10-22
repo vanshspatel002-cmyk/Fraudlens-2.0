@@ -12,7 +12,8 @@ import uuid
 import pytest
 from src import api, db, ingest, runtime_store, session_budget
 from src.models import AgentDecision, Finding, PerceptionRecord, Recommendation, RiskBand, CheckCategory, Verdict
-from test_pilot_workflow import client, auth, photo, submit, complete_for_review, review_basis
+from test_pilot_workflow import client, auth, photo, submit, complete_for_review, review_basis, initial_files
+from src.photo_admission import SLOTS
 REAL_PIPELINE = api._run_pipeline
 
 
@@ -52,16 +53,16 @@ def test_evidence_resubmission_and_history(client):
     assert response.status_code==200,response.text
     updated=client.get(f'/v1/cases/{case_id}',headers=headers).json()
     assert updated['status']=='evidence_received'
-    assert len(updated['images'])==2 and updated['processing']['status']=='queued'
+    assert len(updated['images'])==5 and updated['processing']['status']=='queued'
     assert updated['decision'] is None and updated['total_concerns']==0
     assert updated['report_history']
     current_report=client.get(f'/v1/cases/{case_id}/report',headers=headers).json()
     human=current_report['admin_action']
     assert human['reviewed_run_id']==receipt['job_id']
-    assert len(human['reviewed_evidence_ids'])==1
+    assert len(human['reviewed_evidence_ids'])==4
     assert current_report['run_id']!=human['reviewed_run_id']
     saved=client.get(f'/v1/cases/{case_id}/report',params={'snapshot_id':original['report_history'][0]['snapshot_id']},headers=headers).json()
-    assert len(saved['evidence_ids'])==1
+    assert len(saved['evidence_ids'])==4
     assert saved['admin_action']['action']=='request_more_evidence'
     assert client.get('/v1/track',headers=headers,params={'case_id':case_id,'policy_number':'POL-123'}).json()['evidence_request'] is None
     assert any(a['event']=='additional_evidence_received' for a in updated['audit'])
@@ -95,7 +96,7 @@ def test_supplementary_failure_is_atomic(client,monkeypatch,fault):
         data={'request_id':request_id},files={'images':('rear.png',content,'image/png')})
     assert r.status_code==({'duplicate':409,'invalid':422}.get(fault,503)),r.text
     with runtime_store.connection(api.DB_PATH) as conn:
-        assert len(db.get_images_for_case(conn,case_id))==1
+        assert len(db.get_images_for_case(conn,case_id))==4
         assert runtime_store.open_request(conn,case_id)['request_id']==request_id
         assert runtime_store.latest_job(conn,case_id)['status']=='completed'
     assert not list((api.UPLOAD_DIR/case_id).glob('supplement-*'))
@@ -112,8 +113,10 @@ def test_specific_request_and_stale_human_decision(client):
 
 
 def test_idempotent_submission(client):
-    key=str(uuid.uuid4()); payload={'agent_type':'claims','vehicle_registration':'MH12AB1234','policy_number':'POL-123'}
-    def send(color): return client.post('/v1/cases',headers={'Idempotency-Key':key},data=payload,files={'images':('vehicle.png',photo(color),'image/png')})
+    key=str(uuid.uuid4()); payload={'agent_type':'claims','vehicle_registration':'MH12AB1234','policy_number':'POL-123','photo_slots':list(SLOTS['claims'])}
+    def send(color):
+        files=initial_files();files[0]=('images',('vehicle.png',photo(color),'image/png'))
+        return client.post('/v1/cases',headers={'Idempotency-Key':key},data=payload,files=files)
     one=send('red');two=send('red')
     assert one.status_code==two.status_code==201
     assert one.json()==two.json()
@@ -269,8 +272,8 @@ def test_out_of_order_provider_outcomes_are_attributed(tmp_path,monkeypatch):
 
 def test_declaration_notes_and_missing_time_are_preserved(client):
     response=client.post('/v1/cases',data={'agent_type':'claims','vehicle_registration':'MH12AB1234',
-        'declaration_notes':'A specific applicant observation, not a model instruction.'},
-        files={'images':('vehicle.png',photo(),'image/png')})
+        'declaration_notes':'A specific applicant observation, not a model instruction.','photo_slots':list(SLOTS['claims'])},
+        files=initial_files())
     assert response.status_code==201,response.text
     report=client.get('/v1/cases/'+response.json()['case_id']+'/report',headers=auth(client)).json()
     assert report['declaration']['declaration_notes']=='A specific applicant observation, not a model instruction.'
@@ -301,7 +304,7 @@ def test_pipeline_persists_run_and_closes_provider(client,monkeypatch,provider_f
         job=runtime_store.get_job(conn,receipt['job_id'])
         assert job['status']==('failed' if provider_failure else 'completed')
         assert runtime_store.current_result(conn,receipt['case_id'])
-        assert len(db.get_images_for_case(conn,receipt['case_id']))==1
+        assert len(db.get_images_for_case(conn,receipt['case_id']))==4
         experimental=next(f for f in db.get_findings_for_case(conn,receipt['case_id']) if f.check_id=='ai_generation')
         assert experimental.verdict==Verdict.INCONCLUSIVE and experimental.confidence==0
         assert experimental.evidence['experimental_verdict']=='concern'
@@ -319,12 +322,11 @@ def test_pipeline_persists_run_and_closes_provider(client,monkeypatch,provider_f
 def test_pipeline_preserves_later_cached_vision_after_stop(client,monkeypatch):
     from src import llm,perception,orchestrator
     from src.quota_budget import QuotaBudgetExhausted
-    receipt=submit(client,files=[('images',('one.png',photo('red'),'image/png')),
-        ('images',('two.png',photo('blue'),'image/png'))]).json()
+    receipt=submit(client,files=initial_files()).json()
     with runtime_store.connection(api.DB_PATH) as conn:
         images=db.get_images_for_case(conn,receipt['case_id']);claimed=runtime_store.claim_next(conn)
-    cached=offline_perception(images[1])
-    monkeypatch.setattr(db,'get_perception',lambda conn,h:cached if h==images[1].content_hash else None)
+    cached={image.content_hash:offline_perception(image) for image in images[1:]}
+    monkeypatch.setattr(db,'get_perception',lambda conn,h:cached.get(h))
     calls=[];closed=[]
     def stop(conn,image,*a,**kw):
         calls.append(image.image_id);raise QuotaBudgetExhausted('Explicit offline session stop')
@@ -358,12 +360,12 @@ def test_pipeline_progress_releases_ocr_cache_and_records_sources(client,monkeyp
     with runtime_store.connection(api.DB_PATH) as conn:
         job=runtime_store.get_job(conn,receipt['job_id'])
         assert job['status']=='failed' and job['stage']=='needs_review'
-        assert job['perception_sources']=={'perception_cache':0,'request_cache':0,'fresh_provider':0,'unavailable':1}
-        assert conn.execute("SELECT COUNT(*) FROM cache_entries WHERE namespace='production_plate_ocr'").fetchone()[0]==1
+        assert job['perception_sources']=={'perception_cache':0,'request_cache':0,'fresh_provider':0,'unavailable':4}
+        assert conn.execute("SELECT COUNT(*) FROM cache_entries WHERE namespace='production_plate_ocr'").fetchone()[0]==4
         result=runtime_store.current_result(conn,receipt['case_id'])
         assert result and not result['converged']
         report=api._build_report(conn,receipt['case_id'])
-        assert any('unavailable=1' in limitation for limitation in report.limitations)
+        assert any('unavailable=4' in limitation for limitation in report.limitations)
         assert any('legal applicability' in limitation for limitation in report.limitations)
         assert job['adjudication_sources']==[]
 
@@ -401,8 +403,8 @@ def test_intake_records_trusted_time_basis_for_production_checks(client,monkeypa
     from src.agent.engine import AdjudicationResult
     from src.agent.production_policy import production_policy
     receipt=client.post('/v1/cases',data={'agent_type':'claims','vehicle_registration':'MH12AB1234',
-        'declared_time':timestamp,'latitude':'22.3','longitude':'73.2'},
-        files={'images':('vehicle.png',photo(),'image/png')}).json()
+        'declared_time':timestamp,'latitude':'22.3','longitude':'73.2','photo_slots':list(SLOTS['claims'])},
+        files=initial_files()).json()
     captured=[]
     monkeypatch.setattr(orchestrator,'run_checks',lambda *a,**kw:captured.append(kw['config']) or [])
     def adjudicate(conn,case,findings,policy,provider,*,check_config=None,release_transactions=False):
@@ -521,6 +523,6 @@ def test_duplicate_pool_count_avoids_decoding_corpus(client,monkeypatch):
     with runtime_store.connection(api.DB_PATH) as conn:
         case=db.get_case(conn,one['case_id'])
         ctx=CheckContext(conn=conn,case=case,images=[],perception={},config={})
-        assert DUPLICATE_CHECK._compared_count(ctx)==1
+        assert DUPLICATE_CHECK._compared_count(ctx)==4
         conn.execute('UPDATE images SET embedding=NULL WHERE case_id=?',(two['case_id'],))
         assert DUPLICATE_CHECK._compared_count(ctx)==0
