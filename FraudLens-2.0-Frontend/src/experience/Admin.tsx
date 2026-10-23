@@ -1,3 +1,4 @@
+import WorkspaceSelector from './WorkspaceSelector';
 import HistoricalReport from './HistoricalReport';
 import RiskIndicator, { type RiskPresentation } from './RiskIndicator';
 import CaseReview from './CaseReview';
@@ -193,7 +194,7 @@ export default function Admin() {
       if (!cancelled) timer = window.setTimeout(() => { void refresh(); }, 10000);
     };
     timer = window.setTimeout(() => { void refresh(); }, 10000);
-    return () => { cancelled = true; window.clearTimeout(timer); detailRequest.current++; };
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [detail?.id, user]);
   async function load(showLoading = true) {
     if (!showLoading && queueInFlight.current > 0) return;
@@ -327,7 +328,7 @@ export default function Admin() {
     if (!detail || loading) return;
     setError("");
     const f = new FormData(e.currentTarget);
-    const manualReview = detail.analysisFallback || ['failed', 'interrupted'].includes(detail.processing?.status || '');
+    const manualReview = detail.analysisFallback || ['failed', 'interrupted','completed_partial'].includes(detail.processing?.status || '');
     if ((f.get("action") !== "Approve" || manualReview) && !String(f.get("reason") || "").trim()) {
       setError("A written reason is required for this decision.");
       return;
@@ -434,7 +435,7 @@ export default function Admin() {
             </div>
           </div>
         </aside>
-        <main className="admin-main">
+        <main className="admin-main"><WorkspaceSelector user={user} onOpen={id=>void open(id)}/>
           <div className="admin-title">
             <div>
               <span>FraudLens 2.0 / {detail ? "Case detail" : tab}</span>

@@ -31,7 +31,9 @@ READER_V5_VERSION = "fraudlens-pdf-2026-10-22-v5"
 READER_V6_VERSION = "fraudlens-pdf-2026-10-22-v6"
 READER_V7_VERSION = "fraudlens-pdf-2026-10-22-v7"
 READER_V8_VERSION = "fraudlens-pdf-2026-10-23-v8"
-RENDERER_VERSION = "fraudlens-pdf-2026-10-23-v9"
+READER_V9_VERSION = "fraudlens-pdf-2026-10-23-v9"
+READER_V10_VERSION = "fraudlens-pdf-2026-10-23-v10"
+RENDERER_VERSION = "fraudlens-pdf-2026-10-23-v11"
 ARTIFACT_SCHEMA = """CREATE TABLE IF NOT EXISTS report_artifacts (
     snapshot_id TEXT PRIMARY KEY REFERENCES report_snapshots(snapshot_id),
     renderer_version TEXT NOT NULL, pdf_base64 TEXT, sha256 TEXT,
@@ -565,7 +567,7 @@ def _render_pdf_v2(report, snapshot_id, generated_at, keep_headings=False):
 
 @measured('report.render_pdf')
 def render_pdf(report, snapshot_id, generated_at):
-    if report.get('report_template_version') in {RENDERER_VERSION, READER_V8_VERSION, READER_V7_VERSION, READER_V6_VERSION, READER_V5_VERSION, READER_V4_VERSION}:
+    if report.get('report_template_version') in {RENDERER_VERSION, READER_V10_VERSION, READER_V9_VERSION, READER_V8_VERSION, READER_V7_VERSION, READER_V6_VERSION, READER_V5_VERSION, READER_V4_VERSION}:
         from .report_visuals import render_visual_report
         return render_visual_report(report, snapshot_id, generated_at,
                                     revised=report.get('report_template_version')!=READER_V4_VERSION)
@@ -627,7 +629,7 @@ def install(app):
             return _metadata(row,artifact)
         created = time.time()
         declared_version = payload.get('report_template_version')
-        renderer_version = declared_version if declared_version in {RENDERER_VERSION, READER_V8_VERSION, READER_V7_VERSION, READER_V6_VERSION, READER_V5_VERSION, READER_V4_VERSION, READER_V3_VERSION, READER_V2_VERSION} else LEGACY_RENDERER_VERSION
+        renderer_version = declared_version if declared_version in {RENDERER_VERSION, READER_V10_VERSION, READER_V9_VERSION, READER_V8_VERSION, READER_V7_VERSION, READER_V6_VERSION, READER_V5_VERSION, READER_V4_VERSION, READER_V3_VERSION, READER_V2_VERSION} else LEGACY_RENDERER_VERSION
         try:
             content = render_pdf(payload,snapshot_id,created)
             checksum = hashlib.sha256(content).hexdigest()

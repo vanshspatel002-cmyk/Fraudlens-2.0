@@ -310,7 +310,7 @@ def test_pipeline_persists_run_and_closes_provider(client,monkeypatch,provider_f
         REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
     with runtime_store.connection(api.DB_PATH) as conn:
         job=runtime_store.get_job(conn,receipt['job_id'])
-        assert job['status']==('failed' if provider_failure else 'completed')
+        assert job['status']==('completed_partial' if provider_failure else 'completed')
         assert runtime_store.current_result(conn,receipt['case_id'])
         assert len(db.get_images_for_case(conn,receipt['case_id']))==4
         experimental=next(f for f in db.get_findings_for_case(conn,receipt['case_id']) if f.check_id=='ai_generation')
@@ -322,7 +322,7 @@ def test_pipeline_persists_run_and_closes_provider(client,monkeypatch,provider_f
     with runtime_store.execution(claimed):
         REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
     with runtime_store.connection(api.DB_PATH) as conn:
-        assert runtime_store.get_job(conn,receipt['job_id'])['status']==('failed' if provider_failure else 'completed')
+        assert runtime_store.get_job(conn,receipt['job_id'])['status']==('completed_partial' if provider_failure else 'completed')
         assert conn.execute('SELECT count(*) FROM processing_results').fetchone()[0]==1
     assert closed==[True]
 
@@ -334,18 +334,20 @@ def test_pipeline_preserves_later_cached_vision_after_stop(client,monkeypatch):
     with runtime_store.connection(api.DB_PATH) as conn:
         images=db.get_images_for_case(conn,receipt['case_id']);claimed=runtime_store.claim_next(conn)
     cached={image.content_hash:offline_perception(image) for image in images[1:]}
+    provider=SimpleNamespace(close=lambda:closed.append(True))
+    for image in images[1:]:cached[image.content_hash].raw_response['cache_contract']=perception.perception_cache_contract(image,provider)
     monkeypatch.setattr(db,'get_perception',lambda conn,h:cached.get(h))
     calls=[];closed=[]
     def stop(conn,image,*a,**kw):
         calls.append(image.image_id);raise QuotaBudgetExhausted('Explicit offline session stop')
     monkeypatch.setattr(perception,'perceive_image',stop)
-    monkeypatch.setattr(llm,'get_provider',lambda:SimpleNamespace(close=lambda:closed.append(True)))
+    monkeypatch.setattr(llm,'get_provider',lambda:provider)
     monkeypatch.setattr(orchestrator,'run_checks',lambda *a,**kw:[])
     with runtime_store.execution(claimed):
         REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
     with runtime_store.connection(api.DB_PATH) as conn:
         job=runtime_store.get_job(conn,receipt['job_id'])
-        assert job['failed_images']==1 and job['status']=='failed'
+        assert job['failed_images']==1 and job['status']=='completed_partial'
         assert runtime_store.current_result(conn,receipt['case_id'])
     assert calls==[images[0].image_id] and closed==[True]
 
@@ -367,7 +369,7 @@ def test_pipeline_progress_releases_ocr_cache_and_records_sources(client,monkeyp
     with runtime_store.execution(claimed):REAL_PIPELINE(receipt['job_id'],receipt['case_id'])
     with runtime_store.connection(api.DB_PATH) as conn:
         job=runtime_store.get_job(conn,receipt['job_id'])
-        assert job['status']=='failed' and job['stage']=='needs_review'
+        assert job['status']=='completed_partial' and job['stage']=='manual_review'
         assert job['perception_sources']=={'perception_cache':0,'request_cache':0,'fresh_provider':0,'unavailable':4}
         assert conn.execute("SELECT COUNT(*) FROM cache_entries WHERE namespace='production_plate_ocr'").fetchone()[0]==4
         result=runtime_store.current_result(conn,receipt['case_id'])

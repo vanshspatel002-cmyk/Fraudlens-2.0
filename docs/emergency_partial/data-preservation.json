@@ -1,0 +1,57 @@
+{
+  "fraudlens_pilot": {
+    "unchanged_business_tables": {
+      "claimants": true,
+      "cases": true,
+      "findings": true,
+      "perception_records": true,
+      "image_artifacts": true,
+      "agent_decisions": true,
+      "images": true,
+      "audit_log": true,
+      "cache_entries": true,
+      "admin_actions": true,
+      "api_jobs": true,
+      "organizations": true,
+      "reviewer_accounts": true,
+      "applicant_grants": true,
+      "evidence_requests": true,
+      "evidence_batches": true,
+      "submission_receipts": true,
+      "processing_results": true,
+      "report_snapshots": true,
+      "customer_accounts": true,
+      "case_owners": true,
+      "report_artifacts": true
+    },
+    "all_unchanged": true
+  },
+  "fraudlens_validation_panel_20261022": {
+    "unchanged_business_tables": {
+      "claimants": true,
+      "cases": true,
+      "findings": true,
+      "perception_records": true,
+      "image_artifacts": true,
+      "agent_decisions": true,
+      "images": true,
+      "audit_log": true,
+      "cache_entries": true,
+      "admin_actions": true,
+      "api_jobs": true,
+      "organizations": true,
+      "reviewer_accounts": true,
+      "applicant_grants": true,
+      "evidence_requests": true,
+      "evidence_batches": true,
+      "submission_receipts": true,
+      "processing_results": true,
+      "report_snapshots": true,
+      "customer_accounts": true,
+      "case_owners": true,
+      "report_artifacts": true
+    },
+    "all_unchanged": true
+  },
+  "provider_controls_byte_identical": true
+}

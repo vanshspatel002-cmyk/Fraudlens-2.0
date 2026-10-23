@@ -348,6 +348,18 @@ def _record_from_parsed(content_hash: str, source: str, parsed: dict[str, Any], 
 # ---------------------------------------------------------------------------
 
 
+def perception_cache_contract(image,provider):
+    import hashlib
+    return {'image_hash':image.content_hash,'requested_model':getattr(provider,'model','unknown'),
+        'prompt_hash':hashlib.sha256(PERCEPTION_PROMPT.encode()).hexdigest(),
+        'schema':PERCEPTION_SCHEMA_VERSION,'profile':getattr(provider,'request_profile','unrecorded')}
+
+
+def perception_record_compatible(record,image,provider):
+    return bool(perception_record_usable(record) and record.content_hash==image.content_hash
+        and record.raw_response.get('cache_contract')==perception_cache_contract(image,provider))
+
+
 def perceive_image(
     conn,
     image: Image,
@@ -356,6 +368,7 @@ def perceive_image(
     retry_attempts: Optional[int] = None,
     provenance: Optional[dict] = None,
     release_transactions: bool = False,
+    strict_contract: bool = False,
 ) -> PerceptionRecord:
     """
     Return the cached PerceptionRecord for image.content_hash, or produce
@@ -376,7 +389,7 @@ def perceive_image(
     """
     if not force:
         cached = db.get_perception(conn, image.content_hash)
-        if perception_record_usable(cached):
+        if (perception_record_compatible(cached,image,provider) if strict_contract else perception_record_usable(cached)):
             if provenance is not None:
                 provenance['source'] = 'perception_cache'
                 provenance['source_model'] = cached.source
@@ -445,6 +458,7 @@ def perceive_image(
         record.raw_response['request_provenance'] = {key: request_provenance[key] for key in
             ('session_attempt', 'requested_model', 'serving_model', 'timestamp','finish_reason','block_reason','provider_request_id',
              'token_usage','http_status','latency_ms','started_at','source','schema_version','schema','run_id','case_id') if key in request_provenance}
+    record.raw_response['cache_contract']=perception_cache_contract(image,provider)
     db.save_perception(conn, record)
     if provenance is not None:
         provenance['source_model'] = record.source

@@ -71,7 +71,7 @@ def main():
             row=conn.execute('SELECT payload FROM api_jobs WHERE job_id=?',(entry['run_id'],)).fetchone()
             if row:
                 job=json.loads(row[0]);entry['outcome']=job['status']
-                if job['status'] in {'failed','interrupted'}:
+                if job['status'] in {'failed','interrupted','completed_partial'}:
                     write(checkpoint,payload);raise ValueError('Prior batch job failed/interrupted; diagnose before resuming.')
                 if job['status']=='completed':
                     events=conn.execute("SELECT details FROM audit_log WHERE case_id=? AND event_type='case_adjudicated' ORDER BY rowid DESC",(entry['case_id'],)).fetchall()

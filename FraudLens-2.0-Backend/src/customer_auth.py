@@ -82,11 +82,12 @@ def _iso(timestamp):
 def case_view(conn, case, detail=False):
     """Only public reviewer messages and safe recorded timeline events leave here."""
     job = runtime_store.latest_job(conn, case.case_id) or {}
+    review=(runtime_store.job_view(job,conn) or {}).get('review_summary',{})
     events = db.get_audit_events_for_case(conn, case.case_id)
     actions = [event for event in events if event.event_type == 'admin_action']
     latest = actions[-1].details if actions else {}
     outcome = 'approve' if case.status == 'closed_approved' else 'reject' if case.status == 'closed_rejected' else None
-    narrative = 'Your case has been received and is awaiting human review.'
+    narrative = review.get('customer_label') or 'Your case has been received and is awaiting human review.'
     if outcome or case.status == 'awaiting_evidence':
         narrative = latest.get('public_message') or {
             'approve': 'A reviewer has approved your application.',
@@ -99,8 +100,9 @@ def case_view(conn, case, detail=False):
         'id': case.case_id, 'kind': case.agent_type, 'status': case.status,
         'submittedAt': case.created_at.isoformat(),
         'updatedAt': events[-1].created_at.isoformat() if events else case.created_at.isoformat(),
-        'processingStatus': job.get('status', 'not_started'), 'processingStage': job.get('stage'),
-        'processingDetail': job.get('detail') if job.get('status') in {'failed', 'interrupted'} else None,
+        'processingStatus': review.get('display_status',job.get('status','not_started')),
+        'processingStage': 'Awaiting reviewer' if review.get('customer_label') else job.get('stage'),
+        'processingDetail': review.get('customer_label') or ('Processing needs attention; your submitted application is saved.' if job.get('status') in {'failed','interrupted'} else None),
         'outcome': outcome, 'publicNarrative': narrative,
         'evidenceRequest': {key: request[key] for key in ('request_id', 'artifacts', 'status')} if request else None,
         'registration': case.vehicle_registration, 'policy': case.policy_number,
@@ -111,6 +113,7 @@ def case_view(conn, case, detail=False):
             'additional_evidence_received': 'Additional photographs received',
             'processing_started': 'Analysis started', 'processing_completed': 'Analysis completed',
             'processing_failed': 'Analysis incomplete; human review required',
+            'processing_completed_partial': 'Available checks finished; AI analysis could not complete.',
             'processing_interrupted': 'Analysis interrupted', 'reprocess_requested': 'New analysis requested',
             'analysis_requested': 'New analysis requested', 'processing_finished': 'Analysis finished',
             'processing_restart_recovery': 'Analysis recovered after interruption',
@@ -128,8 +131,9 @@ def case_view(conn, case, detail=False):
                 timeline.append(item)
                 history.append({**item, 'action': action, 'runId': event.details.get('run_id')})
             elif event.event_type in titles:
+                partial_event=review.get('kind')=='provider_partial' and event.event_type=='processing_failed' and event.details.get('run_id')==job.get('job_id')
                 timeline.append({'id': str(index), 'at': event.created_at.isoformat(),
-                                 'title': titles[event.event_type], 'message': ''})
+                                 'title': 'Available checks finished; AI analysis could not complete.' if partial_event else titles[event.event_type], 'message': ''})
         result.update(
             application={key: value for key, value in json.loads(json.dumps(asdict(case), default=str)).items()
                          if key not in {'claimant_id', 'garage_id'}},

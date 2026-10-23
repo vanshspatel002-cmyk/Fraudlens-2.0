@@ -1,5 +1,5 @@
 export type ReviewFinding = { verdict: string; check_status?: string };
-export type ReviewProcessing = { job_id?: string; status?: string; stage?: string; detail?: string };
+export type ReviewProcessing = { job_id?: string; status?: string; stage?: string; detail?: string; review_summary?:{kind?:string;admin_label?:string;message?:string;historical_derived?:boolean};failures?:{stage?:string;error_category?:string;timestamp?:string;attempt_count?:number;retryable?:boolean;http_status?:number}[] };
 export type AssessmentExplanation = {shadow_assessment?:{status:string;version:string;concern_index:number|null;coverage:number|null;candidate_recommendation:string};routing?:{source?:string;converged?:boolean;model_recommendation?:string;recommendation?:string;effective_recommendation?:string;guard_applied?:boolean;guard_policy?:string};coverage?:{material_complete?:boolean;complete?:boolean;material_gap_ids?:string[]}};
 export type ReviewSummaryInput = {
   kind: string;
@@ -34,8 +34,14 @@ export function reviewDate(value: string) {
 }
 
 export function processingLabel(processing?: ReviewProcessing | null) {
+  if(processing?.review_summary?.admin_label)return processing.review_summary.admin_label;
+  if(processing?.status==='completed_partial')return 'Ready for manual review — assessment incomplete.';
   if (!processing?.status || ['not_recorded','not_started','legacy','unknown'].includes(processing.status)) return 'Not recorded';
-  return ({queued:'Queued',running:'Processing',completed:'Completed',done:'Completed',failed:'Failed',interrupted:'Interrupted'} as Record<string,string>)[processing.status] || readable(processing.status);
+  return ({queued:'Queued',running:'Processing',completed:'Completed',done:'Completed',failed:'Processing needs attention',interrupted:'Interrupted'} as Record<string,string>)[processing.status] || readable(processing.status);
+}
+
+export function terminalProcessing(status?: string) {
+  return ['done','completed','completed_partial','failed','interrupted'].includes(status || '');
 }
 
 function firstStatement(value: unknown, limit = 180) {
@@ -78,7 +84,8 @@ export function deskReviewSentences(input: ReviewSummaryInput): string[] {
     : decided && !input.humanReviewedRun ? 'the historical human decision has no recorded analysis basis'
       : decided ? 'the human decision is recorded below' : 'a human review is required';
   let conclusion: string;
-  if (status === 'queued' || status === 'running') conclusion = `Analysis is ${status === 'queued' ? 'queued' : 'in progress'}; no completed conclusion is available.`;
+  if(input.processing?.review_summary?.message)conclusion=input.processing.review_summary.message;
+  else if (status === 'queued' || status === 'running') conclusion = `Analysis is ${status === 'queued' ? 'queued' : 'in progress'}; no completed conclusion is available.`;
   else if (['failed','interrupted'].includes(status || '') && routing?.converged === true) conclusion = `Processing did not fully complete, although automated routing is recorded${coverage?.material_complete === false ? ' with incomplete check coverage' : ''}; ${human}.`;
   else if (status === 'failed' || status === 'interrupted' || input.analysisFallback || routing?.converged === false) conclusion = `Automated interpretation is incomplete; ${human}.`;
   else if (coverage?.material_complete === false) conclusion = `Automated routing is recorded, but check coverage is incomplete; ${human}.`;
@@ -107,10 +114,11 @@ export function applicationDetails(declaration: Record<string,unknown>) {
 }
 
 type Audit = {created_at:string;actor?:string;event:string;detail?:unknown};
-export function readableTimeline(audit: Audit[], submittedAt: string) {
+export function readableTimeline(audit: Audit[], submittedAt: string, processing?:ReviewProcessing|null) {
   const titles: Record<string,string> = {
     case_submitted:'Application submitted',vehicle_image_gate:'Vehicle photographs received',processing_started:'Analysis started',
     processing_completed:'Analysis completed',processing_finished:'Analysis finished',processing_failed:'Analysis incomplete',processing_interrupted:'Analysis interrupted',
+    processing_completed_partial:'Available checks finished; AI analysis could not complete.',
     additional_evidence_received:'Additional photographs received',reprocess_requested:'New analysis requested',analysis_requested:'New analysis requested',
     processing_restart_recovery:'Analysis recovered after restart',
   };
@@ -122,6 +130,8 @@ export function readableTimeline(audit: Audit[], submittedAt: string) {
       return [{id:String(index),at:event.created_at,actor:event.actor || 'Reviewer',title,message:text(detail.public_message),note:text(detail.reason)}];
     }
     if (!(event.event in titles)) return [];
+    if(event.event==='processing_failed' && processing?.review_summary?.kind==='provider_partial' && detail.run_id===processing.job_id)
+      return [{id:String(index),at:event.created_at,actor:event.actor||'System',title:'Available checks finished; AI analysis could not complete.',message:'Historical execution status is retained in technical diagnostics.',note:''}];
     return [{id:String(index),at:event.created_at,actor:event.actor || 'System',title:titles[event.event],message:event.event === 'processing_failed' ? 'The recorded analysis could not complete. A human review is required.' : '',note:''}];
   });
   if (submittedAt && !audit.some(event => event.event === 'case_submitted')) events.unshift({id:'submitted',at:submittedAt,actor:'Applicant',title:'Application submitted',message:'',note:''});

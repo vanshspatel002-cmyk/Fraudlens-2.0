@@ -15,7 +15,7 @@ type UserCase = {
 };
 const date = (value: string) => new Date(value).toLocaleString('en-IN', {dateStyle:'medium',timeStyle:'short'});
 const outcomeLabel = (outcome: string|null) => outcome === 'approve' ? 'Approved' : outcome === 'reject' ? 'Declined' : 'Awaiting reviewer';
-const humanize = (value: string) => value.replaceAll('_', ' ');
+const humanize = (value: string) => value==='completed_partial' ? 'Saved — awaiting review' : value.replaceAll('_', ' ');
 
 function Photograph({path, label}: {path: string; label: string}) {
   const [url, setUrl] = useState(''), [error, setError] = useState('');

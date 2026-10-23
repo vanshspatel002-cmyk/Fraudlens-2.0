@@ -10,7 +10,7 @@ TABLES = ('claimants', 'cases', 'findings', 'perception_records', 'image_artifac
           'applicant_grants', 'evidence_requests', 'evidence_batches',
           'submission_receipts', 'processing_results', 'report_snapshots')
 EXTENSION_TABLES = ('customer_accounts', 'customer_sessions', 'case_owners', 'report_artifacts')
-MIGRATIONS = (('001', '001_initial.sql'), ('002', '002_customer_workflow.sql'))
+MIGRATIONS = (('001', '001_initial.sql'), ('002', '002_customer_workflow.sql'), ('003','003_partial_review.sql'))
 
 
 def checksum(version='001'):

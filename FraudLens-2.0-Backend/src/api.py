@@ -790,7 +790,8 @@ class PolicyOut(BaseModel):
 class JobOut(BaseModel):
     job_id: str
     case_id: Optional[str] = None
-    status: Literal['queued', 'running', 'completed', 'done', 'failed', 'interrupted']
+    status: Literal['queued', 'running', 'completed', 'completed_partial', 'done', 'failed', 'interrupted']
+    review_summary: Optional[dict[str, Any]] = None
     attempts: int = 0
     updated_at: Optional[float] = None
     progress: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -1108,9 +1109,14 @@ def _summaries_for(conn, cases):
     decisions=defaultdict(list)
     for decision in db.decisions_from_rows(conn.execute('SELECT * FROM agent_decisions WHERE case_id IN ('+marks+') ORDER BY rowid',identifiers).fetchall()):
         decisions[decision.case_id].append(decision)
-    latest={r['case_id']:r for r in conn.execute('''SELECT j.case_id,j.status,r.decision_id FROM api_jobs j
+    latest={}
+    from .processing_outcome import summary as review_summary
+    for row in conn.execute('''SELECT j.case_id,j.status,j.payload,r.decision_id,r.finding_ids,
+        EXISTS(SELECT 1 FROM report_snapshots s WHERE s.run_id=j.job_id) AS snapshot_saved FROM api_jobs j
         LEFT JOIN processing_results r ON r.run_id=j.job_id
-        WHERE j.case_id IN ('''+marks+''') AND j.rowid=(SELECT MAX(x.rowid) FROM api_jobs x WHERE x.case_id=j.case_id)''',identifiers)}
+        WHERE j.case_id IN ('''+marks+''') AND j.rowid=(SELECT MAX(x.rowid) FROM api_jobs x WHERE x.case_id=j.case_id)''',identifiers):
+        item=dict(row);item['status']=review_summary(json.loads(row['payload']),durable_result=bool(row['finding_ids'] and json.loads(row['finding_ids'])),saved_snapshot=bool(row['snapshot_saved']))['display_status']
+        latest[row['case_id']]=item
     concerns={r[0]:r[1] for r in conn.execute('SELECT case_id,COUNT(*) FROM ('+current_findings_sql(conn)
         +") cf WHERE verdict='concern' AND case_id IN ("+marks+') GROUP BY case_id',identifiers)}
     images=defaultdict(list)
@@ -1132,7 +1138,7 @@ def _summary_for(conn: sqlite3.Connection, case: Case, facts=None) -> CaseSummar
         'SELECT image_id FROM images WHERE case_id=? ORDER BY image_id',(case.case_id,)).fetchall()
     return CaseSummary(
         case_id=case.case_id, agent_type=case.agent_type, claim_type=case.claim_type,
-        processing_status=(facts['job']['status'] if facts.get('job') is not None else None) if facts is not None else (runtime_store.latest_job(conn,case.case_id) or {}).get('status'),
+        processing_status=(facts['job']['status'] if facts.get('job') is not None else None) if facts is not None else ((runtime_store.job_view(runtime_store.latest_job(conn,case.case_id),conn) or {}).get('review_summary') or {}).get('display_status'),
         final_admin_action='approve' if case.status == 'closed_approved' else 'reject' if case.status == 'closed_rejected' else None,
         status=case.status, vehicle_registration=case.vehicle_registration,
         vehicle_make=case.vehicle_make, vehicle_model=case.vehicle_model,
@@ -1316,7 +1322,7 @@ def get_case_detail(case_id: str,
                 "actor": e.details.get("admin_id", "system"), "detail": e.details}
                for e in db.get_audit_events_for_case(conn, case_id)
                ],
-        processing=runtime_store.job_view(runtime_store.latest_job(conn, case_id)),
+        processing=runtime_store.job_view(runtime_store.latest_job(conn, case_id),conn),
         evidence_request=runtime_store.open_request(conn,case_id),
         report_history=[dict(row) for row in conn.execute('SELECT snapshot_id,run_id,created_at FROM report_snapshots WHERE case_id=? ORDER BY rowid DESC',(case_id,))],
     )
@@ -1445,7 +1451,7 @@ def _build_report(conn,case_id):
         agent_narrative=decision.summary if decision else None,
         admin_action=human,
         run_id=job['job_id'] if job else None,policy_version=decision.policy_version if decision else None,
-        processing=runtime_store.job_view(job),evidence_ids=evidence_ids,limitations=list(dict.fromkeys(limitations)))
+        processing=runtime_store.job_view(job,conn),evidence_ids=evidence_ids,limitations=list(dict.fromkeys(limitations)))
     from .risk_presentation import assessment_presentation
     report.assessment_presentation = assessment_presentation(report.model_dump(mode='json'))
     return report
@@ -1588,7 +1594,7 @@ def track_case(
         status=case.status,
         final_admin_action=admin_action.action.value if admin_action and case.status != 'evidence_received' else None,
         narrative='Additional evidence received; awaiting a new human review.' if case.status == 'evidence_received' else narrative,
-        processing_status=(runtime_store.latest_job(conn,case_id) or {}).get('status'),
+        processing_status=((runtime_store.job_view(runtime_store.latest_job(conn,case_id),conn) or {}).get('review_summary') or {}).get('display_status'),
         evidence_request=({k:v for k,v in request.items() if k in {'request_id','artifacts','status'}} if (request := runtime_store.open_request(conn,case_id)) else None),
     )
 
@@ -2007,10 +2013,12 @@ def health() -> HealthOut:
 # Submission, reprocessing, adjuster action
 # ---------------------------------------------------------------------------
 
-def _set_job(job_id: str, **fields: Any) -> None:
-    with runtime_store.connection(DB_PATH) as conn:
-        if db.is_postgres(conn):
+def _set_job(job_id: str, _conn=None, **fields: Any) -> None:
+    from contextlib import nullcontext
+    with (nullcontext(_conn) if _conn is not None else runtime_store.connection(DB_PATH)) as conn:
+        if db.is_postgres(conn) and not conn.in_transaction:
             conn.execute('BEGIN')
+        if db.is_postgres(conn):
             runtime_store.fence(conn, job_id)
         job = runtime_store.get_job(conn, job_id) or {"job_id": job_id}
         previous_status = job.get('status')
@@ -2028,7 +2036,7 @@ def _set_job(job_id: str, **fields: Any) -> None:
                 diagnostic.setdefault('run_id',job_id)
                 diagnostic.setdefault('case_id',job.get('case_id'))
         runtime_store.save_job(conn, job)
-        if job.get('status') != previous_status and job.get('status') in {'completed', 'failed', 'interrupted'}:
+        if job.get('status') != previous_status and job.get('status') in {'completed', 'completed_partial', 'failed', 'interrupted'}:
             db.log_audit_event(conn, AuditEvent(event_type='processing_' + job['status'],
                 case_id=job.get('case_id'), details={'run_id':job_id,'status':job['status']}))
     # The selected database is authoritative; do not retain a job cache.
@@ -2041,7 +2049,7 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
     failures=[]
     try:
         from src.llm import get_provider, is_rate_limit_error, is_quota_budget_error
-        from src.perception import perceive_image, perception_record_usable
+        from src.perception import perceive_image, perception_record_usable, perception_record_compatible
         from src.analysis_diagnostics import failure_detail
         from src.orchestrator import process_case
         from src.agent.production_policy import production_policy
@@ -2052,7 +2060,7 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             result = check.execute('SELECT converged FROM processing_results WHERE run_id=?', (job_id,)).fetchone()
             if result:
                 complete = bool(result['converged'])
-                _set_job(job_id, status='completed' if complete else 'failed',
+                _set_job(job_id, status=runtime_store.reconciled_result_status(check,job,complete),
                          stage='complete' if complete else 'needs_review', progress=1.0,
                          provider_unavailable=not complete)
                 return
@@ -2062,7 +2070,15 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             current_stage='evidence_loading'
             images = db.get_images_for_case(conn, case_id)
             if not images: raise ValueError('No indexed evidence available')
+            from PIL import Image as EvidenceImage
+            for image in images:
+                path=_resolve_data_path(image.path)
+                if path is None or not path.is_file():raise FileNotFoundError('Indexed evidence is missing.')
+                if hashlib.sha256(path.read_bytes()).hexdigest()!=image.content_hash:
+                    raise ValueError('Indexed evidence integrity check failed; restore the original evidence before retrying.')
+                with EvidenceImage.open(path) as evidence:evidence.verify()
             perception_errors = 0
+            compatible_hashes=[]
             perception_sources = {'perception_cache': 0, 'request_cache': 0, 'fresh_provider': 0, 'unavailable': 0}
             network_stopped = False
             for index, image in enumerate(images):
@@ -2070,21 +2086,23 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                 _set_job(job_id, stage='perception', progress=0.1+0.4*index/len(images))
                 if network_stopped:
                     cached = db.get_perception(conn, image.content_hash)
-                    if not perception_record_usable(cached):
+                    if not perception_record_compatible(cached,image,provider):
                         perception_errors += 1
                         perception_sources['unavailable'] += 1
                     else:
                         perception_sources['perception_cache'] += 1
+                        compatible_hashes.append(image.content_hash)
                     continue
                 try:
                     provenance = {}
                     from . import operating_policy
                     perception_attempts = operating_policy.limits()['retry_attempts'] if operating_policy.enabled() else 1
                     with span('pipeline.perception_image'):
-                        record = perceive_image(conn, image, provider, retry_attempts=perception_attempts, provenance=provenance, release_transactions=True)
+                        record = perceive_image(conn, image, provider, retry_attempts=perception_attempts, provenance=provenance, release_transactions=True, strict_contract=True)
                     conn.commit()
                     perception_sources[provenance.get('source', 'unavailable')] += 1
-                    if not perception_record_usable(record):
+                    if perception_record_usable(record):compatible_hashes.append(image.content_hash)
+                    else:
                         perception_errors += 1
                         diagnostic=record.raw_response.get('diagnostic')
                         if not diagnostic:
@@ -2097,7 +2115,10 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                 except Exception as exc:
                     conn.rollback(); perception_errors += 1
                     perception_sources['unavailable'] += 1
-                    failures.append({**failure_detail(exc,'perception'),'image_id':image.image_id,'worker_attempt':job.get('attempts',0)})
+                    diagnostic=failure_detail(exc,'perception')
+                    from .processing_outcome import PROVIDER_ERRORS
+                    if diagnostic['error_category'] not in PROVIDER_ERRORS:raise
+                    failures.append({**diagnostic,'image_id':image.image_id,'worker_attempt':job.get('attempts',0)})
                     access_log.error('Vision unavailable: image=%s error_type=%s', image.image_id, type(exc).__name__)
                     if is_rate_limit_error(exc) or is_quota_budget_error(exc):
                         network_stopped = True
@@ -2127,7 +2148,8 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             decision = process_case(conn, case_id, provider=adjudicator,
                                     policy=production_policy(case.agent_type), run_id=job_id,
                                     on_stage=stage_progress,
-                                    check_config={'evaluation_cutoff':case.created_at.isoformat()} if job.get('retrospective') else None)
+                                    check_config={'allowed_perception_hashes':compatible_hashes,
+                                        **({'evaluation_cutoff':case.created_at.isoformat()} if job.get('retrospective') else {})})
             unavailable = _decision_out(decision, conn).provider_unavailable
             for event in reversed(db.get_audit_events_for_case(conn,case_id)):
                 if event.event_type=='case_adjudicated' and event.details.get('run_id')==job_id:
@@ -2139,17 +2161,21 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                         diagnostic=finding.get('observed_values',{}).get('diagnostic')
                         if diagnostic and diagnostic not in failures:failures.append(diagnostic)
                     break
-            _set_job(job_id, status='failed' if unavailable or perception_errors else 'completed',
-                stage='needs_review' if unavailable or perception_errors else 'complete', progress=1.0,
+            current_stage='snapshot_persistence'
+            from .processing_outcome import PROVIDER_ERRORS
+            provider_partial=any(item.get('error_category') in PROVIDER_ERRORS for item in failures)
+            conn.execute('BEGIN IMMEDIATE')
+            db.lock_case(conn, case_id)
+            _set_job(job_id, _conn=conn, status='completed_partial' if unavailable or perception_errors else 'completed',
+                stage='manual_review' if unavailable or perception_errors else 'complete', progress=1.0,
+                local_checks_complete=True,results_persisted=True,
+                partial_reason='ai_unavailable' if provider_partial else 'assessment_incomplete',
                 provider_unavailable=unavailable,
                 adjudication_sources=getattr(decision,'_model_response_sources',None),
                 failures=failures,
                 root_failure_detail=failures[0] if failures else None,
-                detail='Automated analysis incomplete. Evidence is saved; fallback requires human review.' if unavailable or perception_errors else None,
+                detail=('Local checks complete — AI analysis unavailable; human review required.' if provider_partial else 'Available checks complete; assessment incomplete; human review required.') if unavailable or perception_errors else None,
                 failed_images=perception_errors)
-            current_stage='snapshot_persistence'
-            conn.execute('BEGIN IMMEDIATE')
-            db.lock_case(conn, case_id)
             _snapshot_report(conn, case_id)
             conn.commit()
         finally:
@@ -2475,6 +2501,7 @@ def reprocess_case(case_id: str, background: BackgroundTasks,
 @app.get('/v1/jobs/{job_id}', response_model=JobOut, tags=['cases'])
 def get_job(job_id: str, request: Request, x_applicant_token: Optional[str] = Header(default=None)) -> JobOut:
     with runtime_store.connection(DB_PATH) as conn:
+        reviewer=False
         job = runtime_store.get_job(conn,job_id)
         if not job:
             raise ApiError(404,'JOB_NOT_FOUND','Job not found.')
@@ -2483,9 +2510,34 @@ def get_job(job_id: str, request: Request, x_applicant_token: Optional[str] = He
                 account = customer_auth.authenticate(conn, request.headers.get('authorization'))
             except ApiError:
                 require_admin(request,request.headers.get('authorization'))
+                reviewer=True
             else:
                 customer_auth.require_case(conn, account, job['case_id'])
+        job=runtime_store.job_view(job,conn)
+        if not reviewer:
+            job={**job,'failures':[],'root_failure_detail':None,
+                 'detail':job['review_summary'].get('customer_label') or 'Your application is saved. Contact the review team if processing remains unavailable.'}
     return JobOut(**{k:v for k,v in job.items() if k in JobOut.model_fields})
+
+
+@app.get('/v1/workspace',tags=['cases'])
+def review_workspace(_admin: str=Depends(require_admin),conn=Depends(get_conn)):
+    schema=os.getenv('FRAUDLENS_PG_SCHEMA','') if DB_PATH=='postgresql' else 'local_test'
+    panel=schema=='fraudlens_validation_panel_20261022'
+    examples=[]
+    candidates=[('case-95a28aea367c','Saved claims — partial local review'),('case-ac757ae6f8b1','Saved underwriting — partial local review')] if panel else [
+        ('case-e4f345a50f26','Previously recorded analysis')] if schema=='fraudlens_pilot' else []
+    for case_id,label in candidates:
+        case=db.get_case(conn,case_id)
+        if not case:continue
+        if not panel:
+            result=conn.execute('SELECT created_at FROM processing_results WHERE run_id=? AND case_id=? AND converged=1',
+                ('bbb9ed14d1c28c961b74093212aa8a6e',case_id)).fetchone()
+            if not result:continue
+            label+=' · '+datetime.fromtimestamp(result['created_at'],timezone.utc).strftime('%d %b %Y UTC')
+        examples.append(dict(case_id=case_id,label=label))
+    return dict(schema=schema,dataset='Presentation cases' if panel else 'Original pilot' if schema=='fraudlens_pilot' else 'Isolated verification',
+        examples=examples,note='Saved results; opening these cases does not run AI. No successful live underwriting example is recorded.')
 
 
 @app.post("/v1/cases/{case_id}/action", response_model=ActionOut, tags=["cases"],
@@ -2539,7 +2591,7 @@ def record_action(case_id: str, payload: ActionIn,
         raise ApiError(409, 'REVIEW_BASIS_CHANGED', 'The analysis run changed. Refresh and review the current report.')
     if payload.expected_evidence_ids is not None and sorted(payload.expected_evidence_ids) != reviewed_images:
         raise ApiError(409, 'REVIEW_BASIS_CHANGED', 'The evidence changed. Refresh and review all current photographs.')
-    if reviewed_job and (reviewed_job['status'] in {'failed', 'interrupted'} or reviewed_job.get('provider_unavailable')) and payload.action != AdminAction.REQUEST_MORE_EVIDENCE:
+    if reviewed_job and (reviewed_job['status'] in {'failed', 'interrupted','completed_partial'} or reviewed_job.get('provider_unavailable')) and payload.action != AdminAction.REQUEST_MORE_EVIDENCE:
         if not payload.manual_review_override or not (payload.reason or '').strip():
             raise ApiError(422, 'MANUAL_REVIEW_REQUIRED', 'Explicitly acknowledge incomplete analysis and record your manual-review rationale.')
     if payload.action == AdminAction.REJECT and not (payload.public_message or '').strip():

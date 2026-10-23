@@ -145,8 +145,8 @@ class PatternBar(Flowable):
 def render_visual_report(report, snapshot_id, generated_at, revised=False):
     from .report_pdf import _font_names, _timestamp, CHECK_LABELS, CHECK_PURPOSES, RENDERER_VERSION
     regular, bold = _font_names()
-    latest=report.get('report_template_version','').endswith(('-v8','-v9'))
-    polished=report.get('report_template_version','').endswith('-v9')
+    latest=report.get('report_template_version','').endswith(('-v8','-v9','-v10','-v11'))
+    polished=report.get('report_template_version','').endswith(('-v9','-v10','-v11'))
     width = A4[0]-32*mm
     styles = {
         'body': ParagraphStyle('v4-body',fontName=regular,fontSize=9,leading=13,textColor=INK,spaceAfter=6,splitLongWords=True),
@@ -215,10 +215,14 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
              Spacer(1,7),RiskBar(assessment,width)]
     if report.get('illustrative_fixture'):
         story.insert(2,p('CONTROLLED LAYOUT FIXTURE · NO LIVE AI VALIDATION','h2'))
-    story.append(p(assessment['basis']+' · '+('Partial analysis · human review required' if not assessment.get('complete') else 'Recorded analysis · human review required'),'small'))
-    if not assessment.get('complete'):
-        story.append(p(short(assessment['explanation'],470)))
-    story.append(p('This assessment covers only the saved run and evidence. Earlier reports remain historical when new evidence arrives. No heuristic score is a calibrated fraud probability.','caption'))
+    if (processing.get('review_summary') or {}).get('kind')=='provider_partial':
+        story.append(p('Partial analysis — local checks complete; AI analysis unavailable. Human review required.','h2'))
+        story.append(p('Provider availability is an operational limitation, not evidence of customer fraud. Replace photographs only for an identified evidence gap.','small'))
+    else:
+        story.append(p(assessment['basis']+' · '+('Partial analysis · human review required' if not assessment.get('complete') else 'Recorded analysis · human review required'),'small'))
+        if not assessment.get('complete'):
+            story.append(p(short(assessment['explanation'],470)))
+        story.append(p('This assessment covers only the saved run and evidence. Earlier reports remain historical when new evidence arrives. No heuristic score is a calibrated fraud probability.','caption'))
     summary = f"{kind.title()} application for {registration}. "
     if kind=='claims' and finite(declaration.get('claim_amount')): summary += f"Declared claim: INR {declaration['claim_amount']:,.0f}. "
     concern_checks=len({f.get('check_id') for f in findings if finding_state(f)=='concern'})
@@ -229,7 +233,7 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         summary_card.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0)]));story.append(summary_card)
     else:story.append(p(summary))
     candidate=(report.get('assessment_explanation') or {}).get('shadow_assessment')
-    if candidate and report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9')):
+    if candidate and report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11')):
         concern_display=f"{candidate['concern_index']:.2f} / 1" if latest and finite(candidate.get('concern_index')) else str(candidate.get('concern_index'))
         coverage_display=f"{candidate['coverage']:.1%}" if latest and finite(candidate.get('coverage')) else str(candidate.get('coverage'))
         story.append(p('SHADOW ONLY · candidate concern R: '+concern_display+'; material evidence coverage C: '+coverage_display+'. Unvalidated; production risk and human review unchanged.','small'))
@@ -262,7 +266,7 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     facts = [('Registration',registration),('Case type',kind),('Submitted',_timestamp(report.get('submitted_at')))]
     labels = {'person_name':'Applicant','vehicle_make':'Make','vehicle_model':'Model','vehicle_variant':'Variant','vehicle_year':'Year','policy_number':'Policy reference',
               'claim_amount':'Claimed amount (INR)','idv':'Insured declared value (INR)','declared_location':'Declared incident location','incident_date':'Declared incident time','declaration_notes':'Applicant declaration'}
-    if report.get('report_template_version','').endswith(('-v7','-v8','-v9')):
+    if report.get('report_template_version','').endswith(('-v7','-v8','-v9','-v10','-v11')):
         labels.update(latitude='Declared incident latitude (unverified)',longitude='Declared incident longitude (unverified)')
     facts += [(label,declaration[key]) for key,label in labels.items() if declaration.get(key) is not None and declaration[key]!='']
     story.append(grid(['Field','Declared / recorded value'],facts,[.3,.7]))
@@ -415,9 +419,9 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     if excluded_ids:
         story += [p('Checks outside this run’s applicable policy','h2'),grid(['Registered check','Result / use'],[(CHECK_LABELS.get(key,key),'Not applicable to this policy / no contribution') for key in sorted(excluded_ids)],[.5,.5])]
 
-    shadow=explanation.get('shadow_assessment') if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9')) else None
+    shadow=explanation.get('shadow_assessment') if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11')) else None
     shadow_start=len(story)
-    if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9')):
+    if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11')):
         story.append(p('Candidate assessment — SHADOW ONLY','h1'))
         if not shadow:
             story.append(p('This saved snapshot has no candidate calculation. No missing values are reconstructed.'))
@@ -480,7 +484,10 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         if human.get('public_message'): story.append(p(human['public_message']))
     story += [PageBreak(),p('Technical appendix · saved basis and thresholds','h1')]
     references=[('Snapshot',snapshot_id),('Analysis run',report.get('run_id')),('Policy',report.get('policy_version') or explanation.get('policy_version')),('Renderer',report.get('report_template_version') or RENDERER_VERSION),('Presentation contract',assessment.get('version'))]
+    references.append(('Stored execution status',processing.get('status','not recorded')))
     for key,value in references: story.append(p(key+': '+safe_text(value,True),'caption',True))
+    for failure in processing.get('failures') or []:
+        story.append(p('AI diagnostic: '+str(failure.get('error_category','unavailable'))+'; stage '+str(failure.get('stage','unrecorded'))+'; '+str(failure.get('timestamp','time unrecorded'))+'; attempts '+str(failure.get('attempt_count','unrecorded'))+'; retryable '+str(failure.get('retryable','unrecorded')),'caption',True))
     additional_labels={'person_contact':'Applicant contact','person_dob':'Date of birth','person_address':'Applicant address',
         'policy_type':'Policy type','policy_start_date':'Policy start','policy_end_date':'Policy end','previous_policy_number':'Previous policy',
         'policy_ncb_percent':'Declared no-claim bonus (%)','fuel_type':'Fuel type','rto':'Registration office','engine_number':'Engine reference',

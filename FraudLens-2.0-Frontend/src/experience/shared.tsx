@@ -569,6 +569,7 @@ async function caseDetail(id: string) {
   };
 }
 export async function api(path: string, options?: RequestInit): Promise<unknown> {
+  if(path==='workspace')return request('/v1/workspace');
   if (path === "config") return { intake: true, admin: true };
   if (path === "session") {
     // Remove credentials retained by older releases.

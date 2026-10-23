@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-VERSION = 'risk-presentation-2026-10-23-v2'
+VERSION = 'risk-presentation-2026-10-23-v3'
 BANDS = {'clear': 'Low', 'request_evidence': 'Medium', 'desk_review': 'Medium', 'escalate_siu': 'High'}
 
 
@@ -24,7 +24,9 @@ def assessment_presentation(report):
     stale |= bool(run_id and processing.get('job_id') and processing['job_id'] != run_id)
     if stale:
         reasons.append('The saved explanation belongs to an earlier or unverified analysis run.')
-    if state not in {'completed', 'done'}:
+    if (processing.get('review_summary') or {}).get('kind')=='provider_partial':
+        reasons.append('Local checks complete — AI analysis unavailable; human review required.')
+    elif state not in {'completed', 'done'}:
         reasons.append('Processing is ' + state.replace('_', ' ') + '; no completed current assessment is established.')
     if not explanation:
         reasons.append('A structured assessment explanation was not recorded.')

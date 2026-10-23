@@ -292,6 +292,8 @@ def run_checks(conn: sqlite3.Connection, case: Case, check_ids: Optional[list[st
     perception: dict[str, PerceptionRecord] = {}
     from ..perception import perception_record_usable
     for image in images:
+        if config is not None and 'allowed_perception_hashes' in config and image.content_hash not in config['allowed_perception_hashes']:
+            continue
         if image.content_hash in perception:
             continue
         record = db.get_perception(conn, image.content_hash)

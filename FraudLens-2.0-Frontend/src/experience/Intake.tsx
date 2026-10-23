@@ -5,6 +5,7 @@ import { sampleSuggestions, todayForInput, vehicleDependencyWarning } from "./sa
 import { CustomerGate } from "./CustomerSession";
 import {photoSlots} from './photoSlots';
 import {customerFetch} from './customer-api';
+import {terminalProcessing} from './reviewPresentation';
 type PhotoValidation={state:'checking'|'accepted'|'rejected'|'needs_replacement';reason:string;normalized_hash?:string};
 type SubmitResult = {
   id: string;
@@ -18,6 +19,7 @@ type JobResult = {
   stage?: string;
   detail?: string;
   provider_unavailable?: boolean;
+  review_summary?: {customer_label?: string};
 };
 const registrationPattern = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
 const maxUploadBytes = 5 * 1024 * 1024;
@@ -126,15 +128,15 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
         if (stopped) return;
         const pct = Math.round(Number(job.progress || 0) * 100);
         setJobStatus(
-          ["done", "completed"].includes(job.status || "")
+          job.review_summary?.customer_label || (job.status==='completed_partial' ? 'Your application is saved and awaiting review.' : ["done", "completed"].includes(job.status || "")
             ? job.provider_unavailable
               ? "Automated analysis could not complete. A reviewer will assess your evidence."
               : "Analysis complete. Awaiting a human decision."
             : ["failed", "interrupted"].includes(job.status || "")
               ? "Background analysis is incomplete. Your case is saved; check your dashboard for review and recovery updates."
-              : `${job.stage || job.status || "queued"}${pct ? ` - ${pct}%` : ""}`,
+              : `${job.stage || job.status || "queued"}${pct ? ` - ${pct}%` : ""}`),
         );
-        if (["done", "completed", "failed", "interrupted"].includes(job.status || "")) return;
+        if (terminalProcessing(job.status)) return;
         attempts += 1;
         if (attempts < delays.length) timer = setTimeout(poll, delays[attempts]);
         else

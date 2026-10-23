@@ -175,9 +175,18 @@ def latest_job(conn, case_id):
     return json.loads(row[0]) if row else None
 
 
-def job_view(job):
+def job_view(job, conn=None):
     """Execution fencing belongs in storage, never in UI/report payloads."""
-    return {k:v for k,v in job.items() if k not in {'execution_token','leader_epoch'}} if job else None
+    if not job:return None
+    from .processing_outcome import summary
+    durable=snapshot=False
+    if conn is not None and job.get('status')=='failed' and job.get('stage')=='needs_review':
+        row=conn.execute('''SELECT r.finding_ids,EXISTS(SELECT 1 FROM report_snapshots s WHERE s.run_id=r.run_id) AS saved
+            FROM processing_results r WHERE r.run_id=?''',(job['job_id'],)).fetchone()
+        durable=bool(row and json.loads(row['finding_ids']));snapshot=bool(row and row['saved'])
+    view={k:v for k,v in job.items() if k not in {'execution_token','leader_epoch'}}
+    view['review_summary']=summary(job,durable_result=durable,saved_snapshot=snapshot)
+    return view
 
 
 def worker_leader_present(conn):
@@ -189,6 +198,16 @@ def worker_leader_present(conn):
             AND l.classid=((key.value >> 32) & 4294967295)::oid
             AND l.objid=(key.value & 4294967295)::oid AND l.objsubid=1
             AND l.mode='ExclusiveLock' AND l.granted)''',('fraudlens-worker:'+conn.schema,)).fetchone()[0])
+
+
+def reconciled_result_status(conn,job,converged):
+    if converged:return 'completed'
+    from .processing_outcome import summary
+    candidate={**job,'status':'completed_partial'}
+    if (summary(candidate)['kind'] in {'provider_partial','assessment_partial'}
+        and conn.execute('SELECT 1 FROM report_snapshots WHERE run_id=? LIMIT 1',(job['job_id'],)).fetchone()):
+        return 'completed_partial'
+    return 'failed'
 
 
 def claim_next(conn, leader_epoch=None):
@@ -218,7 +237,7 @@ def interrupt_jobs(conn, before_epoch=None):
         if before_epoch is not None and job.get('leader_epoch',0) >= before_epoch:
             continue  # an old leader must not recover a newer leader's work
         completed=conn.execute('SELECT converged FROM processing_results WHERE run_id=?',(job['job_id'],)).fetchone()
-        if completed: job.update(status='completed' if completed[0] else 'failed',stage='complete' if completed[0] else 'needs_review',progress=1.0,provider_unavailable=not bool(completed[0]))
+        if completed: job.update(status=reconciled_result_status(conn,job,bool(completed[0])),stage='complete' if completed[0] else 'needs_review',progress=1.0,provider_unavailable=not bool(completed[0]))
         else:
             job.pop('execution_token', None)
             job.setdefault('interruptions',[]).append(time.time())
@@ -239,7 +258,7 @@ def release_lost_claim(conn, claimed):
         return
     result=conn.execute('SELECT converged FROM processing_results WHERE run_id=?',(claimed['job_id'],)).fetchone()
     if result:
-        current.update(status='completed' if result[0] else 'failed',stage='complete' if result[0] else 'needs_review',
+        current.update(status=reconciled_result_status(conn,current,bool(result[0])),stage='complete' if result[0] else 'needs_review',
                        progress=1.,provider_unavailable=not bool(result[0]))
     else:
         retry=current.get('attempts',0)<current.get('max_attempts',3)

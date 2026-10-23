@@ -1,0 +1,68 @@
+{
+  "recorded_at": 1792734425.2889278,
+  "schema": "fraudlens_validation_panel_20261022",
+  "api_worker_config_consistent": true,
+  "services": {
+    "api_pid": 11736,
+    "worker_pid": 13420,
+    "frontend_pid": 14060
+  },
+  "frontend_http": 200,
+  "health_http": 200,
+  "health_state": "degraded",
+  "readiness_http": 503,
+  "capabilities": {
+    "database": "ready",
+    "validator": "ready",
+    "storage": "ready",
+    "worker": {
+      "state": "ready",
+      "ocr_ready": true,
+      "leader": true,
+      "heartbeat_at": 1792734421.5817444
+    },
+    "provider": {
+      "state": "paused",
+      "ready": false,
+      "circuit_category": "transient",
+      "recorded_stop_at": 1792697549.7874427,
+      "retry_at": 1792699349.7874427,
+      "basis": "Persisted local controls only; no Google inference or account-quota check."
+    }
+  },
+  "active_jobs": 0,
+  "migrations": [
+    "001",
+    "002",
+    "003"
+  ],
+  "provider_controls_byte_identical": true,
+  "new_generation_requests": 0,
+  "cumulative_attempts": 17,
+  "operating_limits": {
+    "daily_attempts": 30,
+    "case_attempts": 16,
+    "agent_turns": 8,
+    "concurrent_cases": 1,
+    "retry_attempts": 2,
+    "pacing_seconds": 2,
+    "cooldown_seconds": 1800
+  },
+  "prior_task_status": "closed",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash",
+  "profile": "gemini3_defaults_v2",
+  "session_ledger": "outputs/pilot_validation/live_calls.json",
+  "quota_ledger": "outputs/pilot_validation/quota_budget.json",
+  "storage": "Existing private filesystem; PDFs in PostgreSQL; no Supabase Storage migration.",
+  "evidence_preservation": {
+    "pilot-evidence": {
+      "files_checked": 79,
+      "unchanged": true
+    },
+    "panel-evidence": {
+      "files_checked": 10,
+      "unchanged": true
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schema": "fraudlens_validation_panel_20261022",
+  "generation_requests": 0,
+  "provider_controls_byte_identical": true,
+  "results": {
+    "claims": {
+      "case_id": "case-95a28aea367c",
+      "run_id": "e98e025b4b4f4c34aebb6b6a18e54fb9",
+      "stored_status": "failed",
+      "derived_summary": "provider_partial",
+      "historical_state_unchanged": true,
+      "reviewer_customer_existing_outcome_verified": true,
+      "same_chrome_context": true,
+      "no_request_interception": true,
+      "neutral_risk": true,
+      "preview_download_equal": true,
+      "old_pdf_unchanged": true,
+      "pages": 11,
+      "snapshot_id": "69aee51a04b35ef796c14e7e19998a80612211e668fa4bbd6f46275b8a4ca78e",
+      "sha256": "45b1c9fb751c14dc353c731e3879044ea8ae007b2947b19849db7a018fed55e4",
+      "all_pages_rendered": true,
+      "mobile_no_overflow": true
+    },
+    "underwriting": {
+      "case_id": "case-ac757ae6f8b1",
+      "run_id": "f5f91eb39c9b47f68eb282d5a38647f4",
+      "stored_status": "failed",
+      "derived_summary": "provider_partial",
+      "historical_state_unchanged": true,
+      "reviewer_customer_existing_outcome_verified": true,
+      "same_chrome_context": true,
+      "no_request_interception": true,
+      "neutral_risk": true,
+      "preview_download_equal": true,
+      "old_pdf_unchanged": true,
+      "pages": 11,
+      "snapshot_id": "add3b63593f77687113461379eb3d0c54c648e12330f81e8be606a55cce39156",
+      "sha256": "0241c1795d0e477a3856cba9d9353d962e36f242869c8036784313c5e0083de0",
+      "all_pages_rendered": true,
+      "mobile_no_overflow": true
+    }
+  }
+}

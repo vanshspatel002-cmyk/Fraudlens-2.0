@@ -113,7 +113,7 @@ export default function Tracker() {
           <section className="tracker-result" aria-live="polite">
             <span>CASE STATUS</span>
             <h2>{result.status.replaceAll('_', ' ')}</h2>
-            {result.processingStatus && <p>Analysis: {result.processingStatus}</p>}
+            {result.processingStatus && <p>Analysis: {result.processingStatus==='completed_partial' ? 'Saved — awaiting review' : result.processingStatus}</p>}
             <p>
               {result.publicNarrative ||
                 "Your case is awaiting review. No final decision has been recorded."}
