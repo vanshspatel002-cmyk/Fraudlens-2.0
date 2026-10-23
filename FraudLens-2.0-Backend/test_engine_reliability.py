@@ -118,9 +118,32 @@ def test_missing_exif_and_baseline_are_not_passed_authenticity(store):
 def test_wrong_case_type_precedes_perception_dependency_and_duplicate_check_ids_run_once(store):
     conn,case,image=store
     case=replace(case,agent_type='underwriting')
-    findings=run_checks(conn,case,['severity_progression','damage_plausibility','damage_plausibility'],config={'execution_states':True})
-    assert len(findings)==2
+    findings=run_checks(conn,case,['severity_progression','damage_plausibility','damage_plausibility','scene_consistency'],config={'execution_states':True})
+    assert len(findings)==3
     assert all(f.evidence['execution_state']=='not_applicable' for f in findings)
+
+
+@pytest.mark.parametrize('prior_exists',[False,True])
+def test_history_applicability_precedes_missing_perception(store,prior_exists):
+    conn,case,image=store
+    if prior_exists:
+        db.insert_case(conn,replace(case,case_id='prior-unassessed',declared_time=case.declared_time-timedelta(days=1)))
+        conn.commit()
+    finding=run_checks(conn,case,['severity_progression'],config={'execution_states':True})[0]
+    assert finding.verdict is Verdict.INCONCLUSIVE
+    if prior_exists:
+        assert finding.evidence['execution_state']=='inconclusive'
+        assert 'fewer than two' in finding.explanation
+    else:
+        assert finding.evidence['execution_state']=='not_applicable'
+        assert finding.evidence['reason']=='no_prior_claim_sequence'
+
+
+def test_missing_perception_is_not_reported_as_an_invoked_measurement(store):
+    conn,case,image=store
+    findings=run_checks(conn,case,['scene_consistency','damage_plausibility'],config={'execution_states':True})
+    assert findings and all(f.evidence['execution_state']=='not_run' for f in findings)
+    assert all(f.evidence['missing_requirements']==['perception'] and f.confidence==0 for f in findings)
 
 
 def test_baseline_requires_actual_complete_undamaged_observations(store):

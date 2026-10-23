@@ -1,0 +1,135 @@
+{
+  "database_schema": "fraudlens_pilot",
+  "tables": {
+    "claimants": {
+      "before": 800,
+      "after": 800,
+      "unchanged": true
+    },
+    "cases": {
+      "before": 826,
+      "after": 826,
+      "unchanged": true
+    },
+    "findings": {
+      "before": 14884,
+      "after": 14884,
+      "unchanged": true
+    },
+    "perception_records": {
+      "before": 131,
+      "after": 131,
+      "unchanged": true
+    },
+    "image_artifacts": {
+      "before": 0,
+      "after": 0,
+      "unchanged": true
+    },
+    "agent_decisions": {
+      "before": 916,
+      "after": 916,
+      "unchanged": true
+    },
+    "images": {
+      "before": 1474,
+      "after": 1474,
+      "unchanged": true
+    },
+    "audit_log": {
+      "before": 1125,
+      "after": 1125,
+      "unchanged": true
+    },
+    "cache_entries": {
+      "before": 110,
+      "after": 110,
+      "unchanged": true
+    },
+    "admin_actions": {
+      "before": 28,
+      "after": 28,
+      "unchanged": true
+    },
+    "admin_sessions": {
+      "before": 7,
+      "after": 7,
+      "unchanged": true
+    },
+    "api_jobs": {
+      "before": 38,
+      "after": 38,
+      "unchanged": true
+    },
+    "organizations": {
+      "before": 1,
+      "after": 1,
+      "unchanged": true
+    },
+    "reviewer_accounts": {
+      "before": 3,
+      "after": 3,
+      "unchanged": true
+    },
+    "applicant_grants": {
+      "before": 26,
+      "after": 26,
+      "unchanged": true
+    },
+    "evidence_requests": {
+      "before": 15,
+      "after": 15,
+      "unchanged": true
+    },
+    "evidence_batches": {
+      "before": 37,
+      "after": 37,
+      "unchanged": true
+    },
+    "submission_receipts": {
+      "before": 26,
+      "after": 26,
+      "unchanged": true
+    },
+    "processing_results": {
+      "before": 38,
+      "after": 38,
+      "unchanged": true
+    },
+    "report_snapshots": {
+      "before": 63,
+      "after": 63,
+      "unchanged": true
+    },
+    "customer_accounts": {
+      "before": 3,
+      "after": 3,
+      "unchanged": true
+    },
+    "customer_sessions": {
+      "before": 11,
+      "after": 11,
+      "unchanged": true
+    },
+    "case_owners": {
+      "before": 5,
+      "after": 5,
+      "unchanged": true
+    },
+    "report_artifacts": {
+      "before": 5,
+      "after": 5,
+      "unchanged": true
+    }
+  },
+  "all_original_tables_unchanged": true,
+  "evidence_files_checked": 79,
+  "original_evidence_missing": 0,
+  "original_evidence_changed": 0,
+  "original_provider_attempts": 15,
+  "current_provider_attempts": 17,
+  "original_events_prefix_unchanged": true,
+  "original_stops_unchanged": true,
+  "original_recoveries_unchanged": true,
+  "original_limits_unchanged": true
+}

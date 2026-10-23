@@ -1,0 +1,72 @@
+{
+  "starting_attempts": 15,
+  "new_attempts": 2,
+  "final_attempts": 17,
+  "task_ceiling": 45,
+  "unused_task_slots": 28,
+  "task_status": "closed",
+  "mode": "paused",
+  "circuit": {
+    "category": "transient",
+    "stopped_at": 1792697549.7874427,
+    "retry_at": 1792699349.7874427,
+    "attempt": 17
+  },
+  "metadata_requests": 0,
+  "new_requests": [
+    {
+      "attempt": 16,
+      "model": "gemini-3.5-flash",
+      "time": 1792697541.6169662,
+      "outcome": "failure:503",
+      "case_id": "case-95a28aea367c",
+      "run_id": "e98e025b4b4f4c34aebb6b6a18e54fb9",
+      "diagnostic": {
+        "stage": "provider_request",
+        "error_category": "provider_http_error",
+        "timestamp": "2026-10-22T19:32:25.626486+00:00",
+        "attempt_count": 1,
+        "retryable": true,
+        "provider_status": "http_503",
+        "http_status": 503,
+        "attempted_network": true,
+        "exception_type": "ServerError",
+        "message": "A transient provider HTTP error was returned.",
+        "provider_error_code": "UNAVAILABLE",
+        "model": "gemini-3.5-flash"
+      }
+    },
+    {
+      "attempt": 17,
+      "model": "gemini-3.5-flash",
+      "time": 1792697547.7157054,
+      "outcome": "failure:503",
+      "case_id": "case-95a28aea367c",
+      "run_id": "e98e025b4b4f4c34aebb6b6a18e54fb9",
+      "diagnostic": {
+        "stage": "provider_request",
+        "error_category": "provider_http_error",
+        "timestamp": "2026-10-22T19:32:29.787442+00:00",
+        "attempt_count": 1,
+        "retryable": true,
+        "provider_status": "http_503",
+        "http_status": 503,
+        "attempted_network": true,
+        "exception_type": "ServerError",
+        "message": "A transient provider HTTP error was returned.",
+        "provider_error_code": "UNAVAILABLE",
+        "model": "gemini-3.5-flash"
+      }
+    }
+  ],
+  "local_limits": {
+    "daily_attempts": 30,
+    "case_attempts": 16,
+    "agent_turns": 8,
+    "concurrent_cases": 1,
+    "retry_attempts": 2,
+    "pacing_seconds": 2,
+    "cooldown_seconds": 1800
+  },
+  "google_account_quota": "Not established; local allowance is not Google entitlement."
+}

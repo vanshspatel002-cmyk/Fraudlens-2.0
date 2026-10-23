@@ -1,3 +1,28 @@
+# Current assessment presentation — 23 October 2026
+
+Production stays model-selected routing plus material-evidence guards. Shadow
+two-axis calculations are not promoted; no numeric production contribution,
+fraud probability or automatic human approval was added.
+
+Coverage v3 adds the required intended-odometer-slot readability guard; missing
+optional EXIF/C2PA and zero-weight experiments do not block clearance. Explanation
+v5 and risk presentation v2 preserve original records but label a fallback as no
+converged model decision. UI and renderer v9 agree, keep incomplete risk neutral,
+and show saved shadow values with readable rounding. Final checks revision v5
+distinguishes missing-prerequisite not-run from measurement, evaluates history
+applicability before perception and excludes incident scene checks from underwriting.
+The two saved rehearsal runs predate that applicability correction; their original
+conservative gaps remain intact, without historical reprocessing.
+
+Both new real-photo cases saved incomplete assessments and reviewer/customer
+evidence requests. Fresh live AI completion was blocked by two actual Gemini 503s;
+local OCR/checks are not claimed as fresh successful model execution. All 22 PDF
+pages were rendered/visually inspected; native Chrome preview/download verified.
+No accuracy improvement is claimed. See [final verification](FINAL_PRESENTATION_VERIFICATION.md)
+and [handover](FINAL_PRESENTATION_HANDOVER.md). The audit below remains historical.
+
+---
+
 # Dependency, input and assessment audit handover
 
 Baseline: `f35aa755db6d5cc88c7746a3672a1aa118761ea1`, branch

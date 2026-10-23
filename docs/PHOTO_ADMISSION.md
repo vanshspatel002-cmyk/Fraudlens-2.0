@@ -39,33 +39,37 @@ mounted plates and dashboards. Competing prompts cover motorcycles, heavy
 vehicles, people, animals, food, scenery, documents, screens and unrelated objects.
 There is no Gemini request in upload admission.
 
-Policy `initial-photo-admission-2026-10-22-v2` requires the best positive cosine
+Policy `initial-photo-admission-2026-10-22-v3` requires the best positive cosine
 similarity to reach the existing **0.175** floor and exceed the best competing
 similarity by **0.020**. These are similarity measurements, not probabilities.
 The original broad gate's negative margin allowance is not used by new initial
 admission. A competing category ahead by more than 0.020 produces `rejected`;
 other insufficient evidence produces `needs_replacement`. Neither can submit.
 
-The margin is a conservative abstention operating point, not calibrated accuracy.
-The first local argmax-only experiment incorrectly admitted the printed-car
-document (margin 0.00362) and heavily blurred car (0.01875). Requiring 0.020
-withheld both on the repeat smoke test. This small development set is not an
-independent evaluation set; three of six genuine exteriors also needed retakes.
-Do not loosen the policy simply to make a submission succeed.
+The margin is an abstention operating point, not calibrated accuracy. Version 3
+expands generic exterior, mounted-plate and recognisable vehicle-part/interior
+descriptions without lowering either cutoff. Twelve corpus exteriors (six held
+out from prompt development) passed the native smoke. Real same-car public
+photographs and unrelated controls were tested separately; the final verification
+records successful slots and remaining limitations. This is not an accuracy study.
 
-Plate/dashboard candidates additionally use the existing shared EasyOCR reader.
-Plates must produce a recognisable Indian-registration pattern using the existing
-observed-prefix parser. Mileage needs a labelled ODO/mileage number or a multi-digit
-km/miles reading; speed/RPM and unlabelled numbers do not establish mileage.
-Unreadable content requests a retake. These heuristics do not verify registration
-ownership or the true mileage. Unsupported formats may need replacement. OCR
-unavailability returns a retryable service error, never silent acceptance.
+Admission establishes image relevance, separately from text extraction. A relevant
+mounted-plate/dashboard photograph can pass with capture guidance even if its text
+is unreadable. Its response explicitly records `quality_readable=null`,
+`identity_verified=false` and `slot_label_verified=false`. The worker's existing
+EasyOCR runs during assessment; the API does not load a second OCR reader.
+Registration parsing remains Indian-format-specific. Mileage needs labelled
+ODO/mileage or km/miles text on the submitted odometer image; speed/RPM and unrelated
+image text cannot establish mileage. Missing readable required mileage is a
+material assessment gap, not a fraud finding. Neither OCR nor admission verifies
+ownership or actual mileage. Validator failure/busy/warming returns retryable 503.
 
-No suitable legitimate mounted-plate or odometer positive fixture was located.
-Their parsing, unreadable-state and endpoint behavior have controlled verification,
-but real positive recognition remains unverified. Trucks/buses are competing
-categories but had no dedicated real smoke image. The damage set includes vehicle
-damage crops; an independent tightly cropped part-only evaluation is still needed.
+Licensed archived mounted-plate, dashboard and vehicle-part positives are now in
+`presentation_assets/`; their real local relevance results are recorded in the
+final presentation verification. A powered readable odometer remains unavailable
+in that same-car set. Trucks/buses remain competing categories without a dedicated
+real heavy-vehicle negative smoke. The small part-image smoke is not an independent
+calibration set.
 Printed-photo/screen rejection remains heuristic; a cropped screenshot can evade
 CLIP. A successful gate is not image-authenticity verification.
 
@@ -75,7 +79,10 @@ Every image must be nonempty, at most 5 MiB, actually decode as JPEG/PNG/WebP,
 match its declared MIME, have both dimensions at least 64 pixels, and contain at
 most 25 megapixels. Exact solid blanks fail. EXIF orientation is applied before
 RGB inference and duplicate hashing. The hash includes oriented dimensions and
-pixels. Original bytes and EXIF are preserved for downstream analysis.
+pixels. A conservative thumbnail Laplacian-variance floor of 5 withholds severely
+blurred/detail-free images; it is not an authenticity or fraud test. Original bytes
+are preserved. Extracted EXIF text removes embedded NUL padding because PostgreSQL
+JSON cannot represent U+0000; the original EXIF remains in the original file.
 
 Exact normalised duplicate content cannot satisfy two slots. Metadata-only
 changes do not evade that rule. Recompressed near duplicates are not guaranteed
@@ -86,8 +93,9 @@ slot, original-byte SHA-256 and policy version. In-memory entries expire after
 600 seconds; at most 256 are retained. Final submission decodes/checks MIME again
 and reuses only a compatible entry. Changed bytes/session/slot/version, eviction,
 expiry, another process or restart require revalidation. Client `valid=true`
-and returned hashes are never authority. Full warmup prepares all slot text
-embeddings and the existing OCR reader. A process-local semaphore permits one
+and returned hashes are never authority. API warmup prepares CLIP and slot texts;
+the dedicated worker warms OCR separately. Capability readiness distinguishes
+warming/unavailable validators and workers from usable service. A semaphore permits one
 inference at a time; busy inference returns 503. Multiple API processes still
 have their own model/cache; no cross-process cache is claimed.
 

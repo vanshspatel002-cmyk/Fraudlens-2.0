@@ -95,6 +95,9 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
     const phone = String(data.get("phone") || "").replace(/\D/g, "");
     if (phone.length < 10) return "Enter a valid mobile number.";
     const bankLast4 = String(data.get("bankLast4") || "");
+    const latitude=String(data.get('latitude')||'').trim(),longitude=String(data.get('longitude')||'').trim();
+    if(Boolean(latitude)!==Boolean(longitude))return 'Enter both incident coordinates, or leave both blank.';
+    if(latitude && (!Number.isFinite(Number(latitude)) || Math.abs(Number(latitude))>90 || !Number.isFinite(Number(longitude)) || Math.abs(Number(longitude))>180))return 'Latitude must be -90 to 90; longitude -180 to 180.';
     if (bankLast4 && !/^[0-9]{4}$/.test(bankLast4)) {
       return "Bank account last four digits must be exactly four numbers.";
     }
@@ -187,6 +190,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
       );
     } catch (err) {
       setError((err as Error).message);
+      setJobStatus("");
       const details=(err as Error & {details?:{field?:string;reason?:string}[]}).details;
       if(Array.isArray(details))setPhotoStates(old=>{
         const next={...old};
@@ -410,7 +414,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
                       <Field
                         suggestions={samples("incidentTime")}
                         name="incidentTime"
-                        label="Incident time (IST)"
+                        label="Incident local time"
                         type="time"
                       />
                       <Field
@@ -418,6 +422,21 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
                         name="location"
                         label="Incident location"
                       />
+                      <label className="field"><span>Incident UTC offset</span>
+                        <select name="incidentOffset" defaultValue="+05:30" required>
+                          <option value="+05:30">UTC +05:30 (India)</option>
+                          <option value="+00:00">UTC +00:00</option>
+                          <option value="+01:00">UTC +01:00</option>
+                          <option value="+02:00">UTC +02:00</option>
+                          <option value="+03:00">UTC +03:00</option>
+                          <option value="+09:00">UTC +09:00 (Japan)</option>
+                          <option value="-04:00">UTC -04:00</option>
+                          <option value="-05:00">UTC -05:00</option>
+                        </select>
+                      </label>
+                      <Field name="latitude" label="Incident latitude (optional)" type="number" min="-90" max="90" step="any" required={false}/>
+                      <Field name="longitude" label="Incident longitude (optional)" type="number" min="-180" max="180" step="any" required={false}/>
+                      <p className="help">Enter both coordinates from a known map pin, or leave both blank. These are your incident declarations, not independently verified GPS. Confirm the UTC offset for the incident date; location text does not generate coordinates.</p>
                       <Field
                         suggestions={samples("amount")}
                         name="amount"

@@ -145,6 +145,8 @@ class PatternBar(Flowable):
 def render_visual_report(report, snapshot_id, generated_at, revised=False):
     from .report_pdf import _font_names, _timestamp, CHECK_LABELS, CHECK_PURPOSES, RENDERER_VERSION
     regular, bold = _font_names()
+    latest=report.get('report_template_version','').endswith(('-v8','-v9'))
+    polished=report.get('report_template_version','').endswith('-v9')
     width = A4[0]-32*mm
     styles = {
         'body': ParagraphStyle('v4-body',fontName=regular,fontSize=9,leading=13,textColor=INK,spaceAfter=6,splitLongWords=True),
@@ -219,25 +221,29 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     story.append(p('This assessment covers only the saved run and evidence. Earlier reports remain historical when new evidence arrives. No heuristic score is a calibrated fraud probability.','caption'))
     summary = f"{kind.title()} application for {registration}. "
     if kind=='claims' and finite(declaration.get('claim_amount')): summary += f"Declared claim: INR {declaration['claim_amount']:,.0f}. "
-    summary += f'{len(inventory) or len(report.get("evidence_ids",[]))} saved photograph(s); {concern_count} recorded concern finding(s). Applicant statements and automated observations require independent review.'
+    concern_checks=len({f.get('check_id') for f in findings if finding_state(f)=='concern'})
+    summary += f'{len(inventory) or len(report.get("evidence_ids",[]))} saved photograph(s); '+(f'{concern_count} concern observation(s) across {concern_checks} check(s).' if latest else f'{concern_count} recorded concern finding(s).')+' Applicant statements and automated observations require independent review.'
     story.append(p('One-minute case summary','h2'))
     if inventory:
         summary_card=Table([[p(summary),[picture(inventory[0],width*.32,94),p('Saved evidence preview','caption')]]],colWidths=[width*.65,width*.35])
         summary_card.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0)]));story.append(summary_card)
     else:story.append(p(summary))
     candidate=(report.get('assessment_explanation') or {}).get('shadow_assessment')
-    if candidate and report.get('report_template_version','').endswith('-v6'):
-        story.append(p('SHADOW ONLY · candidate concern R: '+str(candidate.get('concern_index'))+'; material coverage C: '+str(candidate.get('coverage'))+'. Unvalidated; production risk and human review unchanged.','small'))
+    if candidate and report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9')):
+        concern_display=f"{candidate['concern_index']:.2f} / 1" if latest and finite(candidate.get('concern_index')) else str(candidate.get('concern_index'))
+        coverage_display=f"{candidate['coverage']:.1%}" if latest and finite(candidate.get('coverage')) else str(candidate.get('coverage'))
+        story.append(p('SHADOW ONLY · candidate concern R: '+concern_display+'; material evidence coverage C: '+coverage_display+'. Unvalidated; production risk and human review unchanged.','small'))
     story.append(p('Main supported findings','h2'))
     concerns = list(dict.fromkeys(short(f.get('explanation'),175) for f in findings if finding_state(f)=='concern'))
     for text in concerns[:3]: story.append(p('• '+text,'small'))
     if not concerns: story.append(p('No concerning finding was recorded. This does not clear missing or unavailable checks.','small'))
     if len(concerns)>3: story.append(p(f'{len(concerns)-3} further concern observation(s) are grouped in the check results.','caption'))
     story += [p('Evidence / check coverage — separate from risk','h2'),
-              grid(['Photographs','Required execution coverage','Required unresolved inputs'],[(str(len(inventory)),
-                    str(required_executed)+(' executed check(s)' if revised else ' completed check(s)'),
+              grid(['Photographs','Recorded required checks' if polished else 'Required execution coverage','Required unresolved inputs'],[(str(len(inventory)),
+                    str(required_executed)+(' check record(s)' if polished else ' executed check(s)' if revised else ' completed check(s)'),
                     str(required_unresolved)+' unresolved check(s)')]),
               p('Optional and zero-weight experimental results are shown separately; they do not create a numerical risk score.','caption')]
+    if polished:story.append(p('A recorded result may be unavailable or inconclusive; it does not establish that a measurement succeeded.','caption'))
     next_action = 'Review the evidence and missing inputs; request specific new evidence before relying on an incomplete assessment.' if not assessment.get('complete') else (report.get('agent_recommendation') or {}).get('recommendation','Human review required').replace('_',' ')
     if revised:
         if report.get('assessment_context')=='historical':
@@ -256,9 +262,13 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     facts = [('Registration',registration),('Case type',kind),('Submitted',_timestamp(report.get('submitted_at')))]
     labels = {'person_name':'Applicant','vehicle_make':'Make','vehicle_model':'Model','vehicle_variant':'Variant','vehicle_year':'Year','policy_number':'Policy reference',
               'claim_amount':'Claimed amount (INR)','idv':'Insured declared value (INR)','declared_location':'Declared incident location','incident_date':'Declared incident time','declaration_notes':'Applicant declaration'}
+    if report.get('report_template_version','').endswith(('-v7','-v8','-v9')):
+        labels.update(latitude='Declared incident latitude (unverified)',longitude='Declared incident longitude (unverified)')
     facts += [(label,declaration[key]) for key,label in labels.items() if declaration.get(key) is not None and declaration[key]!='']
     story.append(grid(['Field','Declared / recorded value'],facts,[.3,.7]))
     story += [p('Labeled photographs · evidence overview','h1')]
+    if any(item.get('slot') for item in inventory):
+        story.append(p('Slot names are applicant assignments. Exact angle, same-vehicle identity and capture date have not been independently authenticated.','caption'))
     if inventory:
         cells = []
         for item in inventory:
@@ -267,7 +277,7 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         rows = [cells[i:i+2]+([[]] if len(cells[i:i+2])==1 else []) for i in range(0,len(cells),2)]
         gallery = Table(rows,colWidths=[width/2]*2,hAlign='LEFT'); gallery.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('BOTTOMPADDING',(0,0),(-1,-1),8)])); story.append(gallery)
     else: story.append(p('No frozen thumbnails were saved. Evidence has not been recreated for this report.'))
-    story += [PageBreak(),p('Main findings · check results','h1'),p('Labels distinguish concern, no concern found, inconclusive, unavailable, not run and not applicable. A completed check is not necessarily a clean result.','small')]
+    story += ([] if latest else [PageBreak()])+[p('Main findings · check results','h1'),p('Labels distinguish concern, no concern found, inconclusive, unavailable, not run and not applicable. A completed check is not necessarily a clean result.','small')]
 
     def contribution(check_id):
         rows = calculations.get(check_id,[])
@@ -294,6 +304,11 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
             reason = next((f.get('explanation') for f in group if f.get('explanation')),None)
             return [grid(['Saved state','Missing requirement / reason'],[(STATES.get(state,state),short(reason or 'The saved snapshot contains no applicable completed measurement.',260))],[.23,.77])]
         observed = [finding.get('evidence') or {} for finding in group]
+        calculation_rows=calculations.get(check_id,[])
+        if (polished and check_id in {'ai_generation','digital_edit','view_completeness','baseline_corruption'}
+                and calculation_rows and all(row.get('registered_weight')==0 for row in calculation_rows)):
+            return [grid(['Saved experimental observations','Use in production'],[(str(len(group))+' '+STATES.get(state,state)+' record(s)',
+                'EXCLUDED / ZERO WEIGHT. Raw classifier measurements are retained in the saved record; they are not fraud probabilities.')],[.35,.65])]
         if check_id in {'internal_duplicate','external_corpus'}:
             item = next((entry for entry in observed if entry.get('matched_image_id') or entry.get('cosine_similarity') is not None),observed[0])
             submitted = images.get(item.get('image_id')); reference = reference_images.get(item.get('matched_image_id'))
@@ -301,7 +316,9 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
                           [picture(submitted,width/2-18,69),picture(reference,width/2-18,69)]],colWidths=[width/2]*2)
             pair.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP')]))
             rows = measurements(group,('cosine_similarity','hamming_distance','images_compared','corpus_size'))
-            return [pair,grid(['Evidence','Measured comparison'],rows,[.25,.75]),p('Similarity is not proof of reused evidence or claimant intent. Reference images are shown only when frozen from an authorized internal record; external filenames are never opened.','caption')]
+            comparison=([pair] if not polished or reference else [])+[grid(['Evidence','Measured comparison'],rows,[.25,.75])]
+            if polished and not reference:comparison.append(p('No authorized matching reference photograph was saved. No visual match is fabricated.','caption'))
+            return comparison+[p('Similarity is not proof of reused evidence or claimant intent. Reference images are shown only when frozen from an authorized internal record; external filenames are never opened.','caption')]
         if check_id=='plate_ocr':
             rows=[]
             for item in observed:
@@ -320,7 +337,7 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
                              metadata.get('Make') or 'Not recorded',item.get('software') or metadata.get('Software') or 'Not recorded'))
             return [grid(['Evidence','Captured time','GPS','Camera','Software'],rows,[.16,.28,.16,.19,.21]),
                     grid(['Evidence','Usable comparison'],measurements(group,('gps_distance_km','hours_apart','exif_present')),[.25,.75]),
-                    p('Missing metadata does not imply manipulation. Capture time and GPS are extracted fields, not independently authenticated facts.','caption')]
+                    p('Missing metadata does not imply manipulation. Capture time and GPS are extracted fields, not independently authenticated facts.'+(' An editor tag records software, not what changed or whether a claim is fraudulent.' if polished else ''),'caption')]
         if check_id=='entity_graph':
             links={key:fields for item in observed for key,fields in (item.get('linked_cases') or {}).items() if isinstance(fields,list)}
             return ([RelationshipGraph(links,width),p(f'{len(links)} recorded linked case(s); the graph shows up to four. Shared identifiers have innocent explanations and are not proof of fraud.','caption')]
@@ -339,7 +356,9 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
             return graph
         if revised and check_id=='damage_plausibility':
             item=observed[0]; band=item.get('plausible_range_inr') or []
-            rows=[('Observed severity',item.get('severity_used')),('Declared amount (INR)',item.get('claim_amount_inr'))]
+            amount=item.get('claim_amount_inr')
+            if polished and amount is None:amount=declaration.get('claim_amount')
+            rows=[('Observed severity',item.get('severity_used')),('Declared amount (INR)',amount)]
             if len(band)==2:
                 rows += [('Configured heuristic band (INR)',str(band)),('Concern threshold (INR)',band[1]*item.get('ceiling_tolerance',1.5) if finite(band[1]) else 'No finite ceiling')]
             return [grid(['Saved input / benchmark','Value'],rows,[.55,.45]),
@@ -373,7 +392,7 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
             heading.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),PALE),('LINEBEFORE',(0,0),(0,0),3,badge_color),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('TOPPADDING',(0,0),(-1,-1),6),('BOTTOMPADDING',(0,0),(-1,-1),6)]))
             content=([p(group_title,'h1')] if group_index==0 else [])+[heading,p(meta.get('purpose') or CHECK_PURPOSES.get(check_id,'Examine the saved evidence for this check.'),'small')]
             evidence_labels=list(dict.fromkeys(images.get((f.get('evidence') or {}).get('image_id'),{}).get('label','Case / linked records') for f in group))
-            content.append(p('Evidence examined: '+(', '.join(evidence_labels) if evidence_labels else 'No completed evidence measurement was recorded.'),'caption'))
+            content.append(p(('Evidence referenced: ' if polished else 'Evidence examined: ')+(', '.join(evidence_labels) if evidence_labels else 'No completed evidence measurement was recorded.'),'caption'))
             content += check_graphic(check_id,group,state)
             parameters={key:value for row in calculations.get(check_id,[]) for key,value in (row.get('rule_parameters') or {}).items() if not isinstance(value,(list,dict))}
             if parameters and (not revised or check_id in {'internal_duplicate','external_corpus','plate_ocr'}):
@@ -396,19 +415,21 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     if excluded_ids:
         story += [p('Checks outside this run’s applicable policy','h2'),grid(['Registered check','Result / use'],[(CHECK_LABELS.get(key,key),'Not applicable to this policy / no contribution') for key in sorted(excluded_ids)],[.5,.5])]
 
-    shadow=explanation.get('shadow_assessment') if report.get('report_template_version','').endswith('-v6') else None
+    shadow=explanation.get('shadow_assessment') if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9')) else None
     shadow_start=len(story)
-    if report.get('report_template_version','').endswith('-v6'):
+    if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9')):
         story.append(p('Candidate assessment — SHADOW ONLY','h1'))
         if not shadow:
             story.append(p('This saved snapshot has no candidate calculation. No missing values are reconstructed.'))
         else:
             story.append(p('Unvalidated heuristic comparison. This does not replace production routing, the risk bar or human review. Neither axis is a fraud probability.'))
-            story.append(grid(['Concern index R','Material coverage C','Candidate action'],[(
-                str(shadow.get('concern_index')),str(shadow.get('coverage')),shadow.get('candidate_recommendation'))],[.30,.30,.40]))
+            story.append(grid(['Concern index R (0–1)','Material coverage C','Candidate action'],[(
+                f"{shadow['concern_index']:.2f}" if finite(shadow.get('concern_index')) else 'Unavailable',
+                f"{shadow['coverage']:.1%}" if finite(shadow.get('coverage')) else 'Unavailable',shadow.get('candidate_recommendation'))],[.30,.30,.40]))
             story.append(p('R = 1 - product(1 - grouped maximum). C = sufficient applicable material requirements / applicable material requirements. Mandatory gaps prevent candidate clearance regardless of the average.','small'))
             story.append(grid(['Correlation group','Saved maximum a × e'],[(k,str(v)) for k,v in shadow.get('groups',{}).items()],[.65,.35]))
-            story.append(p('Worked saved calculation: R = 1 - '+ ' × '.join('('+str(round(1-v,4))+')' for v in shadow.get('groups',{}).values())+' = '+str(shadow.get('concern_index'))+'. C = '+str(shadow.get('coverage_numerator'))+' / '+str(shadow.get('coverage_denominator'))+' = '+str(shadow.get('coverage'))+'.','small'))
+            coverage_display=f"{shadow['coverage']:.1%}" if latest and finite(shadow.get('coverage')) else str(shadow.get('coverage'))
+            story.append(p('Worked saved calculation: R = 1 - '+ ' × '.join('('+str(round(1-v,4))+')' for v in shadow.get('groups',{}).values())+' = '+str(shadow.get('concern_index'))+'. C = '+str(shadow.get('coverage_numerator'))+' / '+str(shadow.get('coverage_denominator'))+' = '+coverage_display+'.','small'))
             story.append(grid(['Check / group','Strength / parameter','Coverage sufficient'],[(row['check_id']+' / '+str(row['group']),str(row['e'])+' / '+str(row['a']),str((shadow.get('material_requirements',{}).get(row['check_id']) or {}).get('evidence_sufficient','Optional / not applicable'))) for row in shadow.get('checks',[])],[.45,.25,.30]))
             story.append(p('Mandatory gaps: '+(', '.join(shadow.get('mandatory_gaps') or []) or 'None recorded')+'. Garage alerts are separate. All candidate operating points are unvalidated.','small'))
     if shadow:
@@ -419,8 +440,12 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     else:
         story.append(p(aggregation.get('rule') or 'No aggregation rule was saved.'))
         if revised:
-            story.append(grid(['Model output (unchanged)','Effective system routing','Guard / human boundary'],[(
-                str(routing.get('recorded_band'))+' / '+str(routing.get('model_recommendation',routing.get('recommendation'))),
+            model_recorded=routing.get('source')=='model' and routing.get('converged') is True
+            saved_output=str(routing.get('recorded_band'))+' / '+str(routing.get('model_recommendation',routing.get('recommendation')))
+            if not model_recorded and latest:
+                saved_output='Saved rules baseline; no model decision.' if routing.get('source')=='rules_baseline' else 'No converged model decision. Saved system fallback only.'
+            story.append(grid([('Recorded model output' if model_recorded else 'Automated decision availability') if latest else 'Model output (unchanged)','Effective system routing','Guard / human boundary'],[(
+                saved_output,
                 routing.get('effective_recommendation') or 'Unrecorded in this snapshot',
                 (routing.get('guard_policy') or 'No guard policy recorded')+'. Human approval/rejection is separate.')],[.34,.30,.36]))
         if aggregation.get('valid_numeric_score') and finite(aggregation.get('computed_value')):
@@ -440,7 +465,11 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         if aggregation.get('thresholds'):
             thresholds=aggregation['thresholds']
             story.append(p('Saved thresholds: clear < '+str(thresholds.get('clear_below'))+'; request evidence < '+str(thresholds.get('request_evidence_below'))+'; desk review < '+str(thresholds.get('desk_review_below'))+'; investigation at or above the last threshold.','small'))
-        for override in routing.get('overrides') or []: story.append(p('Recorded override: '+safe_text(override),'small'))
+        for override in routing.get('overrides') or []:
+            label=safe_text(override)
+            if latest and routing.get('source')=='fallback' and 'model output retained' in label:
+                label='Material-evidence guard: no converged model decision; fallback routing cannot establish clearance.'
+            story.append(p('Recorded override: '+label,'small'))
     story += [p('Material limitations and next reviewer action','h1'),p('Coverage measures execution, not risk. Missing metadata is not proof of manipulation; similarity and shared identifiers are not proof of fraud. Automated routing is separate from human approval or rejection.')]
     if not assessment.get('complete'): story.append(p('Partial analysis: '+assessment['explanation']))
     for text in list(dict.fromkeys(report.get('limitations') or []))[:4]: story.append(p('• '+short(text,260),'small'))

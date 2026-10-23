@@ -1,6 +1,6 @@
 import type { FormEvent } from 'react';
 import ReportPanel from './ReportPanel';
-import {applicationDetails,deskReviewSentences,processingLabel,readableTimeline,reviewDate,type ReviewSummaryInput} from './reviewPresentation';
+import {applicationDetails,deskReviewSentences,formatShadowMetric,processingLabel,readableTimeline,recordedModelRecommendation,reviewDate,type ReviewSummaryInput} from './reviewPresentation';
 import './case-review.css';
 
 type ReviewCase = ReviewSummaryInput & {
@@ -47,13 +47,13 @@ export default function CaseReview({detail,userRole,busy,humanAction,onHumanActi
       <h2 id="review-desk-title">Desk Review</h2>
       <p className="desk-review-summary" data-sentence-count={sentences.length}>{sentences.join(' ')}</p>
       {detail.assessmentExplanation?.routing?.effective_recommendation && <dl className="review-application" aria-label="Automated routing basis">
-        <div><dt>Model recommendation (recorded)</dt><dd>{(detail.assessmentExplanation.routing.model_recommendation || detail.assessmentExplanation.routing.recommendation || 'Unavailable').replaceAll('_',' ')}</dd></div>
+        <div><dt>Model recommendation (recorded)</dt><dd>{recordedModelRecommendation(detail)}</dd></div>
         <div><dt>Effective system routing</dt><dd>{detail.assessmentExplanation.routing.effective_recommendation.replaceAll('_',' ')}{detail.assessmentExplanation.routing.guard_applied ? ' · material evidence guard applied' : ''}</dd></div>
         {!!detail.assessmentExplanation.coverage?.material_gap_ids?.length && <div><dt>Material missing evidence</dt><dd>{detail.assessmentExplanation.coverage.material_gap_ids.map(key=>key.replaceAll('_',' ')).join(', ')}</dd></div>}
       </dl>}
       {detail.assessmentExplanation?.shadow_assessment && <aside aria-label="Shadow candidate assessment">
         <h3>Candidate assessment — shadow only</h3>
-        <p>Saved concern index: {detail.assessmentExplanation.shadow_assessment.concern_index ?? 'Not assessable'}. Material coverage: {detail.assessmentExplanation.shadow_assessment.coverage ?? 'Not assessable'}.</p>
+        <p>Saved concern index: {formatShadowMetric(detail.assessmentExplanation.shadow_assessment.concern_index)}. Material evidence coverage: {formatShadowMetric(detail.assessmentExplanation.shadow_assessment.coverage,true)}.</p>
         <p>{detail.assessmentExplanation.shadow_assessment.candidate_recommendation.replaceAll('_',' ')} · {detail.assessmentExplanation.shadow_assessment.version}. Unvalidated heuristic; neither axis is a fraud probability. Production routing and human review remain separate.</p>
       </aside>}
       <ReportPanel key={detail.id+'-'+detail.version} caseId={detail.id} runId={detail.runId} processingStatus={detail.processing?.status} compact />

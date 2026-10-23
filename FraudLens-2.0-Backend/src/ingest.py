@@ -169,10 +169,15 @@ def _json_safe(value: Any) -> Any:
     """Recursively strip anything json.dumps can't handle out of a raw piexif value."""
     if isinstance(value, bytes):
         try:
-            return value.decode("utf-8").rstrip("\x00")
+            return _json_safe(value.decode("utf-8"))
         except UnicodeDecodeError:
             return _DROPPED
-    if isinstance(value, tuple):
+    if isinstance(value,str):
+        # PostgreSQL jsonb cannot represent U+0000. Camera EXIF comments often
+        # contain ASCII/NUL padding. Normalize the extracted text only; original
+        # evidence bytes and their content hash remain unchanged.
+        return value.replace('\x00','')
+    if isinstance(value, (tuple,list)):
         items = [_json_safe(v) for v in value]
         return [v for v in items if v is not _DROPPED]
     return value
@@ -228,6 +233,7 @@ def ingest_image(
     path: Union[str, Path],
     embedder: Optional[CLIPEmbedder] = None,
     embedding: Optional[list[float]] = None,
+    prepared: Optional[dict] = None,
 ) -> Image:
     """
     Turn one file on disk into a saved Image row. By the time this
@@ -236,19 +242,26 @@ def ingest_image(
     doesn't exist yet.
     """
     path = Path(path)
-    phash, dhash = compute_hashes(path)
+    metadata = prepared if prepared is not None else prepare_image(path)
     image = Image(
         image_id=str(uuid4()),
         case_id=case_id,
         path=str(path),
-        content_hash=compute_sha256(path),
-        phash=phash,
-        dhash=dhash,
+        content_hash=metadata['content_hash'],
+        phash=metadata['phash'],
+        dhash=metadata['dhash'],
         embedding=embedding if embedding is not None else (embedder or _default_embedder).embed(path),
-        exif=extract_exif(path),
+        exif=metadata['exif'],
     )
     db.save_image(conn, image)
     return image
+
+
+@measured('admission.prepare_image')
+def prepare_image(path):
+    """Server-side immutable file metadata, prepared before a write transaction."""
+    phash,dhash=compute_hashes(path)
+    return dict(content_hash=compute_sha256(path),phash=phash,dhash=dhash,exif=extract_exif(path))
 
 
 def ingest_case(

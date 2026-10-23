@@ -18,6 +18,16 @@ export type ReviewSummaryInput = {
 export const readable = (value: string) => value.replaceAll('_', ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
 const text = (value: unknown) => typeof value === 'string' || typeof value === 'number' ? String(value).trim().replace(/\s+/g, ' ') : '';
 export const reviewMoney = (value: unknown) => new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',maximumFractionDigits:2}).format(Number(value));
+export function recordedModelRecommendation(input: ReviewSummaryInput) {
+  const routing = input.assessmentExplanation?.routing;
+  if (input.analysisFallback || routing?.source === 'fallback' || routing?.converged === false) return 'No converged model decision; saved system fallback';
+  if (routing?.source !== 'model') return 'Model decision source not recorded';
+  return readable(routing.model_recommendation || routing.recommendation || 'Not recorded');
+}
+export function formatShadowMetric(value: number | null | undefined, coverage = false) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return 'Not assessable';
+  return coverage ? (value * 100).toFixed(1) + '%' : value.toFixed(2) + ' / 1';
+}
 export function reviewDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('en-IN', {dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kolkata'}).format(date) + ' IST';
@@ -89,7 +99,7 @@ const labels: Record<string,string> = {
   policy_number:'Policy number',policy_type:'Policy type',previous_policy_number:'Previous policy',policy_ncb_percent:'No-claim bonus (%)',
   policy_start_date:'Policy start',policy_end_date:'Policy end',claim_amount:'Claimed amount',incident_date:'Declared incident date and time',
   declared_location:'Declared incident location',declaration_notes:'Applicant declaration',fir_number:'FIR reference',settlement_preference:'Settlement preference',bank_account_last4:'Bank account last four digits',
-  garage_id:'Garage reference',
+  garage_id:'Garage reference',latitude:'Declared incident latitude (unverified)',longitude:'Declared incident longitude (unverified)',
 };
 export function applicationDetails(declaration: Record<string,unknown>) {
   return Object.entries(declaration).filter(([key,value]) => key in labels && value !== null && value !== undefined && value !== '')

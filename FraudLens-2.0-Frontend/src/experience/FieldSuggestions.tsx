@@ -11,6 +11,7 @@ type Props = {
   options?: string[];
   min?: string;
   max?: string;
+  step?: string;
   maxLength?: number;
   multiline?: boolean;
   rows?: number;
@@ -37,6 +38,7 @@ export default function FieldSuggestions({
   options,
   min,
   max,
+  step,
   maxLength,
   multiline,
   rows,
@@ -250,6 +252,7 @@ export default function FieldSuggestions({
           type={type}
           min={min}
           max={max}
+          step={step}
           ref={(element) => {
             control.current = element;
           }}

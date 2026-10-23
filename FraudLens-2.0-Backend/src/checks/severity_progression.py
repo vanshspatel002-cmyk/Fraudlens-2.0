@@ -86,7 +86,9 @@ class SeverityProgressionCheck(Check):
     category = CheckCategory.ECONOMIC
     scope = "case"
     cost_inr = 0.0
-    requires_perception = True
+    # Resolve historical applicability first. Missing usable observations on an
+    # actual sequence remain inconclusive; no prior sequence is N/A, not clean.
+    requires_perception = False
     # No archetype in this corpus generates repeat claims, so there is
     # nothing here to be measured against. Naming a target it cannot fire on
     # would credit it with coverage it does not have.

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-VERSION = 'risk-presentation-2026-10-21-v1'
+VERSION = 'risk-presentation-2026-10-23-v2'
 BANDS = {'clear': 'Low', 'request_evidence': 'Medium', 'desk_review': 'Medium', 'escalate_siu': 'High'}
 
 
@@ -65,7 +65,7 @@ def assessment_presentation(report):
         'scope': 'Saved run and evidence only; later evidence requires its own assessment.',
         'explanation': ' '.join(reasons) if reasons else (routing.get('recorded_narrative') or 'The recorded routing category is shown without implying a numeric position.'),
         'missing_check_ids': missing,
-        'model_recommendation':routing.get('model_recommendation', routing.get('recommendation')),
+        'model_recommendation':routing.get('model_recommendation', routing.get('recommendation')) if source=='model' else None,
         'effective_recommendation':routing.get('effective_recommendation', routing.get('recommendation')),
         'coverage_policy':coverage.get('version'),
     }

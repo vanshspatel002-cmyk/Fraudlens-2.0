@@ -255,7 +255,15 @@ def test_session_request_cap_and_failure_stop(tmp_path,monkeypatch):
 def test_health_and_ready_never_contact_provider(client,monkeypatch):
     from src import llm
     monkeypatch.setattr(llm,'get_provider',lambda *a:pytest.fail('Health spent model quota'))
+    assert client.get('/ready').status_code==503
+    assert client.get('/ready').json()['capabilities']['validator']=='lazy'
+    api.app.state.capabilities['validator']='ready'  # Controlled model fixture is ready.
+    from src import runtime_readiness
+    monkeypatch.setattr(runtime_readiness,'provider_status',lambda configured=None:{'state':'locally_enabled_unverified','ready':True})
     assert client.get('/ready').status_code==200
+    monkeypatch.setattr(runtime_readiness,'provider_status',lambda configured=None:{'state':'paused','ready':False})
+    assert client.get('/ready').status_code==503
+    assert client.get('/ready').json()['code']=='PROVIDER_NOT_READY'
     assert client.get('/health').status_code==200
 
 
@@ -397,7 +405,7 @@ def test_run_audit_records_adjudication_response_source(client,monkeypatch,cache
 
 
 @pytest.mark.parametrize('timestamp,basis',[
-    ('2026-10-13T06:30:00Z','aware_instant'),('2026-10-13T12:00:00','unverified')])
+    ('2026-10-13T06:30:00Z','aware_instant'),('2026-10-13T12:00:00+05:30','aware_instant')])
 def test_intake_records_trusted_time_basis_for_production_checks(client,monkeypatch,timestamp,basis):
     from src import orchestrator
     from src.agent.engine import AdjudicationResult

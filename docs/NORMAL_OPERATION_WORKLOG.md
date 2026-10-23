@@ -1,3 +1,41 @@
+# Final presentation implementation record — 23 October 2026
+
+Inspected baseline `0024843f5bb9ab370570afffa1dbf336ed301b41`; unrelated staged,
+API CORS and frontend transport/evidence edits were preserved. Reused installed
+CLIP/EasyOCR/ReportLab/psycopg/Playwright tools without upgrades. Private consistent
+database/evidence/control backups preceded scoped mutations.
+
+Focused changes: slot-aware photo prompts (unchanged 0.175/0.020 thresholds),
+relevance separate from OCR, API background CLIP warmup, dedicated-worker OCR
+heartbeat, read-only provider readiness, embedded-NUL EXIF JSON repair preserving
+original bytes, pre-transaction hash/metadata work, aware incident/coordinate
+wiring, intended-ODO material guard, accurate skipped-check applicability,
+fallback/model attribution, saved shadow rounding and immutable renderer v9.
+Report metadata/basis reads no longer transfer historical PDF/thumbnail blobs;
+version metadata uses one joined query. No timeout increase or score replacement.
+
+Actual customer UI submissions: claims `case-95a28aea367c` (4 photos, 11.281 s),
+underwriting `case-ac757ae6f8b1` (6 distinct same-car photos, 19.453 s), isolated
+schema `fraudlens_validation_panel_20261022`. Two fresh Gemini 503s stop claims AI;
+underwriting has zero HTTP generation after pause. Both failed durable runs save
+local findings, incomplete assessments, PDFs and human evidence-request/customer
+updates. Neither new run qualifies as successful live processing. Each final PDF
+has 11 pages; all pages rendered/inspected and native Chrome preview/download
+verified. Final frontend label also distinguishes saved system fallback.
+
+Actual request accounting: 15 preserved + 2 new = 17, scoped ceiling 45, unused
+28 closed. Normal provider remains paused for the fresh external service blocker.
+No historical jobs, private applicant test evidence, billing action or deployment.
+The final pilot services use original controls/configuration; original table and
+evidence comparisons are recorded in the final receipts.
+
+[Final changed files/tests/measurements](FINAL_PRESENTATION_VERIFICATION.md),
+[operating handover](FINAL_PRESENTATION_HANDOVER.md),
+[shareable artifacts and attribution](final_presentation/README.md).
+Older implementation evidence is preserved below.
+
+---
+
 # Normal local operation — implementation record
 
 Baseline inspected on 22 October 2026: branch `repair/analysis-pipeline-20261020`,

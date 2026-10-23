@@ -26,10 +26,23 @@ def main():
         raise SystemExit('The preserved FRAUDLENS_LIVE_LEDGER is required; do not create a fresh allowance.')
     with runtime_store.connection(api.DB_PATH) as conn:
         db.init_db(conn)
+    from src.runtime_readiness import write_worker_status
+    heartbeat_stop=threading.Event();health={'ocr':None,'worker':None}
+    def heartbeat():
+        while not heartbeat_stop.is_set():
+            current=health['worker'];leader=bool(current and current.lock)
+            state='warming' if health['ocr'] is None else 'degraded' if not health['ocr'] else 'ready' if leader else 'waiting_for_leadership'
+            try:write_worker_status(state=state,ocr_ready=health['ocr'],leader=leader)
+            except OSError:logging.getLogger('fraudlens.worker').warning('Worker readiness write unavailable.')
+            heartbeat_stop.wait(2)
+    threading.Thread(target=heartbeat,name='fraudlens-worker-readiness',daemon=True).start()
     if not args.no_warm_ocr:
         from src.checks.plate_ocr import get_reader
-        print('Worker OCR warmup: '+('ready' if get_reader() is not None else 'unavailable; checks will report inconclusive'),flush=True)
+        health['ocr']=get_reader() is not None
+        print('Worker OCR warmup: '+('ready' if health['ocr'] else 'unavailable; checks will report inconclusive'),flush=True)
+    else:health['ocr']=False
     worker=DurableWorker(api.DB_PATH,api._run_pipeline)
+    health['worker']=worker
     worker.start()
     print('Durable worker started; waiting for database leadership/jobs.',flush=True)
     try:
@@ -38,6 +51,7 @@ def main():
     except KeyboardInterrupt:
         logging.getLogger('fraudlens.worker').info('Worker shutdown requested; accepted jobs remain durable.')
     finally:
+        heartbeat_stop.set()
         worker.stop()
     return 0
 

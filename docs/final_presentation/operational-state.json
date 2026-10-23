@@ -1,0 +1,126 @@
+{
+  "recorded_at": 1792728475.7148287,
+  "schema": "fraudlens_pilot",
+  "services": {
+    "api_pid": 6700,
+    "worker_pid": 13464,
+    "frontend_pid": 3112,
+    "frontend_http": 200
+  },
+  "health_http": 200,
+  "health": {
+    "capabilities": {
+      "database": "ready",
+      "validator": "ready",
+      "worker": {
+        "state": "ready",
+        "ocr_ready": true,
+        "leader": true,
+        "heartbeat_at": 1792728472.9001443
+      },
+      "provider": {
+        "state": "paused",
+        "ready": false,
+        "circuit_category": "transient",
+        "recorded_stop_at": 1792697549.7874427,
+        "retry_at": 1792699349.7874427,
+        "basis": "Persisted local controls only; no Google inference or account-quota check."
+      }
+    },
+    "ablation_verification_status": "offline_research_verifier_required",
+    "status": "degraded",
+    "database": "postgresql",
+    "database_reachable": true,
+    "cases": 826,
+    "provider_configured": true,
+    "provider_reachable": null,
+    "provider_status": "paused",
+    "provider_checked_at": null,
+    "quota_remaining_estimate": null,
+    "ablation_verified_agent_cases": 0,
+    "ablation_total_cases": 0,
+    "ablation_complete": false,
+    "ablation_driver_status": "stale",
+    "perception_records": 131,
+    "image_records": 1474,
+    "active_api_jobs": {
+      "completed": 1,
+      "failed": 37
+    }
+  },
+  "readiness_http": 503,
+  "readiness": {
+    "status": "degraded",
+    "code": "PROVIDER_NOT_READY",
+    "message": "Local API/storage are available; provider generation is paused. Saved reports and human review remain available.",
+    "capabilities": {
+      "database": "ready",
+      "validator": "ready",
+      "storage": "ready",
+      "worker": {
+        "state": "ready",
+        "ocr_ready": true,
+        "leader": true,
+        "heartbeat_at": 1792728472.9001443
+      },
+      "provider": {
+        "state": "paused",
+        "ready": false,
+        "circuit_category": "transient",
+        "recorded_stop_at": 1792697549.7874427,
+        "retry_at": 1792699349.7874427,
+        "basis": "Persisted local controls only; no Google inference or account-quota check."
+      }
+    }
+  },
+  "active_queue": {},
+  "effective_configuration": {
+    "api_worker_consistent": true,
+    "provider": "gemini",
+    "model": "gemini-3.5-flash",
+    "request_profile": "gemini3_defaults_v2",
+    "key_present": true,
+    "sdk_version": "2.18.1",
+    "session_ledger": "outputs/pilot_validation/live_calls.json",
+    "quota_ledger": "outputs/pilot_validation/quota_budget.json",
+    "private_evidence": "outputs/pilot_validation/uploads"
+  },
+  "attempts": 17,
+  "task_status": "closed",
+  "provider_mode": "paused",
+  "operating_limits": {
+    "daily_attempts": 30,
+    "case_attempts": 16,
+    "agent_turns": 8,
+    "concurrent_cases": 1,
+    "retry_attempts": 2,
+    "pacing_seconds": 2,
+    "cooldown_seconds": 1800
+  },
+  "local_quota": {
+    "quota_day": "2026-10-22",
+    "daily_per_key": 20,
+    "total_daily_quota": 100,
+    "consumers": {
+      "pilot": {
+        "budget": 100,
+        "calls": 2,
+        "reserved": 2
+      }
+    },
+    "configured_key_reservations": [
+      {
+        "calls": 2,
+        "reserved": 2
+      }
+    ]
+  },
+  "note": "Local recorded limits do not establish Google quota. No inference or metadata request was made for this status check.",
+  "local_application_day": {
+    "quota_day": "2026-10-22",
+    "generation_attempts": 2,
+    "daily_limit": 30,
+    "numerical_headroom": 28,
+    "request_eligibility": "Blocked by explicit provider pause; not Google account quota."
+  }
+}

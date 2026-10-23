@@ -1,3 +1,37 @@
+# Final presentation status — 23 October 2026
+
+**Fresh AI completion is currently blocked externally.** The new claims run
+`e98e025b4b4f4c34aebb6b6a18e54fb9` made two actual perception requests using
+`gemini-3.5-flash` / `gemini3_defaults_v2`; both returned HTTP 503 `UNAVAILABLE`.
+Attempts 16 and 17 are retained after the unchanged original 15-event prefix.
+No authentication, schema or billing rejection was observed. No serving-model,
+token or successful-response metadata is invented. Underwriting made zero HTTP
+generation requests after the provider pause; neither case has fresh successful
+perception or actual agent turns/tools. Local OCR/checks and durable failure
+handling did execute. Neither fallback is live AI success.
+
+The scoped task ceiling was 45 (15 + 30); actual final count 17. The unused 28
+slots are **closed**. Existing limits, quota history, earlier stops/recoveries and
+the new two-failure transient circuit are retained. Provider mode is explicitly
+paused because of the fresh service failure. No further probe, metadata lookup,
+key change, cap increase or historical reprocessing was performed. Local allowance
+does not establish Google quota. Intentional normal recovery can be considered
+after provider availability returns, under the existing cooldown/limits.
+
+Real initial 4-photo claims and 6-photo underwriting submissions, saved local
+findings, native Chrome PDFs and reviewer/customer evidence requests passed in
+`fraudlens_validation_panel_20261022`. Both assessments remain incomplete and
+neutral. Final services are restored to `fraudlens_pilot`; original business data
+is checked separately. New renderer `fraudlens-pdf-2026-10-23-v9` does not rerun AI.
+
+See [final handover](docs/FINAL_PRESENTATION_HANDOVER.md),
+[verification](docs/FINAL_PRESENTATION_VERIFICATION.md) and
+[request receipts](docs/final_presentation/request-accounting.json). The older
+successful claims result below remains a dated saved-case fallback, not evidence
+of current availability. Historical documentation is retained below.
+
+---
+
 # Normal local operation — 22 October 2026
 
 Subsequent offline audit: [dependency/parameter/assessment handover](docs/ASSESSMENT_AUDIT_HANDOVER.md).

@@ -21,13 +21,17 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from . import db, runtime_store
+from .timing import measured
 
 LEGACY_RENDERER_VERSION = "fraudlens-pdf-2026-10-18-v1"
 READER_V2_VERSION = "fraudlens-pdf-2026-10-20-v2"
 READER_V3_VERSION = "fraudlens-pdf-2026-10-21-v3"
 READER_V4_VERSION = "fraudlens-pdf-2026-10-21-v4"
 READER_V5_VERSION = "fraudlens-pdf-2026-10-22-v5"
-RENDERER_VERSION = "fraudlens-pdf-2026-10-22-v6"
+READER_V6_VERSION = "fraudlens-pdf-2026-10-22-v6"
+READER_V7_VERSION = "fraudlens-pdf-2026-10-22-v7"
+READER_V8_VERSION = "fraudlens-pdf-2026-10-23-v8"
+RENDERER_VERSION = "fraudlens-pdf-2026-10-23-v9"
 ARTIFACT_SCHEMA = """CREATE TABLE IF NOT EXISTS report_artifacts (
     snapshot_id TEXT PRIMARY KEY REFERENCES report_snapshots(snapshot_id),
     renderer_version TEXT NOT NULL, pdf_base64 TEXT, sha256 TEXT,
@@ -87,6 +91,8 @@ def enrich_snapshot(conn, report):
     report['submitted_at'] = _iso(case.created_at)
     wanted = set(report.get('evidence_ids', []))
     result = runtime_store.current_result(conn,case.case_id)
+    gate=next((event for event in db.get_audit_events_for_case(conn,case.case_id) if event.event_type=='vehicle_image_gate'),None)
+    slots={score.get('content_hash'):score.get('slot') for score in (gate.details.get('scores',[]) if gate else []) if score.get('slot')}
     inventory = []
     for image in db.get_images_for_case(conn, case.case_id):
         if image.image_id not in wanted:
@@ -94,6 +100,9 @@ def enrich_snapshot(conn, report):
         item = {'image_id': image.image_id, 'label': f'Photograph {len(inventory) + 1}',
                 'uploaded_at': _iso(image.created_at), 'sha256': image.content_hash,
                 'considered_in_run': bool(result)}
+        if image.content_hash in slots:
+            item.update(slot=slots[image.content_hash],label=slots[image.content_hash].replace('_',' ').capitalize(),
+                        slot_basis='Applicant assignment; exact angle, identity and capture date are not independently authenticated.')
         # Freeze a small derivative, never a host path or mutable cached vision.
         try:
             path = _resolve_data_path(image.path)
@@ -554,8 +563,9 @@ def _render_pdf_v2(report, snapshot_id, generated_at, keep_headings=False):
     return output.getvalue()
 
 
+@measured('report.render_pdf')
 def render_pdf(report, snapshot_id, generated_at):
-    if report.get('report_template_version') in {RENDERER_VERSION, READER_V5_VERSION, READER_V4_VERSION}:
+    if report.get('report_template_version') in {RENDERER_VERSION, READER_V8_VERSION, READER_V7_VERSION, READER_V6_VERSION, READER_V5_VERSION, READER_V4_VERSION}:
         from .report_visuals import render_visual_report
         return render_visual_report(report, snapshot_id, generated_at,
                                     revised=report.get('report_template_version')!=READER_V4_VERSION)
@@ -564,6 +574,12 @@ def render_pdf(report, snapshot_id, generated_at):
     if report.get('report_template_version')==READER_V2_VERSION:
         return _render_pdf_v2(report,snapshot_id,generated_at)
     return _render_pdf_v1(report,snapshot_id,generated_at)
+
+
+def _artifact_metadata(conn,snapshot_id):
+    return conn.execute('''SELECT renderer_version,sha256,created_at,error_type,
+        CASE WHEN pdf_base64 IS NOT NULL AND pdf_base64<>'' THEN 1 ELSE 0 END AS pdf_base64
+        FROM report_artifacts WHERE snapshot_id=?''',(snapshot_id,)).fetchone()
 
 
 def _metadata(row, artifact=None):
@@ -581,8 +597,16 @@ def install(app):
     def list_reports(case_id: str, _admin: str = Depends(require_admin), conn=Depends(get_conn)):
         if not db.get_case(conn,case_id):
             raise ApiError(404,'CASE_NOT_FOUND','Case not found.')
-        rows = conn.execute('SELECT snapshot_id,run_id,created_at FROM report_snapshots WHERE case_id=? ORDER BY rowid DESC',(case_id,)).fetchall()
-        return {'reports':[_metadata(row,conn.execute('SELECT * FROM report_artifacts WHERE snapshot_id=?',(row['snapshot_id'],)).fetchone()) for row in rows]}
+        # Metadata requests must not transfer every historical PDF over the
+        # database connection. One joined projection also avoids N+1 queries.
+        rows = conn.execute('''SELECT s.snapshot_id,s.run_id,s.created_at,
+            a.created_at AS artifact_created_at,a.renderer_version,a.sha256,a.error_type,
+            CASE WHEN a.pdf_base64 IS NOT NULL AND a.pdf_base64<>'' THEN 1 ELSE 0 END AS pdf_ready
+            FROM report_snapshots s LEFT JOIN report_artifacts a ON a.snapshot_id=s.snapshot_id
+            WHERE s.case_id=? ORDER BY s.rowid DESC''',(case_id,)).fetchall()
+        return {'reports':[_metadata(row,dict(created_at=row['artifact_created_at'],
+            renderer_version=row['renderer_version'],sha256=row['sha256'],
+            error_type=row['error_type'],pdf_base64=row['pdf_ready'])) for row in rows]}
 
     @app.post('/v1/cases/{case_id}/reports/prepare', response_model=ReportVersionOut, tags=['cases'])
     def prepare_report(case_id: str, snapshot_id: str | None = Query(default=None), _admin: str = Depends(require_admin), conn=Depends(get_conn)):
@@ -597,13 +621,13 @@ def install(app):
         row = conn.execute('SELECT * FROM report_snapshots WHERE case_id=? AND snapshot_id=?',(case_id,snapshot_id)).fetchone()
         if not row:
             raise ApiError(404,'REPORT_NOT_FOUND','Report version not found for this case.')
-        artifact = conn.execute('SELECT * FROM report_artifacts WHERE snapshot_id=?',(snapshot_id,)).fetchone()
+        artifact = _artifact_metadata(conn,snapshot_id)
         payload = json.loads(row['payload']); conn.commit()
         if artifact and artifact['pdf_base64']:
             return _metadata(row,artifact)
         created = time.time()
         declared_version = payload.get('report_template_version')
-        renderer_version = declared_version if declared_version in {RENDERER_VERSION, READER_V5_VERSION, READER_V4_VERSION, READER_V3_VERSION, READER_V2_VERSION} else LEGACY_RENDERER_VERSION
+        renderer_version = declared_version if declared_version in {RENDERER_VERSION, READER_V8_VERSION, READER_V7_VERSION, READER_V6_VERSION, READER_V5_VERSION, READER_V4_VERSION, READER_V3_VERSION, READER_V2_VERSION} else LEGACY_RENDERER_VERSION
         try:
             content = render_pdf(payload,snapshot_id,created)
             checksum = hashlib.sha256(content).hexdigest()
@@ -615,7 +639,7 @@ def install(app):
             conn.execute('INSERT INTO report_artifacts(snapshot_id,renderer_version,created_at,error_type) VALUES (?,?,?,?) ON CONFLICT(snapshot_id) DO UPDATE SET error_type=excluded.error_type WHERE report_artifacts.pdf_base64 IS NULL', (snapshot_id,renderer_version,created,type(exc).__name__))
             conn.commit()
             raise ApiError(503,'PDF_GENERATION_FAILED','PDF generation failed. The saved analysis is intact; retry report generation without rerunning analysis.') from exc
-        artifact = conn.execute('SELECT * FROM report_artifacts WHERE snapshot_id=?',(snapshot_id,)).fetchone()
+        artifact = _artifact_metadata(conn,snapshot_id)
         return _metadata(row,artifact)
 
     @app.get('/v1/cases/{case_id}/reports/{snapshot_id}/pdf', tags=['cases'])

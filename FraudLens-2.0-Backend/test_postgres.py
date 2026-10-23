@@ -125,6 +125,22 @@ def test_postgres_concurrent_submission_replays_one_acceptance(client):
         assert conn.execute('SELECT count(*) FROM api_jobs').fetchone()[0]==1
 
 
+def test_postgres_camera_exif_padding_intake_roundtrip(client):
+    import io,piexif
+    from PIL import Image
+    from pathlib import Path
+    buffer=io.BytesIO()
+    Image.open(io.BytesIO(photo('red'))).save(buffer,format='JPEG',exif=piexif.dump({'Exif':{piexif.ExifIFD.UserComment:b'ASCII\x00\x00\x00camera comment\x00'}}))
+    original=buffer.getvalue();files=initial_files();files[0]=('images',('camera.jpg',original,'image/jpeg'))
+    response=client.post('/v1/cases',data={'agent_type':'claims','vehicle_registration':'MH12EX1203','policy_number':'FICTIONAL-EXIF','photo_slots':list(photo_admission.SLOTS['claims'])},files=files)
+    assert response.status_code==201,response.text
+    with runtime_store.connection('postgresql') as conn:
+        images=db.get_images_for_case(conn,response.json()['case_id'])
+        image=next(i for i in images if i.content_hash==hashlib.sha256(original).hexdigest())
+        assert Path(image.path).read_bytes()==original
+        assert image.exif['Exif']['UserComment']=='ASCIIcamera comment'
+
+
 def test_postgres_advisory_leader_and_worker_failover(client):
     from src.durable_worker import DurableWorker
     one=submit(client).json();seen=[];done=threading.Event()

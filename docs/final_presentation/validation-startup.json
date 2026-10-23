@@ -1,0 +1,1174 @@
+{
+  "mode": "validation",
+  "started_at": 1792697161.5737214,
+  "observations": [
+    {
+      "seconds": 21.973,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 26.99,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 32.347,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 36.093,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 39.92,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 44.57,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 48.346,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 52.366,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 56.089,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 59.551,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 63.168,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 66.816,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 70.719,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 74.226,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 77.815,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 81.325,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 84.864,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 88.34,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 91.8,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 95.248,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 99.242,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 102.7,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 106.21,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 110.545,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 114.142,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 117.637,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 121.107,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 124.607,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 128.243,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 136.262,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 140.031,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 143.533,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 147.355,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 151.158,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 154.65,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 158.671,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 162.388,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 166.152,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 170.177,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 173.852,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 177.34,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 180.794,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 184.272,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 187.951,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 191.508,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 196.024,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 199.718,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 203.691,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 207.658,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 211.161,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 214.96,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 219.085,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 222.713,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 227.001,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 231.098,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_stale"
+        }
+      }
+    },
+    {
+      "seconds": 235.095,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697396.4939358
+        }
+      }
+    },
+    {
+      "seconds": 239.222,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697400.520062
+        }
+      }
+    },
+    {
+      "seconds": 243.151,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697404.542821
+        }
+      }
+    },
+    {
+      "seconds": 246.691,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697406.5526588
+        }
+      }
+    },
+    {
+      "seconds": 250.293,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697410.5720057
+        }
+      }
+    },
+    {
+      "seconds": 254.102,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697415.188876
+        }
+      }
+    },
+    {
+      "seconds": 257.67,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697417.2061388
+        }
+      }
+    },
+    {
+      "seconds": 261.171,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697421.2283845
+        }
+      }
+    },
+    {
+      "seconds": 265.667,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697425.2544048
+        }
+      }
+    },
+    {
+      "seconds": 269.177,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697429.2919912
+        }
+      }
+    },
+    {
+      "seconds": 272.664,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697433.3213
+        }
+      }
+    },
+    {
+      "seconds": 276.152,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697437.3445647
+        }
+      }
+    },
+    {
+      "seconds": 279.676,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697439.4040918
+        }
+      }
+    },
+    {
+      "seconds": 283.219,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697443.5369518
+        }
+      }
+    },
+    {
+      "seconds": 286.77,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697447.5632808
+        }
+      }
+    },
+    {
+      "seconds": 290.466,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697451.586223
+        }
+      }
+    },
+    {
+      "seconds": 294.79,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697455.6156142
+        }
+      }
+    },
+    {
+      "seconds": 299.163,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697459.6756575
+        }
+      }
+    },
+    {
+      "seconds": 303.581,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697463.6974554
+        }
+      }
+    },
+    {
+      "seconds": 309.405,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697469.7329316
+        }
+      }
+    },
+    {
+      "seconds": 313.238,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697473.9389896
+        }
+      }
+    },
+    {
+      "seconds": 317.893,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697477.9648213
+        }
+      }
+    },
+    {
+      "seconds": 324.236,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697484.0001178
+        }
+      }
+    },
+    {
+      "seconds": 327.779,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697488.1095653
+        }
+      }
+    },
+    {
+      "seconds": 331.326,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697492.1275637
+        }
+      }
+    },
+    {
+      "seconds": 335.53,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697496.2623684
+        }
+      }
+    },
+    {
+      "seconds": 339.116,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697500.287106
+        }
+      }
+    },
+    {
+      "seconds": 343.028,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697504.3085954
+        }
+      }
+    },
+    {
+      "seconds": 347.748,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792697508.3904405
+        }
+      }
+    },
+    {
+      "seconds": 351.452,
+      "status": 200,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "ready",
+          "ocr_ready": true,
+          "leader": true,
+          "heartbeat_at": 1792697512.4134767
+        }
+      }
+    }
+  ],
+  "http_available_seconds": 20.802,
+  "validator_ready_seconds": 211.161,
+  "fully_ready_seconds": 351.452
+}

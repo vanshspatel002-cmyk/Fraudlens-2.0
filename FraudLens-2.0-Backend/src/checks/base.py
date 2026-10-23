@@ -224,7 +224,13 @@ def _run_one(check: Check, ctx: CheckContext) -> list[Finding]:
         return [_inconclusive(check, ctx.case.case_id, 'This check does not apply to this application type.',
                              {'execution_state': 'not_applicable', 'applicable_case_types': list(check.agent_types)})]
     if check.scope == "image" and not ctx.images:
-        return [_inconclusive(check, ctx.case.case_id, "No images available for this case.")]
+        return [_inconclusive(check, ctx.case.case_id, "No images available for this case.",
+            {'execution_state':'not_run','missing_requirements':['images']} if ctx.config.get('execution_states') else None)]
+    if check.check_id=='ai_generation' and ctx.config.get('skip_experimental_models'):
+        return [_inconclusive(check,ctx.case.case_id,
+            'Experimental zero-weight model not run in normal operation; it cannot contribute to routing.',
+            {'execution_state':'not_run','reason':'zero_weight_experiment_disabled','weight':check.weight,
+             'image_ids':[image.image_id for image in ctx.images]})]
 
     run_ctx = ctx
     prefix_findings: list[Finding] = []
@@ -239,7 +245,8 @@ def _run_one(check: Check, ctx: CheckContext) -> list[Finding]:
             missing = [img for img in ctx.images if img.content_hash not in ctx.perception]
             prefix_findings = [
                 _inconclusive(
-                    check, ctx.case.case_id, "Perception data not yet available.", evidence={"image_id": img.image_id}
+                    check, ctx.case.case_id, "Perception data not yet available.", evidence={"image_id": img.image_id,
+                        **({'execution_state':'not_run','missing_requirements':['perception']} if ctx.config.get('execution_states') else {})}
                 )
                 for img in missing
             ]
@@ -253,7 +260,8 @@ def _run_one(check: Check, ctx: CheckContext) -> list[Finding]:
             # more granular perception coverage than that can still
             # inspect ctx.perception itself inside run().
             if not ctx.perception:
-                return [_inconclusive(check, ctx.case.case_id, "Perception data not yet available.")]
+                return [_inconclusive(check, ctx.case.case_id, "Perception data not yet available.",
+                    {'execution_state':'not_run','missing_requirements':['perception']} if ctx.config.get('execution_states') else None)]
 
     try:
         return prefix_findings + list(check.run(run_ctx))

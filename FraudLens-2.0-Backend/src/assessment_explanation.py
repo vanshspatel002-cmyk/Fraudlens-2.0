@@ -11,7 +11,7 @@ from importlib import import_module
 import json
 import math
 
-VERSION = 'assessment-explanation-2026-10-22-v3'
+VERSION = 'assessment-explanation-2026-10-23-v5'
 STATES = {'completed', 'inconclusive', 'failed', 'not_applicable', 'not_run'}
 
 # Config key and the exact default attribute consumed by the corresponding rule.
@@ -136,12 +136,13 @@ def explain_assessment(case, findings, decision, policy, *, converged, trace=(),
     if use_agent and not converged and not overrides:
         overrides.append('Automated adjudication unavailable or incomplete; desk review required')
     from .coverage_policy import assess
-    sufficiency = assess(expected, by_check, rows, REGISTRY)
+    from .input_coverage import assess_inputs
+    sufficiency = assess(expected, by_check, rows, REGISTRY,assess_inputs(case.agent_type,rows,config))
     guarded = use_agent and (not converged or not sufficiency['material_complete'])
     clearance_guard = guarded and _value(decision.recommendation) == 'approve'
     effective = ('request_evidence' if converged else 'desk_review') if clearance_guard or not converged else _value(decision.risk_band)
     if guarded:
-        overrides.append('Material-evidence guard: model output retained; incomplete assessment cannot route as actionable clearance.')
+        overrides.append('Material-evidence guard: '+('model output retained; ' if converged else 'no converged model decision; ')+'incomplete assessment cannot route as actionable clearance.')
     result = {'version':VERSION,'case_id':case.case_id,'run_id':run_id,'policy_version':decision.policy_version or policy.policy_version,
         'check_policy_version':policy.policy_version,
         'case_type':case.agent_type,'assessment_type':'agent_routing' if use_agent else 'rules_baseline',
@@ -153,7 +154,7 @@ def explain_assessment(case, findings, decision, policy, *, converged, trace=(),
         'routing':{'source':'model' if use_agent and converged else 'fallback' if use_agent else 'rules_baseline',
                    'converged':bool(converged),'recorded_band':_value(decision.risk_band),
                    'recommendation':_value(decision.recommendation),'cited_finding_ids':list(decision.supporting_finding_ids or []),
-                   'model_recommendation':_value(decision.recommendation),
+                   'model_recommendation':_value(decision.recommendation) if use_agent and converged else None,
                    'effective_band':effective, 'effective_recommendation':'desk_review' if not converged else 'request_evidence' if clearance_guard else _value(decision.recommendation),
                    'guard_policy':sufficiency['version'], 'guard_applied':guarded,
                    'overrides':overrides,'recorded_narrative':decision.summary},

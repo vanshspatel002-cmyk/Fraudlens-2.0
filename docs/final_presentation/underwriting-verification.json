@@ -1,0 +1,282 @@
+{
+  "case_type": "underwriting",
+  "submission": {
+    "case_id": "case-ac757ae6f8b1",
+    "run_id": "f5f91eb39c9b47f68eb282d5a38647f4",
+    "accepted_seconds": 19.453,
+    "required_photos": 6,
+    "real_gate": true,
+    "schema": "fraudlens_validation_panel_20261022"
+  },
+  "verification": {
+    "case_type": "underwriting",
+    "case_id": "case-ac757ae6f8b1",
+    "run_id": "f5f91eb39c9b47f68eb282d5a38647f4",
+    "execution": "failed",
+    "assessment": {
+      "version": "risk-presentation-2026-10-23-v2",
+      "run_id": "f5f91eb39c9b47f68eb282d5a38647f4",
+      "policy_version": "agent-production-underwriting-2026-10-22-v4",
+      "processing_state": "failed",
+      "state": "incomplete",
+      "complete": false,
+      "category": null,
+      "recorded_band": "desk_review",
+      "label": "Assessment incomplete",
+      "score": null,
+      "score_scale": null,
+      "thresholds": null,
+      "position_basis": "category_only",
+      "basis": "Saved assessment unavailable",
+      "historical": false,
+      "scope": "Saved run and evidence only; later evidence requires its own assessment.",
+      "explanation": "Processing is failed; no completed current assessment is established. The saved assessment basis is unavailable or unsupported. Automated interpretation did not establish a converged assessment. Required check coverage is incomplete or was not recorded.",
+      "missing_check_ids": [
+        "scene_consistency",
+        "plate_ocr",
+        "entity_graph",
+        "odometer_readability"
+      ],
+      "model_recommendation": null,
+      "effective_recommendation": "desk_review",
+      "coverage_policy": "material-evidence-2026-10-22-v3"
+    },
+    "pdf_snapshot": "bb01d97481487ae7f5c8ca3426ff24c018c76a5dce1ca8d5f3ab0cc2aac00c25",
+    "pdf_sha256": "03bcf88395a952bf3a1b654d81215ca3ff076ff504e4e5949bc983c327250a35",
+    "pdf_preview_download_bytes_equal": true,
+    "headed_chrome_preview_screenshot": true,
+    "reviewer_action": "request_more_evidence",
+    "customer_update_verified": true,
+    "reviewed_pdf_snapshot": "bb01d97481487ae7f5c8ca3426ff24c018c76a5dce1ca8d5f3ab0cc2aac00c25",
+    "earlier_pdf_preserved": true,
+    "mobile_no_horizontal_overflow": true,
+    "cross_customer_case_evidence_report_blocked": true,
+    "sessions_independent_after_logout": true,
+    "provider_calls_during_pdf": 0,
+    "renderer_version": "fraudlens-pdf-2026-10-23-v9",
+    "previous_pdf_version_preserved": true
+  },
+  "checks": {
+    "internal_duplicate": {
+      "execution_states": {
+        "completed": 6
+      },
+      "verdicts": {
+        "concern": 2,
+        "pass": 4
+      },
+      "records": 6,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": true,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": true,
+        "execution_state": "completed",
+        "reason": "Applicable identity, comparison, context or damage evidence is required for actionable routing."
+      }
+    },
+    "external_corpus": {
+      "execution_states": {
+        "completed": 6
+      },
+      "verdicts": {
+        "pass": 6
+      },
+      "records": 6,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": true,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": true,
+        "execution_state": "completed",
+        "reason": "Applicable identity, comparison, context or damage evidence is required for actionable routing."
+      }
+    },
+    "exif_metadata": {
+      "execution_states": {
+        "completed": 6
+      },
+      "verdicts": {
+        "concern": 6
+      },
+      "records": 6,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": false,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": true,
+        "execution_state": "completed",
+        "reason": "EXIF is optional provenance; absence is not manipulation."
+      }
+    },
+    "c2pa_credentials": {
+      "execution_states": {
+        "inconclusive": 6
+      },
+      "verdicts": {
+        "inconclusive": 6
+      },
+      "records": 6,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": false,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": false,
+        "execution_state": "inconclusive",
+        "reason": "Signed credentials are optional provenance; absence is not manipulation."
+      }
+    },
+    "scene_consistency": {
+      "execution_states": {
+        "inconclusive": 6
+      },
+      "verdicts": {
+        "inconclusive": 6
+      },
+      "records": 6,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": true,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": false,
+        "execution_state": "inconclusive",
+        "reason": "Applicable identity, comparison, context or damage evidence is required for actionable routing."
+      }
+    },
+    "plate_ocr": {
+      "execution_states": {
+        "inconclusive": 6
+      },
+      "verdicts": {
+        "inconclusive": 6
+      },
+      "records": 6,
+      "ocr_cache_reused": 2,
+      "requirement": {
+        "required": true,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": false,
+        "execution_state": "inconclusive",
+        "reason": "Applicable identity, comparison, context or damage evidence is required for actionable routing."
+      }
+    },
+    "ai_generation": {
+      "execution_states": {
+        "not_run": 1
+      },
+      "verdicts": {
+        "inconclusive": 1
+      },
+      "records": 1,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": false,
+        "applicable": true,
+        "executed": false,
+        "evidence_sufficient": false,
+        "execution_state": "not_run",
+        "reason": "Zero-weight experimental observation; not a material requirement."
+      }
+    },
+    "digital_edit": {
+      "execution_states": {
+        "inconclusive": 6
+      },
+      "verdicts": {
+        "inconclusive": 6
+      },
+      "records": 6,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": false,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": false,
+        "execution_state": "inconclusive",
+        "reason": "Zero-weight experimental observation; not a material requirement."
+      }
+    },
+    "baseline_corruption": {
+      "execution_states": {
+        "inconclusive": 1
+      },
+      "verdicts": {
+        "inconclusive": 1
+      },
+      "records": 1,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": false,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": false,
+        "execution_state": "inconclusive",
+        "reason": "Zero-weight experimental observation; not a material requirement."
+      }
+    },
+    "entity_graph": {
+      "execution_states": {
+        "inconclusive": 1
+      },
+      "verdicts": {
+        "inconclusive": 1
+      },
+      "records": 1,
+      "ocr_cache_reused": 0,
+      "requirement": {
+        "required": true,
+        "applicable": true,
+        "executed": true,
+        "evidence_sufficient": false,
+        "execution_state": "inconclusive",
+        "reason": "Applicable identity, comparison, context or damage evidence is required for actionable routing."
+      }
+    }
+  },
+  "form_business_field_roundtrip": {
+    "name": true,
+    "address": true,
+    "license": true,
+    "make": true,
+    "model": true,
+    "variant": true,
+    "registration": true,
+    "engine": true,
+    "chassis": true,
+    "policy": true,
+    "policyType": true,
+    "year": true,
+    "idv": true,
+    "ncb": true,
+    "email": true,
+    "phone": true,
+    "description": true,
+    "case_type": true,
+    "previousPolicy": true,
+    "applicationType": true,
+    "condition": true
+  },
+  "pdf": {
+    "file": "underwriting.pdf",
+    "pages": 11,
+    "sha256": "03bcf88395a952bf3a1b654d81215ca3ff076ff504e4e5949bc983c327250a35",
+    "renderer": "fraudlens-pdf-2026-10-23-v9",
+    "all_pages_rendered": true,
+    "text_extracted": true,
+    "text_bounds_valid": true,
+    "private_path_scan_passed": true
+  },
+  "execution": "failed",
+  "provider_unavailable": true,
+  "stage_timings": [],
+  "fresh_successful_gemini_perception": 0,
+  "fresh_agent_turns": 0,
+  "real_agent_tool_exchanges": 0,
+  "note": "Real API, local models, PostgreSQL and durable worker; live Gemini is blocked. No fixture or fallback is counted as live AI success."
+}

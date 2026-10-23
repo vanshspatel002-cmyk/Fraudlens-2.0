@@ -107,30 +107,45 @@ async def lifespan(_app):
         ledger = os.environ.get('FRAUDLENS_LIVE_LEDGER')
         if not ledger or not Path(ledger).is_file():
             raise RuntimeError('PostgreSQL pilot workers require the preserved FRAUDLENS_LIVE_LEDGER. Use scripts/start_pilot.ps1; never reset the existing provider stop.')
-    if DB_PATH != 'postgresql':
-        Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-    conn = db.connect(DB_PATH)
-    try:
-        db.init_db(conn)
-        if not db.is_postgres(conn):
-            conn.execute('PRAGMA journal_mode=WAL')
-        runtime_store.init(conn)
-        conn.commit()
-    finally:
-        conn.close()
-    if os.environ.get('FRAUDLENS_WARM_MODELS') == '1':
-        from src.photo_admission import warmup
-        with span('startup.admission_warmup'):
-            _app.state.photo_validator_ready=warmup()
+    import threading
     from src.durable_worker import DurableWorker
     worker = DurableWorker(DB_PATH, _run_pipeline)
     _app.state.worker = worker
-    if os.environ.get('FRAUDLENS_WORKER_ENABLED', '1') == '1':
-        worker.start()
-    try:
-        yield
+    _app.state.capabilities={'database':'warming','validator':'warming' if os.environ.get('FRAUDLENS_WARM_MODELS')=='1' else 'lazy'}
+    stopping=threading.Event()
+    def initialize():
+        try:
+            if DB_PATH != 'postgresql':Path(DB_PATH).parent.mkdir(parents=True,exist_ok=True)
+            for attempt in range(2):
+                try:
+                    conn=db.connect(DB_PATH)
+                    try:
+                        db.init_db(conn)
+                        if not db.is_postgres(conn):conn.execute('PRAGMA journal_mode=WAL')
+                        runtime_store.init(conn);conn.commit()
+                    finally:conn.close()
+                    break
+                except db.DatabaseError:
+                    if attempt or stopping.wait(1):raise
+            _app.state.capabilities['database']='ready'
+            if os.environ.get('FRAUDLENS_WARM_MODELS')=='1':
+                from src.photo_admission import warmup
+                with span('startup.admission_warmup'):
+                    warmup(include_ocr=False)
+                _app.state.capabilities['validator']='ready'
+            if not stopping.is_set() and os.environ.get('FRAUDLENS_WORKER_ENABLED','1')=='1':worker.start()
+        except Exception as exc:
+            target='database' if _app.state.capabilities['database']!='ready' else 'validator'
+            _app.state.capabilities[target]='unavailable'
+            access_log.error('Startup capability unavailable: stage=%s error_type=%s',target,type(exc).__name__)
+    # Models warm without blocking HTTP/login/status. Required admission remains
+    # explicitly unavailable until warmup ends, never silently accepted.
+    if os.environ.get('FRAUDLENS_WARM_MODELS')=='1':
+        threading.Thread(target=initialize,name='fraudlens-api-warmup',daemon=True).start()
+    else:initialize()
+    try:yield
     finally:
-        worker.stop()
+        stopping.set();worker.stop()
 
 
 app = FastAPI(
@@ -145,7 +160,7 @@ app = FastAPI(
 )
 
 def _cors_origins() -> list[str]:
-    raw = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:8787")
+    raw = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8787,http://127.0.0.1:8787")
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
@@ -816,6 +831,7 @@ class ActionOut(BaseModel):
 
 
 class HealthOut(BaseModel):
+    capabilities: dict = Field(default_factory=dict)
     ablation_verification_status: str = 'not_checked'
     status: Literal["ok", "degraded"]
     database: str
@@ -854,6 +870,8 @@ class ReportDeclaration(BaseModel):
     claim_type: Optional[str] = None
     status: Optional[str] = None
     declared_location: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     incident_date: Optional[datetime] = None
     claim_amount: Optional[float] = None
     vehicle_registration: Optional[str] = None
@@ -1313,6 +1331,7 @@ def _report_declaration(case: Case) -> ReportDeclaration:
         status=case.status,
         declared_location=case.declared_location,
         incident_date=case.declared_time,
+        latitude=case.latitude,longitude=case.longitude,
         claim_amount=case.claim_amount,
         vehicle_registration=case.vehicle_registration,
         vehicle_make=case.vehicle_make,
@@ -1356,13 +1375,24 @@ def get_case_report(case_id: str, snapshot_id: Optional[str] = Query(default=Non
 def _build_report(conn,case_id):
     case=db.get_case(conn,case_id)
     if not case: raise ApiError(404,'CASE_NOT_FOUND','Case not found.')
+    # Reuse one current-run selection within this report's read snapshot.
+    # Repeated current_result/latest_job calls cost separate cloud round trips.
+    job=runtime_store.latest_job(conn,case_id)
+    result=conn.execute('SELECT * FROM processing_results WHERE run_id=?',(job['job_id'],)).fetchone() if job else None
+    findings=db.get_findings_for_case(conn,case_id)
+    decisions=db.get_decisions_for_case(conn,case_id)
+    if job:
+        finding_ids=set(json.loads(result['finding_ids'])) if result else set()
+        findings=[finding for finding in findings if finding.finding_id in finding_ids]
+        best=next((decision for decision in decisions if result and decision.decision_id==result['decision_id']),None)
+    else:
+        best=_best_decision(decisions)
     concerns=concerns_by_check(conn)
     grouped={c.value:[] for c in CheckCategory}
-    for finding in _current_findings(conn,case_id):
+    for finding in findings:
         out=_finding_out(finding,case,concerns); grouped.setdefault(out.category,[]).append(out)
     groups=[FindingGroup(category=cat,findings=fs,concern_count=sum(f.verdict=='concern' for f in fs)) for cat,fs in grouped.items()]
-    best=_current_decision(conn,case_id); decision=_decision_out(best,conn) if best else None
-    result=runtime_store.current_result(conn,case_id); job=runtime_store.latest_job(conn,case_id)
+    decision=_decision_out(best,conn) if best else None
     human=_admin_action_out(db.get_latest_admin_action(conn,case_id),conn)
     limitations=['Scores are heuristic; independent detection accuracy and claimant intent are not established.']
     limitations.append('INR 50,000 is a preserved research billing benchmark; current legal applicability and insurer procedures are unverified.')
@@ -1421,6 +1451,7 @@ def _build_report(conn,case_id):
     return report
 
 
+@measured('report.snapshot')
 def _snapshot_report(conn,case_id):
     from src.report_pdf import enrich_snapshot,RENDERER_VERSION
     case=db.get_case(conn,case_id)
@@ -1434,8 +1465,11 @@ def _snapshot_report(conn,case_id):
         'case_status':case.status,'template_version':RENDERER_VERSION}
     # Opening the same run/review/template must reuse its frozen report, even
     # when unrelated corpus counts or current registry annotations later change.
-    for row in conn.execute('SELECT snapshot_id,payload FROM report_snapshots WHERE case_id=? ORDER BY rowid DESC',(case_id,)):
-        if json.loads(row['payload']).get('report_basis')==basis:
+    # Historical payloads contain embedded evidence thumbnails. Compare only
+    # their small frozen basis rather than transferring every old report.
+    basis_column=db.json_text(conn,'payload','report_basis')
+    for row in conn.execute('SELECT snapshot_id,'+basis_column+' AS report_basis FROM report_snapshots WHERE case_id=? ORDER BY rowid DESC',(case_id,)):
+        if row['report_basis'] and json.loads(row['report_basis'])==basis:
             return row['snapshot_id']
     report=_build_report(conn,case_id)
     snapshot=enrich_snapshot(conn,report.model_dump(mode='json'))
@@ -1882,6 +1916,7 @@ def _provider_health(provider_configured):
 
 class ReadyOut(BaseModel):
     status: str
+    capabilities: dict = Field(default_factory=dict)
 
 
 @app.get("/ready", response_model=ReadyOut, tags=["config"])
@@ -1896,7 +1931,19 @@ def ready() -> ReadyOut:
             conn.execute("SELECT 1 FROM cases LIMIT 1")
     except (RuntimeError, *db.DatabaseError) as exc:
         raise ApiError(503, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
-    return ReadyOut(status="ok")
+    from src.runtime_readiness import worker_status,provider_status
+    capabilities={**getattr(app.state,'capabilities',{}),'database':'ready','storage':'ready','worker':worker_status(),'provider':provider_status()}
+    validator=capabilities.get('validator','lazy')
+    if validator!='ready':
+        return JSONResponse(status_code=503,content={'status':'warming' if validator in {'warming','lazy'} else 'degraded',
+            'code':'VALIDATOR_NOT_READY','message':'Local photo validation is '+validator+'. Retry after warmup.','capabilities':capabilities})
+    if DB_PATH=='postgresql' and capabilities['worker'].get('state')!='ready':
+        return JSONResponse(status_code=503,content={'status':'degraded','code':'WORKER_NOT_READY',
+            'message':'API and validator are ready; durable worker is not ready. Accepted evidence remains queued.','capabilities':capabilities})
+    if not capabilities['provider']['ready']:
+        return JSONResponse(status_code=503,content={'status':'degraded','code':'PROVIDER_NOT_READY',
+            'message':'Local API/storage are available; provider generation is '+capabilities['provider']['state']+'. Saved reports and human review remain available.','capabilities':capabilities})
+    return ReadyOut(status='ok',capabilities=capabilities)
 
 
 @app.get("/health", response_model=HealthOut, tags=["config"])
@@ -1917,28 +1964,27 @@ def health() -> HealthOut:
     provider_configured = any(os.environ.get(k) for k in
                               ("GEMINI_API_KEY", "GEMINI_API_KEY_1", "GOOGLE_API_KEY"))
     provider_reachable, provider_status, provider_checked_at = _provider_health(provider_configured)
-    verified_agent_cases = 0
-    total = 0
-    try:
-        from scripts.drive_ablation import total_cases, verify_agent_integrity
-        total = total_cases()
-        if DB_PATH != 'postgresql':
-            integrity = verify_agent_integrity(DB_PATH)
-            verified_agent_cases = integrity.verified
-    except Exception:  # noqa: BLE001
-        total = 0
-
+    # Research-corpus integrity scans belong to explicit audit tools, not each
+    # local application health poll. No live provider check is performed here.
+    verified_agent_cases=0;total=0
     try:
         with runtime_store.connection(DB_PATH) as jobs_conn:
             jobs=dict(jobs_conn.execute('SELECT status,COUNT(*) FROM api_jobs GROUP BY status').fetchall())
     except Exception:
         jobs={}
+    from src.runtime_readiness import worker_status,provider_status as provider_control_status
+    capabilities={**getattr(app.state,'capabilities',{}),'worker':worker_status(),'provider':provider_control_status(provider_configured)}
+    provider_status=capabilities['provider']['state']
     degraded = (
         not reachable
         or (provider_configured and provider_reachable is False)
+        or capabilities.get('validator') in {'warming','unavailable','lazy'}
+        or (DB_PATH=='postgresql' and capabilities['worker'].get('state')!='ready')
+        or not capabilities['provider']['ready']
     )
 
     return HealthOut(
+        capabilities=capabilities,
         status="degraded" if degraded else "ok",
         database='postgresql' if DB_PATH == 'postgresql' else Path(DB_PATH).name, database_reachable=reachable, cases=cases,
         provider_configured=provider_configured,
@@ -1947,7 +1993,7 @@ def health() -> HealthOut:
         provider_checked_at=provider_checked_at,
         quota_remaining_estimate=None,
         ablation_verified_agent_cases=verified_agent_cases,
-        ablation_verification_status='offline_research_verifier_required' if DB_PATH=='postgresql' else 'checked',
+        ablation_verification_status='offline_research_verifier_required',
         ablation_total_cases=total,
         ablation_complete=bool(total and verified_agent_cases >= total),
         ablation_driver_status=_background_status("outputs/.drive_ablation.session.log"),
@@ -2059,7 +2105,7 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             _set_job(job_id, stage='evidence checks', progress=0.6, perception_sources=perception_sources, failures=failures,
                      root_failure_detail=failures[0] if failures else None,
                      provider_request_profile=getattr(provider,'request_profile','unrecorded'),
-                     checks_revision='production-checks-2026-10-20-v3')
+                     checks_revision='production-checks-2026-10-23-v5')
             adjudicator = provider
             if perception_errors:
                 class UnavailableVision:
@@ -2175,6 +2221,9 @@ def validate_initial_photo(request: Request, agent_type: str=Form(...),slot: str
                            image: UploadFile=File(...),conn: sqlite3.Connection=Depends(get_conn)):
     from . import photo_admission
     account=customer_auth.authenticate(conn,request.headers.get('authorization'))
+    capability=getattr(app.state,'capabilities',{}).get('validator')
+    if capability in {'warming','unavailable'}:
+        raise ApiError(503,'VALIDATOR_UNAVAILABLE','Local photo validator is '+capability+'. Retry after warmup; no photograph was rejected.')
     actor=photo_admission.actor_key(account,request.headers.get('authorization'))
     conn.rollback()  # No inference while a database transaction is held open.
     try:
@@ -2271,6 +2320,8 @@ def submit_case(
             if existing['fingerprint']!=replay_fingerprint:
                 raise ApiError(409,'IDEMPOTENCY_CONFLICT','This submission key was used with different evidence or details.')
             return SubmitCaseOut(**json.loads(existing['response']))
+    if declared_time is not None and declared_time.utcoffset() is None:
+        raise ApiError(422,'INCIDENT_TIMEZONE_REQUIRED','Use a timezone-aware incident timestamp with an explicit UTC offset.',[ErrorDetail(field='declared_time',reason='UTC offset required')])
     try:
         photo_admission.assignments(agent_type,photo_slots or [],len(images or []))
     except photo_admission.InvalidPhoto as error:
@@ -2299,6 +2350,11 @@ def submit_case(
                 raise ApiError(503,'VALIDATOR_UNAVAILABLE',str(error),[ErrorDetail(field=slot,reason='Retry this photograph; validation could not complete.')]) from None
         if errors:
             raise ApiError(422,'PHOTO_ADMISSION_FAILED','Replace the indicated photographs. No case was accepted.',errors)
+
+        from src import ingest
+        # Hashes/EXIF are derived from the exact staged originals while no
+        # transaction is open. Reuse them when persisting the copied files.
+        prepared_images=[ingest.prepare_image(path) for path,_ in staged]
 
         case_id = f"case-{uuid.uuid4().hex[:12]}"
         job_id = uuid.uuid4().hex
@@ -2365,14 +2421,14 @@ def submit_case(
             from src import ingest
             image_ids = []
             hashes = set()
-            for (source, original_name), score in zip(staged,scores):
+            for (source, original_name), score, metadata in zip(staged,scores,prepared_images):
                 content_hash = hashlib.sha256(source.read_bytes()).hexdigest()
                 if content_hash in hashes:
                     raise ApiError(422, 'DUPLICATE_EVIDENCE', 'The same photograph was attached more than once.')
                 hashes.add(content_hash)
                 target = upload_dir / f'{uuid.uuid4().hex}{source.suffix.lower()}'
                 shutil.copyfile(source, target)
-                indexed = ingest.ingest_image(conn, case_id, target,embedding=getattr(score,'embedding',None))
+                indexed = ingest.ingest_image(conn, case_id, target,embedding=getattr(score,'embedding',None),prepared=metadata)
                 image_ids.append(indexed.image_id); saved += 1
             token = secrets.token_urlsafe(48)
             conn.execute('INSERT INTO applicant_grants(token_hash,case_id,expires_at) VALUES (?,?,?)', (runtime_store.digest(token),case_id,time.time()+30*86400))

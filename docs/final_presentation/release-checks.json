@@ -1,0 +1,269 @@
+{
+  "recorded_at": 1792727968.3638017,
+  "tests": {
+    "final-policy-regressions.log": {
+      "passed": 105,
+      "seconds": 38.6,
+      "failed_test_summary": false
+    },
+    "final-release-regressions.log": {
+      "passed": 89,
+      "seconds": 81.58,
+      "failed_test_summary": false
+    },
+    "final-regressions.log": {
+      "passed": 84,
+      "seconds": 331.65,
+      "failed_test_summary": false
+    },
+    "final-risk-regressions.log": {
+      "passed": 38,
+      "seconds": 16.87,
+      "failed_test_summary": false
+    },
+    "final-scene-regressions.log": {
+      "passed": 28,
+      "seconds": 5.48,
+      "failed_test_summary": false
+    },
+    "final-pdf-regressions.log": {
+      "passed": 9,
+      "seconds": 57.38,
+      "failed_test_summary": false
+    },
+    "final-readiness-regressions.log": {
+      "passed": 5,
+      "seconds": 6.84,
+      "failed_test_summary": false
+    },
+    "final-postgres.log": {
+      "passed": 4,
+      "seconds": 354.44,
+      "failed_test_summary": false
+    },
+    "final-worker-postgres.log": {
+      "passed": 1,
+      "seconds": 36.66,
+      "failed_test_summary": false
+    },
+    "final-exif-postgres.log": {
+      "passed": 1,
+      "seconds": 33.84,
+      "failed_test_summary": false
+    },
+    "final-report-performance-regressions.log": {
+      "passed": 4,
+      "seconds": 28.42,
+      "failed_test_summary": false
+    },
+    "final-report-performance-postgres.log": {
+      "passed": 2,
+      "seconds": 103.81,
+      "failed_test_summary": false
+    },
+    "final-report-release.log": {
+      "passed": 38,
+      "seconds": 136.41,
+      "failed_test_summary": false
+    }
+  },
+  "suites_overlap": true,
+  "ordinary_model_transport_blocked": true,
+  "frontend": {
+    "typecheck": {
+      "exit_code": 0,
+      "seconds": 16.095
+    },
+    "production_build": {
+      "exit_code": 0,
+      "seconds": 22.043
+    }
+  },
+  "node_presentation_test": "Passed: both case types, fallback/model-source distinction and shadow metric formatting; no network.",
+  "notes": [
+    "PowerShell can report NativeCommandError for dependency deprecation stderr; pytest summaries above have no failed tests.",
+    "Fixtures and disposable-schema tests are software verification, not successful live analysis."
+  ],
+  "content_free_spans": [
+    {
+      "stage": "pipeline.checks",
+      "elapsed_ms": 90215.787,
+      "process_cpu_ms": 124515.625,
+      "failed": false,
+      "pid": 8376,
+      "rss_bytes": 1012486144,
+      "peak_rss_bytes": 1184653312,
+      "available_memory_bytes": 796090368
+    },
+    {
+      "stage": "pipeline.total",
+      "elapsed_ms": 192586.141,
+      "process_cpu_ms": 128015.625,
+      "failed": false,
+      "pid": 8376,
+      "rss_bytes": 1012834304,
+      "peak_rss_bytes": 1184653312,
+      "available_memory_bytes": 882892800
+    },
+    {
+      "stage": "pipeline.checks",
+      "elapsed_ms": 112374.429,
+      "process_cpu_ms": 124609.375,
+      "failed": false,
+      "pid": 8376,
+      "rss_bytes": 927162368,
+      "peak_rss_bytes": 1184653312,
+      "available_memory_bytes": 1565163520
+    },
+    {
+      "stage": "pipeline.total",
+      "elapsed_ms": 168467.123,
+      "process_cpu_ms": 126734.375,
+      "failed": false,
+      "pid": 8376,
+      "rss_bytes": 928038912,
+      "peak_rss_bytes": 1184653312,
+      "available_memory_bytes": 1604132864
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 753.012,
+      "process_cpu_ms": 78.125,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 1178169344,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 437182464
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 53.861,
+      "process_cpu_ms": 31.25,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 1178173440,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 439197696
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 58.566,
+      "process_cpu_ms": 46.875,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 1178181632,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 431775744
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 69.05,
+      "process_cpu_ms": 31.25,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 1178198016,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 436158464
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 34.705,
+      "process_cpu_ms": 15.625,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 927006720,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 1295458304
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 50.447,
+      "process_cpu_ms": 31.25,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 927006720,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 1299329024
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 45.951,
+      "process_cpu_ms": 31.25,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 927076352,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 1295261696
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 33.008,
+      "process_cpu_ms": 31.25,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 927076352,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 1294962688
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 48.027,
+      "process_cpu_ms": 15.625,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 927076352,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 1298378752
+    },
+    {
+      "stage": "admission.prepare_image",
+      "elapsed_ms": 30.601,
+      "process_cpu_ms": 31.25,
+      "failed": false,
+      "pid": 10700,
+      "rss_bytes": 927076352,
+      "peak_rss_bytes": 1729064960,
+      "available_memory_bytes": 1295237120
+    },
+    {
+      "stage": "report.snapshot",
+      "elapsed_ms": 1846.3,
+      "process_cpu_ms": 156.25,
+      "failed": false,
+      "pid": 844,
+      "rss_bytes": 79736832,
+      "peak_rss_bytes": 79814656,
+      "available_memory_bytes": 2324918272
+    },
+    {
+      "stage": "report.snapshot",
+      "elapsed_ms": 1844.48,
+      "process_cpu_ms": 156.25,
+      "failed": false,
+      "pid": 844,
+      "rss_bytes": 81297408,
+      "peak_rss_bytes": 83849216,
+      "available_memory_bytes": 2114977792
+    },
+    {
+      "stage": "report.snapshot",
+      "elapsed_ms": 2642.301,
+      "process_cpu_ms": 109.375,
+      "failed": false,
+      "pid": 10232,
+      "rss_bytes": 79327232,
+      "peak_rss_bytes": 79331328,
+      "available_memory_bytes": 961966080
+    },
+    {
+      "stage": "report.snapshot",
+      "elapsed_ms": 1681.281,
+      "process_cpu_ms": 140.625,
+      "failed": false,
+      "pid": 10232,
+      "rss_bytes": 79781888,
+      "peak_rss_bytes": 82239488,
+      "available_memory_bytes": 2480939008
+    }
+  ]
+}

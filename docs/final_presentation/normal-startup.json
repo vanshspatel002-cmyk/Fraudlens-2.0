@@ -1,0 +1,1918 @@
+{
+  "mode": "normal",
+  "started_at": 1792728024.5023239,
+  "observations": [
+    {
+      "seconds": 10.049,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 13.518,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 17.056,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 20.556,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 24.172,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 27.683,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 31.435,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 35.011,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 42.306,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 45.771,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 49.301,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 52.787,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 56.365,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 61.96,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 65.46,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 68.93,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 72.458,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 75.932,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 79.399,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 83.853,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 87.331,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 90.788,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 94.32,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 97.784,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 101.279,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 104.756,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 108.235,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 111.755,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 115.249,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 118.711,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 123.198,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 126.682,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 130.154,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 133.617,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 137.116,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 140.554,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 144.02,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 147.476,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 150.988,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 154.462,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 157.919,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 161.385,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 165.669,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 169.118,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 172.588,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 176.069,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 180.177,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 183.662,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 187.139,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 190.614,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 194.118,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 197.631,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 201.118,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 204.642,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 208.889,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 217.5,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 230.631,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 234.098,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 237.629,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 241.55,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 245.053,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 248.581,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 252.089,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 255.831,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 259.942,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 263.458,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 267.214,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 270.693,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 274.178,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 277.693,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 281.236,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 284.719,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 288.18,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 291.655,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 295.141,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "warming",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 298.594,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 303.218,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 306.719,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 310.21,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 313.678,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 317.973,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 321.457,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 324.942,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 328.451,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 333.118,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "unavailable",
+          "reason": "worker_heartbeat_missing"
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 336.587,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792728359.1994696
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 340.075,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792728363.2308068
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 343.556,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792728367.271986
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 347.058,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "warming",
+          "ocr_ready": null,
+          "leader": false,
+          "heartbeat_at": 1792728371.2952042
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    },
+    {
+      "seconds": 416.09,
+      "status": 503,
+      "capabilities": {
+        "database": "ready",
+        "validator": "ready",
+        "storage": "ready",
+        "worker": {
+          "state": "ready",
+          "ocr_ready": true,
+          "leader": true,
+          "heartbeat_at": 1792728438.7014935
+        },
+        "provider": {
+          "state": "paused",
+          "ready": false,
+          "circuit_category": "transient",
+          "recorded_stop_at": 1792697549.7874427,
+          "retry_at": 1792699349.7874427,
+          "basis": "Persisted local controls only; no Google inference or account-quota check."
+        }
+      }
+    }
+  ],
+  "http_available_seconds": 6.717,
+  "validator_ready_seconds": 298.594,
+  "locally_ready_seconds": 416.09,
+  "final_readiness_http": 503,
+  "provider": {
+    "state": "paused",
+    "ready": false,
+    "circuit_category": "transient",
+    "recorded_stop_at": 1792697549.7874427,
+    "retry_at": 1792699349.7874427,
+    "basis": "Persisted local controls only; no Google inference or account-quota check."
+  }
+}

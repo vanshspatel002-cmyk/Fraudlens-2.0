@@ -342,7 +342,7 @@ def fetch_weather(conn, latitude: float, longitude: float, date: str) -> Optiona
         response.raise_for_status()
         payload = response.json()
     except Exception as e:  # noqa: BLE001 - offline, rate-limited, malformed; all mean "unavailable"
-        return {"error": f"{type(e).__name__}: {e}"}
+          return {"error": type(e).__name__, "status": "unavailable"}
 
     daily = payload.get("daily") or {}
     precipitation = (daily.get("precipitation_sum") or [None])[0]
@@ -395,6 +395,9 @@ def _mentions(text: Optional[str], words: tuple[str, ...]) -> bool:
 
 class SceneConsistencyCheck(Check):
     check_id = "scene_consistency"
+    # The underwriting application makes no incident time/place declaration.
+    # Do not turn absent incident fields into a required underwriting gap.
+    agent_types = ('claims',)
     category = CheckCategory.CONTEXT
     scope = "image"
     cost_inr = 0.0

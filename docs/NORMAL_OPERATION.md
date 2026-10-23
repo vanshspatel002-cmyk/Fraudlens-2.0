@@ -1,3 +1,25 @@
+# Current operating state — 23 October 2026
+
+Frontend, API and dedicated worker use the original PostgreSQL pilot configuration.
+**Provider paused after two fresh HTTP 503 responses.** Health is degraded and
+readiness accurately reports the provider blocker even when local models are
+ready. This supersedes older statements below that normal generation is enabled.
+The original operating controls remain in force; the latest isolated task is
+closed (15 starting + 2 new = 17 total; 28 unused slots closed). No batch is running.
+
+Photo policy v3 accepts relevant mounted-plate/dashboard details separately from
+OCR completeness. Both real required photo sets passed; unreadable registration
+and powered-off mileage remain assessment gaps. Renderer v9, coverage v3,
+explanation v5 and risk presentation v2 distinguish failures/fallback from model
+completion. Production routing is unchanged; candidate calculations stay shadow.
+
+Use [the final handover](FINAL_PRESENTATION_HANDOVER.md) for exact startup/control
+commands, original-pilot versus isolated-case locations, safe recovery and the
+saved real-case fallback. [Verification](FINAL_PRESENTATION_VERIFICATION.md)
+records current results and limitations. The older record below is retained.
+
+---
+
 # FraudLens normal local operation
 
 The normal policy is stored under `operation` in the original private session

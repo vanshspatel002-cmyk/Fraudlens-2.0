@@ -95,8 +95,9 @@ def test_ocr_slot_abstains_and_optional_whole_vehicle_not_required(monkeypatch,t
   def embed_texts(self,prompts):return [[1.,0.]]*2+[[0.,1.]]*len(gate.NEGATIVES)
  monkeypatch.setattr(vehicle_gate,'_default_embedder',Embedder());monkeypatch.setattr(gate,'_texts',{})
  monkeypatch.setattr(plate_ocr,'get_reader',lambda:type('Reader',(),{'readtext':lambda *a:[]})())
- assert gate.infer(tmp_path/'unused','front_registration')[0]=='needs_replacement'
- assert gate.infer(tmp_path/'unused','odometer')[0]=='needs_replacement'
+ assert gate.infer(tmp_path/'unused','front_registration')[0]=='accepted'
+ assert gate.infer(tmp_path/'unused','odometer')[0]=='accepted'
+ assert gate.infer(tmp_path/'unused','front_registration')[3]['quality_readable'] is None
  assert gate.infer(tmp_path/'unused','damage_closeup')[0]=='accepted'
 
 def test_cache_expiry_and_orientation(monkeypatch,tmp_path):
@@ -117,7 +118,7 @@ def test_measured_abstention_band(monkeypatch,tmp_path,margin,state):
  class Embedder:
   def embed(self,path):return [1.,0.]
  monkeypatch.setattr(vehicle_gate,'_default_embedder',Embedder())
- monkeypatch.setattr(gate,'_texts',{'exterior':np.array([[.25,0],[.25,0]]+[[.25-margin,0]]*len(gate.NEGATIVES))})
+ monkeypatch.setattr(gate,'_texts',{'exterior':np.array([[.25,0]]*len(gate.PROMPTS['exterior'])+[[.25-margin,0]]*len(gate.NEGATIVES))})
  assert gate.infer(tmp_path/'not-opened','vehicle_overview')[0]==state
 
 @pytest.mark.parametrize('texts,expected',[(['ODO 123456'],True),(['123456 km'],True),(['120 km/h'],False),(['RPM 4000'],False),(['123456'],False),([],False)])

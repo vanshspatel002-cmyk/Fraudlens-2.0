@@ -25,6 +25,38 @@ def seed_case(tmp_path, kind='claims', status='failed', case_id='pdf-case'):
     return case_id
 
 
+def test_report_history_metadata_has_bounded_reads_and_no_pdf_payload(client,tmp_path,monkeypatch):
+    case_id=seed_case(tmp_path);headers=auth(client)
+    with runtime_store.connection(api.DB_PATH) as conn:
+        for number in range(8):
+            snapshot='metadata-fixture-'+str(number)
+            conn.execute('INSERT INTO report_snapshots(snapshot_id,case_id,run_id,payload,created_at) VALUES (?,?,?,?,?)',
+                (snapshot,case_id,None,'{}',1000+number))
+            if number!=0:
+                conn.execute('INSERT INTO report_artifacts(snapshot_id,renderer_version,pdf_base64,sha256,created_at,error_type) VALUES (?,?,?,?,?,?)',
+                    (snapshot,'controlled-template','a'*100000 if number>1 else None,'fixture-checksum',2000+number,'ControlledError' if number==1 else None))
+    queries=[];connect=db.connect
+    class Tracked:
+        def __init__(self,conn):self.conn=conn
+        def __getattr__(self,name):return getattr(self.conn,name)
+        def execute(self,query,params=None):
+            if query.lstrip().upper().startswith('SELECT') and 'report_artifacts' in query.lower():queries.append(query)
+            return self.conn.execute(query,params) if params is not None else self.conn.execute(query)
+    monkeypatch.setattr(db,'connect',lambda *a,**k:Tracked(connect(*a,**k)))
+    metadata=report_pdf._metadata
+    def inspect_metadata(row,artifact=None):
+        # A list operation projects availability, never the historical blobs.
+        assert artifact['pdf_base64'] in (0,1)
+        return metadata(row,artifact)
+    monkeypatch.setattr(report_pdf,'_metadata',inspect_metadata)
+    response=client.get(f'/v1/cases/{case_id}/reports',headers=headers)
+    assert response.status_code==200
+    rows=response.json()['reports'];assert len(rows)==8 and len(queries)==1
+    assert [row['pdf_status'] for row in rows]==['ready']*6+['failed','pending']
+    assert rows[0]['generated_at']==2007 and rows[0]['sha256']=='fixture-checksum'
+    assert rows[-1]['generated_at'] is None and rows[-1]['renderer_version'] is None
+
+
 @pytest.mark.parametrize('kind',['claims','underwriting'])
 def test_pdf_private_durable_idempotent(client,tmp_path,monkeypatch,kind):
     case_id=seed_case(tmp_path,kind); headers=auth(client); path=f'/v1/cases/{case_id}/reports'
@@ -119,7 +151,7 @@ def test_long_pdf_layout_and_all_execution_states(tmp_path):
     (tmp_path/'long-layout.pdf').write_bytes(content)
 
 
-@pytest.mark.parametrize('old_version',[None,report_pdf.READER_V2_VERSION,report_pdf.READER_V3_VERSION])
+@pytest.mark.parametrize('old_version',[None,report_pdf.READER_V2_VERSION,report_pdf.READER_V3_VERSION,report_pdf.READER_V7_VERSION,report_pdf.READER_V8_VERSION])
 def test_new_report_template_creates_new_version_and_keeps_legacy_bytes(client,tmp_path,old_version):
     case_id=seed_case(tmp_path);headers=auth(client);path=f'/v1/cases/{case_id}/reports'
     with runtime_store.connection(api.DB_PATH) as conn:

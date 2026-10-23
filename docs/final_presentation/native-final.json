@@ -1,0 +1,1157 @@
+{
+  "policy": "initial-photo-admission-2026-10-22-v3",
+  "warmup_seconds": 79.285,
+  "generation_requests": 0,
+  "rows": [
+    {
+      "name": "claims-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.3053709119566964,
+        "competing_similarity": 0.2268032767156739,
+        "subject_margin": 0.0785676352410225,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.68
+    },
+    {
+      "name": "claims-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.3279271490037042,
+        "competing_similarity": 0.24726027100116554,
+        "subject_margin": 0.08066687800253863,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "seconds": 0.689
+    },
+    {
+      "name": "claims-damage_overview",
+      "case_type": "claims",
+      "slot": "damage_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.3079743884033722,
+        "competing_similarity": 0.2402145142624536,
+        "subject_margin": 0.06775987414091861,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.763
+    },
+    {
+      "name": "claims-damage_closeup",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.30089724478198776,
+        "competing_similarity": 0.2502116416055039,
+        "subject_margin": 0.05068560317648385,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.624
+    },
+    {
+      "name": "underwriting-front_left",
+      "case_type": "underwriting",
+      "slot": "front_left",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.32462430565960826,
+        "competing_similarity": 0.24726027100116554,
+        "subject_margin": 0.07736403465844272,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.62
+    },
+    {
+      "name": "underwriting-front_right",
+      "case_type": "underwriting",
+      "slot": "front_right",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.3053709119566964,
+        "competing_similarity": 0.2268032767156739,
+        "subject_margin": 0.0785676352410225,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.637
+    },
+    {
+      "name": "underwriting-rear_left",
+      "case_type": "underwriting",
+      "slot": "rear_left",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.31664238561856456,
+        "competing_similarity": 0.2563031173780338,
+        "subject_margin": 0.06033926824053076,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.656
+    },
+    {
+      "name": "underwriting-rear_right",
+      "case_type": "underwriting",
+      "slot": "rear_right",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.3346750698351987,
+        "competing_similarity": 0.2550534933595961,
+        "subject_margin": 0.07962157647560258,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.65
+    },
+    {
+      "name": "underwriting-odometer",
+      "case_type": "underwriting",
+      "slot": "odometer",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.32659842273507994,
+        "competing_similarity": 0.2585768967978364,
+        "subject_margin": 0.06802152593724353,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "seconds": 0.669
+    },
+    {
+      "name": "underwriting-registration_plate",
+      "case_type": "underwriting",
+      "slot": "registration_plate",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "real_same_car_positive",
+      "scores": {
+        "subject_similarity": 0.34220972602316363,
+        "competing_similarity": 0.26091097058058926,
+        "subject_margin": 0.08129875544257437,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "seconds": 0.642
+    },
+    {
+      "name": "heldout-exterior-1",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.2620309726787322,
+        "competing_similarity": 0.2060072963308989,
+        "subject_margin": 0.05602367634783331,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.622
+    },
+    {
+      "name": "heldout-exterior-2",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.2853534207635883,
+        "competing_similarity": 0.21672729986632872,
+        "subject_margin": 0.06862612089725956,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.476
+    },
+    {
+      "name": "heldout-exterior-3",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.27355219303660233,
+        "competing_similarity": 0.2317828017943647,
+        "subject_margin": 0.041769391242237636,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.586
+    },
+    {
+      "name": "heldout-exterior-4",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.2949357448707419,
+        "competing_similarity": 0.2473379438968455,
+        "subject_margin": 0.04759780097389643,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.598
+    },
+    {
+      "name": "heldout-exterior-5",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.24774358167010604,
+        "competing_similarity": 0.19434655801022505,
+        "subject_margin": 0.053397023659881,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.49
+    },
+    {
+      "name": "heldout-exterior-6",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.23527425390208562,
+        "competing_similarity": 0.1896224499289469,
+        "subject_margin": 0.04565180397313873,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.51
+    },
+    {
+      "name": "heldout-exterior-7",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.21666262301514008,
+        "competing_similarity": 0.16451925332262746,
+        "subject_margin": 0.052143369692512626,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.544
+    },
+    {
+      "name": "heldout-exterior-8",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.25011537326831235,
+        "competing_similarity": 0.19916290208836937,
+        "subject_margin": 0.050952471179942976,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.458
+    },
+    {
+      "name": "heldout-exterior-9",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.21959123238725542,
+        "competing_similarity": 0.17479604675267912,
+        "subject_margin": 0.044795185634576296,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.568
+    },
+    {
+      "name": "heldout-exterior-10",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.24939053397651817,
+        "competing_similarity": 0.20031333606577398,
+        "subject_margin": 0.04907719791074419,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.469
+    },
+    {
+      "name": "heldout-exterior-11",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.22388144247702363,
+        "competing_similarity": 0.18546804131786607,
+        "subject_margin": 0.03841340115915756,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.648
+    },
+    {
+      "name": "heldout-exterior-12",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.21947314355453,
+        "competing_similarity": 0.19069610241743154,
+        "subject_margin": 0.028777041137098447,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.486
+    },
+    {
+      "name": "damage-1",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.33651608378681724,
+        "competing_similarity": 0.2691605818257572,
+        "subject_margin": 0.06735550196106005,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.505
+    },
+    {
+      "name": "damage-2",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.3416826728997671,
+        "competing_similarity": 0.2709664273983235,
+        "subject_margin": 0.07071624550144362,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.461
+    },
+    {
+      "name": "damage-3",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.2514915014350241,
+        "competing_similarity": 0.2263958776810847,
+        "subject_margin": 0.025095623753939367,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.463
+    },
+    {
+      "name": "damage-4",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "development",
+      "scores": {
+        "subject_similarity": 0.33155051138222824,
+        "competing_similarity": 0.25792016454939615,
+        "subject_margin": 0.0736303468328321,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.396
+    },
+    {
+      "name": "damage-5",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.2603745278422225,
+        "competing_similarity": 0.23484373888606375,
+        "subject_margin": 0.025530788956158734,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.425
+    },
+    {
+      "name": "damage-6",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.30886543101793634,
+        "competing_similarity": 0.24928646901218135,
+        "subject_margin": 0.05957896200575499,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.4
+    },
+    {
+      "name": "damage-7",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.3096594415455197,
+        "competing_similarity": 0.2398363212888445,
+        "subject_margin": 0.06982312025667523,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.451
+    },
+    {
+      "name": "damage-8",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "expected": "accepted",
+      "matched_expectation": true,
+      "basis": "held_out_from_this_prompt_development",
+      "scores": {
+        "subject_similarity": 0.3172792987967935,
+        "competing_similarity": 0.259743701705816,
+        "subject_margin": 0.0575355970909775,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.439
+    },
+    {
+      "name": "person-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.11292252701713926,
+        "competing_similarity": 0.1767480705736731,
+        "subject_margin": -0.06382554355653383,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.522
+    },
+    {
+      "name": "person-damage_closeup",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.09102121528495946,
+        "competing_similarity": 0.1767480705736731,
+        "subject_margin": -0.08572685528871363,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.535
+    },
+    {
+      "name": "person-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.07912662614140407,
+        "competing_similarity": 0.1767480705736731,
+        "subject_margin": -0.09762144443226901,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.514
+    },
+    {
+      "name": "person-odometer",
+      "case_type": "underwriting",
+      "slot": "odometer",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.09766656072442537,
+        "competing_similarity": 0.1767480705736731,
+        "subject_margin": -0.07908150984924772,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.568
+    },
+    {
+      "name": "animal-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.13685474707090245,
+        "competing_similarity": 0.2727403684662939,
+        "subject_margin": -0.13588562139539145,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.484
+    },
+    {
+      "name": "animal-damage_closeup",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.1070959724532596,
+        "competing_similarity": 0.2727403684662939,
+        "subject_margin": -0.16564439601303432,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.491
+    },
+    {
+      "name": "animal-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.0861981797153779,
+        "competing_similarity": 0.2727403684662939,
+        "subject_margin": -0.186542188750916,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.469
+    },
+    {
+      "name": "animal-odometer",
+      "case_type": "underwriting",
+      "slot": "odometer",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.05279551130566517,
+        "competing_similarity": 0.2727403684662939,
+        "subject_margin": -0.21994485716062873,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.452
+    },
+    {
+      "name": "food-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.14738757797326596,
+        "competing_similarity": 0.20030764464225678,
+        "subject_margin": -0.05292006666899082,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.512
+    },
+    {
+      "name": "food-damage_closeup",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.12202252946035237,
+        "competing_similarity": 0.20030764464225678,
+        "subject_margin": -0.07828511518190441,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.495
+    },
+    {
+      "name": "food-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.1281161566843523,
+        "competing_similarity": 0.20030764464225678,
+        "subject_margin": -0.07219148795790448,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.547
+    },
+    {
+      "name": "food-odometer",
+      "case_type": "underwriting",
+      "slot": "odometer",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.09220451181094486,
+        "competing_similarity": 0.20030764464225678,
+        "subject_margin": -0.10810313283131193,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.65
+    },
+    {
+      "name": "scenery-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.17155963010197384,
+        "competing_similarity": 0.2113705606954578,
+        "subject_margin": -0.03981093059348395,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.494
+    },
+    {
+      "name": "scenery-damage_closeup",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "needs_replacement",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.21920773722764034,
+        "competing_similarity": 0.2113705606954578,
+        "subject_margin": 0.00783717653218255,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.518
+    },
+    {
+      "name": "scenery-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.13686384695629308,
+        "competing_similarity": 0.2113705606954578,
+        "subject_margin": -0.0745067137391647,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.554
+    },
+    {
+      "name": "scenery-odometer",
+      "case_type": "underwriting",
+      "slot": "odometer",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.12384055161176516,
+        "competing_similarity": 0.2113705606954578,
+        "subject_margin": -0.08753000908369263,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.493
+    },
+    {
+      "name": "motorcycle-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.1709931639509342,
+        "competing_similarity": 0.2949854999246991,
+        "subject_margin": -0.12399233597376488,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.552
+    },
+    {
+      "name": "motorcycle-damage_closeup",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.15146990213446054,
+        "competing_similarity": 0.2949854999246991,
+        "subject_margin": -0.14351559779023854,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.523
+    },
+    {
+      "name": "motorcycle-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.16899366128375543,
+        "competing_similarity": 0.2949854999246991,
+        "subject_margin": -0.12599183864094365,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.58
+    },
+    {
+      "name": "motorcycle-odometer",
+      "case_type": "underwriting",
+      "slot": "odometer",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.12975263951853494,
+        "competing_similarity": 0.2949854999246991,
+        "subject_margin": -0.16523286040616414,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.539
+    },
+    {
+      "name": "document-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.14514334668993997,
+        "competing_similarity": 0.20716532664051723,
+        "subject_margin": -0.06202197995057726,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.462
+    },
+    {
+      "name": "document-damage_closeup",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.1573957438180125,
+        "competing_similarity": 0.20716532664051723,
+        "subject_margin": -0.04976958282250474,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.473
+    },
+    {
+      "name": "document-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.1635301846672204,
+        "competing_similarity": 0.20716532664051737,
+        "subject_margin": -0.04363514197329696,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.432
+    },
+    {
+      "name": "document-odometer",
+      "case_type": "underwriting",
+      "slot": "odometer",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.15003216758349514,
+        "competing_similarity": 0.20716532664051734,
+        "subject_margin": -0.05713315905702221,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.407
+    },
+    {
+      "name": "object-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.18398098755099662,
+        "competing_similarity": 0.21755048455841788,
+        "subject_margin": -0.03356949700742126,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.485
+    },
+    {
+      "name": "object-damage_closeup",
+      "case_type": "claims",
+      "slot": "damage_closeup",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.15417813763637522,
+        "competing_similarity": 0.21755048455841788,
+        "subject_margin": -0.06337234692204266,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.463
+    },
+    {
+      "name": "object-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.1347766411194345,
+        "competing_similarity": 0.21755048455841788,
+        "subject_margin": -0.08277384343898339,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.459
+    },
+    {
+      "name": "object-odometer",
+      "case_type": "underwriting",
+      "slot": "odometer",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "real_unrelated_negative",
+      "scores": {
+        "subject_similarity": 0.11598571109458225,
+        "competing_similarity": 0.21755048455841788,
+        "subject_margin": -0.10156477346383563,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.443
+    },
+    {
+      "name": "paper-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "needs_replacement",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "authored_negative_not_application_evidence",
+      "scores": {
+        "subject_similarity": 0.2884076747638575,
+        "competing_similarity": 0.2784467502174589,
+        "subject_margin": 0.009960924546398575,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.594
+    },
+    {
+      "name": "paper-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "authored_negative_not_application_evidence",
+      "scores": {
+        "subject_similarity": 0.21764805714210325,
+        "competing_similarity": 0.2784467502174589,
+        "subject_margin": -0.06079869307535565,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.739
+    },
+    {
+      "name": "screen-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "needs_replacement",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "authored_negative_not_application_evidence",
+      "scores": {
+        "subject_similarity": 0.25390681133327836,
+        "competing_similarity": 0.25282480075297276,
+        "subject_margin": 0.0010820105803056035,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.62
+    },
+    {
+      "name": "screen-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "rejected",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "authored_negative_not_application_evidence",
+      "scores": {
+        "subject_similarity": 0.22238599242001525,
+        "competing_similarity": 0.25282480075297264,
+        "subject_margin": -0.030438808332957396,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "seconds": 0.539
+    },
+    {
+      "name": "blur-vehicle_overview",
+      "case_type": "claims",
+      "slot": "vehicle_overview",
+      "state": "invalid_photo",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "authored_negative_not_application_evidence",
+      "scores": null,
+      "seconds": 0.061
+    },
+    {
+      "name": "blur-front_registration",
+      "case_type": "claims",
+      "slot": "front_registration",
+      "state": "invalid_photo",
+      "expected": "not_accepted",
+      "matched_expectation": true,
+      "basis": "authored_negative_not_application_evidence",
+      "scores": null,
+      "seconds": 0.021
+    }
+  ]
+}

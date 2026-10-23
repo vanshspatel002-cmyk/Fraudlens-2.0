@@ -13,9 +13,10 @@ from src import operating_policy, session_budget
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=['status','migrate','pause','resume','finish-task','configure'])
+    p.add_argument('action', choices=['status','migrate','pause','resume','begin-task','finish-task','configure'])
     p.add_argument('--process-id', type=int, required=True)
     p.add_argument('--operator');p.add_argument('--reason');p.add_argument('--expected-attempts', type=int)
+    p.add_argument('--schema',help='Only begin-task: additional isolated validation schema; closes with the task.')
     p.add_argument('--daily-attempts',type=int);p.add_argument('--case-attempts',type=int);p.add_argument('--agent-turns',type=int)
     a = p.parse_args()
     env = load_pilot_environment(process_environment(a.process_id));apply_pilot_environment(env)
@@ -42,6 +43,7 @@ def main():
         if a.action == 'migrate':
             operating_policy.migrate(schema=env['FRAUDLENS_PG_SCHEMA'],expected_attempts=a.expected_attempts,
                                      operator=a.operator,reason=a.reason)
+        elif a.action=='begin-task':operating_policy.begin_task(expected_attempts=a.expected_attempts,operator=a.operator,reason=a.reason,validation_schema=a.schema)
         elif a.action=='configure':operating_policy.configure({key:getattr(a,key) for key in ['daily_attempts','case_attempts','agent_turns'] if getattr(a,key) is not None},operator=a.operator,reason=a.reason)
         else:operating_policy.control(a.action,operator=a.operator,reason=a.reason)
     state = session_budget._change(lambda s: s)

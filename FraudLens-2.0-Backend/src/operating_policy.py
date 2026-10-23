@@ -81,13 +81,19 @@ def allow(state):
         raise ProviderCircuitOpen('Normal generation manually paused; no request attempted.')
     if os.getenv('FRAUDLENS_LIVE_LIMIT') == '0':
         raise ProviderCircuitOpen('Legacy zero kill-switch is set; no request attempted.')
-    if (not context or context.get('schema') != op['schema']
+    active_task=op.get('task') or {}
+    permitted_schemas={op['schema']}
+    if active_task.get('status')=='active' and active_task.get('validation_schema'):
+        permitted_schemas.add(active_task['validation_schema'])
+    if (not context or context.get('schema') not in permitted_schemas
             or context.get('schema') != os.getenv('FRAUDLENS_PG_SCHEMA')
             or not context.get('case_id') or not context.get('run_id')):
         raise ProviderCircuitOpen('Normal generation requires the actual pilot worker job context.')
     if context.get('retrospective') and context['run_id'] not in op.get('batch_runs', []):
         raise ProviderCircuitOpen('Historical batch run has not been explicitly activated.')
     task = op.get('task') or {}
+    if task.get('status')=='active' and now>=task.get('expires_at',float('inf')):
+        raise ProviderCircuitOpen('Task allowance expired; explicit task closure required.')
     if task.get('status') == 'active' and state['attempts'] >= task['ceiling']:
         raise QuotaBudgetExhausted('Task-wide request ceiling reached; no request attempted.')
     # All consumers, including pre-migration calls today, count toward the day.
@@ -162,6 +168,30 @@ def control(action, *, operator, reason):
         else:
             op['mode'] = 'paused' if action == 'pause' else 'normal'
         op['audit'].append(dict(action=action, time=time.time(), operator=operator, reason=reason))
+    _change(change)
+
+
+def begin_task(*, expected_attempts, operator, reason, validation_schema=None):
+    """Audit one new 30-attempt task without rewriting any prior allowance."""
+    from .session_budget import _change
+    if not operator or not reason:
+        raise ValueError('Explicit operator and task reason required.')
+    import re
+    if validation_schema and not re.fullmatch(r'fraudlens_validation_[a-z0-9_]{1,24}',validation_schema):
+        raise ValueError('Use an explicit isolated validation schema.')
+    def change(state):
+        op=state.get('operation')
+        if not op or state['attempts']!=expected_attempts:
+            raise ValueError('Inspect the actual operating ledger and attempt count first.')
+        if (op.get('task') or {}).get('status')=='active' or any(e['outcome']=='reserved' for e in state['events']):
+            raise ValueError('Another task/request is active; no allowance changed.')
+        prior=dict(op['task']) if op.get('task') else None
+        if prior:op.setdefault('task_history',[]).append(prior)
+        now=time.time()
+        op['task']=dict(base_attempts=expected_attempts,ceiling=expected_attempts+30,status='active',started_at=now,expires_at=now+86400,
+                        validation_schema=validation_schema)
+        op['audit'].append(dict(action='begin_task',time=now,operator=operator,reason=reason,
+                                previous_task=prior,task=dict(op['task'])))
     _change(change)
 
 

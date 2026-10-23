@@ -463,13 +463,18 @@ function mapFormData(input: FormData) {
   out.set("previous_policy_number", String(input.get("previousPolicy") || ""));
   out.set("policy_ncb_percent", String(input.get("ncb") || ""));
   out.set("declared_location", String(input.get("location") || ""));
+  for (const field of ['latitude','longitude']) {
+    const value=String(input.get(field)||'').trim();
+    if(value)out.set(field,value);
+  }
   out.set("claim_amount", String(input.get("amount") || ""));
   out.set("garage_id", String(input.get("garage") || ""));
   out.set("settlement_preference", String(input.get("settlement") || ""));
   out.set("bank_account_last4", String(input.get("bankLast4") || ""));
   const d = String(input.get("incidentDate") || ""),
     t = String(input.get("incidentTime") || "00:00");
-  if (d) out.set("declared_time", new Date(d + "T" + t + ":00+05:30").toISOString());
+  const offset=String(input.get('incidentOffset')||'+05:30');
+  if (d) out.set("declared_time", d + "T" + t + ":00" + offset);
   for (const [k, v] of input.entries())
     if (k.startsWith("photo:") && v instanceof File) {out.append("images", v, v.name); out.append("photo_slots", k.slice(6));}
   return out;

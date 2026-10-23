@@ -14,7 +14,7 @@ import numpy as np
 from PIL import Image,ImageOps
 from . import vehicle_gate
 
-VERSION='initial-photo-admission-2026-10-22-v2'
+VERSION='initial-photo-admission-2026-10-22-v3'
 # Local v1 smoke: a printed-car document won by .0036 and severe blur by
 # .0187. The .02 abstention band excludes both without lowering the existing
 # absolute floor. This is a conservative operating point, not accuracy calibration.
@@ -26,9 +26,21 @@ SLOTS={
 KINDS={'front_registration':'plate','registration_plate':'plate','odometer':'odometer',
        'damage_closeup':'damage','damage_overview':'damage'}
 PROMPTS={
- 'exterior':('a photograph of a passenger car exterior','a photograph of an SUV or passenger van'),
- 'damage':('a close up photograph of a damaged car body panel bumper or wheel','a photograph of scratches and dents on a car'),
- 'plate':('a photograph of a registration license plate mounted on a car','a close up photograph of a car number plate and bumper'),
+ 'exterior':('a photograph of a passenger car exterior','a photograph of an SUV or passenger van',
+  'a photograph of the front of a passenger car','a photograph of the rear of a passenger car',
+  'a photograph of the side of a passenger car','a photograph of a parked sedan hatchback or station wagon',
+  'a photograph of an off road passenger SUV','a photograph of a car driving on a road',
+  'a photograph of a civilian pickup vehicle with a passenger cabin'),
+ 'damage':('a close up photograph of a damaged car body panel bumper or wheel','a photograph of scratches and dents on a car',
+           'a close up photograph of a passenger car part or interior door panel',
+           'a photograph of a passenger car interior showing the dashboard and seats',
+           'a close up photograph of the engine compartment of a passenger car'),
+ 'plate':('a photograph of a registration license plate mounted on a car','a close up photograph of a car number plate and bumper',
+          'a photograph of a passenger car front showing the bumper and number plate mounting area',
+          'a front three quarter photograph of a passenger car',
+          'a rear photograph of a passenger car with a number plate',
+          'a photograph of a car with a license plate',
+          'a front view of a parked sedan with a mounted license plate'),
  'odometer':('a photograph of a car dashboard instrument cluster odometer','a close up photograph of a vehicle mileage display behind the steering wheel'),
 }
 NEGATIVES=('a photograph of a motorcycle scooter or bicycle','a photograph of a truck bus or heavy machinery',
@@ -82,6 +94,12 @@ def decode(content,mime,path):
    if min(image.size)<64 or image.width*image.height>25_000_000:raise InvalidPhoto('Retake at least 64 pixels on each side, up to 25 megapixels.')
    image.load();normalized=ImageOps.exif_transpose(image).convert('RGB')
    if all(low==high for low,high in normalized.getextrema()):raise InvalidPhoto('Blank image: replace it with a clear vehicle photograph.')
+   # Conservative severe-blur floor measured on development/held-out local
+   # cars, damage and real dashboard images. Not a universal sharpness metric.
+   gray=normalized.convert('L');gray.thumbnail((512,512));a=np.asarray(gray,dtype=float)
+   lap=4*a[1:-1,1:-1]-a[:-2,1:-1]-a[2:,1:-1]-a[1:-1,:-2]-a[1:-1,2:]
+   if float(lap.var())<5:
+    raise InvalidPhoto('Image is too blurred or lacks visible detail. Retake in focus; relevance could not be assessed reliably.')
    digest=hashlib.sha256(str(normalized.size).encode()+normalized.tobytes()).hexdigest()
    normalized.save(path,format='PNG')
    return digest
@@ -103,27 +121,25 @@ def infer(path,slot):
  if positive<vehicle_gate.VEHICLE_SCORE_THRESHOLD or positive-negative<MIN_SUBJECT_MARGIN:
   return ('rejected' if negative-positive>MIN_SUBJECT_MARGIN else 'needs_replacement'),'Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.',vector.tolist(),scores
  if category in {'plate','odometer'}:
-  from .checks.plate_ocr import get_reader
-  try:
-   reader=get_reader()
-   if reader is None:raise RuntimeError()
-   raw=reader.readtext(str(path));texts=[str(r[1]) for r in raw]
-  except Exception:raise ValidatorUnavailable('Local text reader is unavailable; retry later.') from None
-  readable=readable_detail(category,texts)
-  scores.update(quality_check='easyocr-registration-format' if category=='plate' else 'easyocr-labelled-mileage-pattern',
-                quality_readable=readable)
-  if not readable:return 'needs_replacement','Retake a sharp, readable '+('vehicle-mounted registration plate.' if category=='plate' else 'dashboard mileage display including its ODO or km/miles label; unlabeled speed/RPM numbers do not establish mileage.'),vector.tolist(),scores
+  # Admission establishes relevance, not independent text/identity verification.
+  # Real OCR runs once in assessment. An unreadable legitimate mounted detail
+  # remains an evidence gap rather than a fabricated non-vehicle verdict.
+  scores.update(quality_check='extraction_deferred_to_assessment',quality_readable=None,
+                identity_verified=False,slot_label_verified=False)
+  return 'accepted','Relevant vehicle detail accepted; text is not independently verified. Keep the '+('mounted plate sharp and include surrounding bodywork.' if category=='plate' else 'mileage and ODO/km/miles label sharp, with dashboard context.'),vector.tolist(),scores
  return 'accepted','Accepted for this slot. Identity, authenticity and capture date remain unverified.',vector.tolist(),scores
 
-def warmup():
+def warmup(include_ocr=True):
  """Prepare the shared slot model/texts and OCR during opted-in API startup."""
  with _inference:
   embedder=vehicle_gate._default_embedder;embedder._ensure_loaded()
   for category in PROMPTS:
    if category not in _texts:
     _texts[category]=np.asarray(embedder.embed_texts(PROMPTS[category]+NEGATIVES),dtype=float)
-  from .checks.plate_ocr import get_reader
-  return get_reader() is not None
+  if include_ocr:
+   from .checks.plate_ocr import get_reader
+   return get_reader() is not None
+  return True
 
 def validate(content,mime,kind,slot,actor,directory):
  if kind not in SLOTS or slot not in SLOTS[kind]:raise InvalidPhoto('Invalid photo slot for this case type.')

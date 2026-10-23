@@ -83,7 +83,9 @@ class Connection:
 
     def execute(self, query, params=None):
         try:
-            return self._execute(query, params)
+            from .timing import span
+            with span('database.'+query.lstrip().split(None,1)[0].lower()):
+                return self._execute(query, params)
         except psycopg.Error as exc:
             # PostgreSQL DETAIL may include rejected rows, grants or hashes.
             # Preserve the driver exception class/SQLSTATE for callers, while

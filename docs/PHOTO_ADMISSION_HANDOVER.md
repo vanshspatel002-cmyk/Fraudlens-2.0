@@ -1,3 +1,30 @@
+# Current photo-admission result — 23 October 2026
+
+Policy `initial-photo-admission-2026-10-22-v3` supersedes the v2 limitation below.
+Real four-photo claims and six distinct same-car underwriting submissions passed
+the authenticated server-side local gate. Final native smoke: 64/64 expected
+results, zero generation, unchanged similarity floor 0.175 and margin 0.020.
+Relevant mounted plates/dashboard/parts can pass without readable OCR; responses
+explicitly withhold identity, independent slot verification and text completeness.
+The licensed same-car dashboard is off: readable mileage remains unverified and
+a required material assessment gap, not a reason to claim a non-vehicle image.
+Classifier acceptance is not accuracy, authenticity or view-identity proof.
+
+API loads CLIP during visible background warmup; worker loads OCR separately.
+Outage/warming/busy gives retryable 503. Exact 4/6 counts, supplementary requirements,
+actor/slot/hash cache binding, duplicate protection and stale UI guards remain.
+Original JPEGs are preserved; embedded NUL padding is sanitized only in extracted
+JSON to prevent the actual PostgreSQL failure. Severe blur has a conservative
+detail floor. No Gemini relevance request was needed.
+
+See [current policy](PHOTO_ADMISSION.md), [real evidence provenance](presentation_assets/README.md),
+[native results](final_presentation/native-final.json) and
+[complete verification](FINAL_PRESENTATION_VERIFICATION.md). Live AI completion
+is blocked by two provider 503s, not by photo count/admission. Prior evidence below
+is historical and retained.
+
+---
+
 # Photograph admission handover — 22 October 2026
 
 Starting point: `d8bb8a741c86c885070b158b01d1a71faaa7d471`, current repair branch.

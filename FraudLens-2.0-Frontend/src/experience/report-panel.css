@@ -8,9 +8,9 @@
 .pdf-preview-dialog { width: min(1100px, 96vw); height: 94dvh; max-width: 96vw; max-height: 96dvh; padding: 1rem; border: 1px solid #9bb2ad; border-radius: 12px; background: #f8faf9; }
 .pdf-preview-dialog::backdrop { background: #142e38a8; }
 .pdf-preview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
-.pdf-preview-controls strong { margin-right: auto; }
+.pdf-preview-controls strong { margin-right: auto; color: #173b40; }
 .pdf-preview-dialog iframe { display: block; width: 100%; height: calc(100% - 110px); min-height: 200px; border: 1px solid #c6d5d0; }
-.pdf-mobile-help { font-size: .8rem; margin: .65rem 0; }
+.pdf-mobile-help { font-size: .8rem; margin: .65rem 0; color: #456168; }
 .manual-review-consent { display: flex; align-items: flex-start; gap: .6rem; margin: 1rem 0; }
 .manual-review-consent input { flex: 0 0 auto; width: 20px; height: 20px; margin-top: .15rem; }
 .pdf-report-panel.compact { padding:0;border:0;margin:0; }

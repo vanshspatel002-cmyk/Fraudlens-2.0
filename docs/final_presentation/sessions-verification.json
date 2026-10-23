@@ -1,0 +1,7 @@
+{
+  "persistent_regular_chrome": true,
+  "same_context": true,
+  "customer_logout_keeps_admin": true,
+  "admin_logout_keeps_customer": true,
+  "refresh_verified": true
+}

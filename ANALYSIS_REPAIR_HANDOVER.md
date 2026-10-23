@@ -1,3 +1,15 @@
+# Latest presentation handover — 23 October 2026
+
+Use [FINAL_PRESENTATION_HANDOVER.md](docs/FINAL_PRESENTATION_HANDOVER.md) and
+[FINAL_PRESENTATION_VERIFICATION.md](docs/FINAL_PRESENTATION_VERIFICATION.md).
+Real 4/6-photo admission, durable saved results/PDFs and reviewer/customer evidence
+requests passed for claims and underwriting. Fresh AI completion is blocked by
+two Gemini HTTP 503s; provider paused, 17 cumulative attempts, task allowance closed.
+Final services use the preserved original pilot configuration. Earlier repair
+history and successful saved claims fallback below remain dated evidence.
+
+---
+
 # FraudLens analysis repair — 20 October 2026
 
 Branch: `repair/analysis-pipeline-20261020`, based on `26d8c91`. No push,

@@ -24,6 +24,7 @@ loses at most the case in flight.
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 import time
@@ -110,7 +111,8 @@ def process_case(
         policy = policy_for(case.agent_type)
 
     started = time.monotonic()
-    check_options = {'config': {'cache_ocr': True, 'plate_ocr_observed_prefix': True, 'execution_states': True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
+    check_options = {'config': {'cache_ocr': True, 'plate_ocr_observed_prefix': True, 'execution_states': True,
+                              'skip_experimental_models':True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
     if check_options:
         # New intake records this in a server-written audit, never applicant
         # narrative text. Legacy generated UTC tags are local wall-clock values.
@@ -118,6 +120,13 @@ def process_case(
                      if e.event_type == 'vehicle_image_gate'), None)
         check_options['config']['scene_time_basis'] = (gate.details.get('declared_time_basis', 'unverified')
                                                      if gate else 'unverified')
+        if gate and case.agent_type=='underwriting' and 'odometer' in gate.details.get('photo_slots',[]):
+            hashes={score.get('content_hash') for score in gate.details.get('scores',[]) if score.get('slot')=='odometer'}
+            check_options['config']['required_odometer_image_ids']=[image.image_id for image in db.get_images_for_case(conn,case_id) if image.content_hash in hashes]
+            for batch in conn.execute('SELECT b.image_ids,r.artifacts FROM evidence_batches b JOIN evidence_requests r ON r.request_id=b.request_id WHERE b.case_id=?',(case_id,)):
+                if any(any(term in str(label).lower() for term in ('odometer','mileage')) for label in json.loads(batch['artifacts'])):
+                    check_options['config']['required_odometer_image_ids'].extend(json.loads(batch['image_ids']))
+            check_options['config']['odometer_photo_required']=True
     if check_config:
         check_options.setdefault('config', {}).update(check_config)
     from src.timing import span

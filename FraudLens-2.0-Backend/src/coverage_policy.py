@@ -1,5 +1,5 @@
 """Versioned sufficiency policy; never changes a finding or the model output."""
-VERSION = 'material-evidence-2026-10-22-v2'
+VERSION = 'material-evidence-2026-10-22-v3'
 OPTIONAL = {
     'exif_metadata': 'EXIF is optional provenance; absence is not manipulation.',
     'c2pa_credentials': 'Signed credentials are optional provenance; absence is not manipulation.',
@@ -7,7 +7,7 @@ OPTIONAL = {
 }
 
 
-def assess(expected, states, rows, registry):
+def assess(expected, states, rows, registry, input_requirements=None):
     requirements = {}; gaps = []
     for key in expected:
         state = states[key]; check = registry.get(key)
@@ -31,5 +31,8 @@ def assess(expected, states, rows, registry):
             execution_state=state, reason=reason)
         if not optional and not sufficient:
             gaps.append(key)
+    for key,requirement in (input_requirements or {}).items():
+        requirements[key]=requirement
+        if requirement['required'] and requirement['applicable'] and not requirement['evidence_sufficient']:gaps.append(key)
     return dict(version=VERSION, requirements=requirements, material_gap_ids=gaps,
                 material_complete=not gaps)
