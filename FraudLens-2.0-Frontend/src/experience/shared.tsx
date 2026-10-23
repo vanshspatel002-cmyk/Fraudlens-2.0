@@ -408,7 +408,7 @@ async function request(path: string, options: RequestInit = {}, scope: 'reviewer
       [stringValue(message || error), detailText].filter(Boolean).join(" ") ||
         "The request could not be completed. Please try again.",
     );
-    Object.assign(failure,{details});
+    Object.assign(failure,{details,status:r.status,code:stringValue(j && typeof j==='object' ? (j as ApiRecord).code : null)});
     throw failure;
   }
   return j as ApiRecord;

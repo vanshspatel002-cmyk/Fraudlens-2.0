@@ -1,0 +1,487 @@
+{
+  "policy": "initial-photo-admission-2026-10-23-v4",
+  "new_generation_requests": 0,
+  "workflows": [
+    {
+      "case_type": "claims",
+      "width": 1365,
+      "accepted": 4,
+      "required": 4,
+      "real_server_gate": true,
+      "intercepted_requests": false,
+      "mobile_no_overflow": true,
+      "new_application_created": false
+    },
+    {
+      "case_type": "underwriting",
+      "width": 1365,
+      "accepted": 6,
+      "required": 6,
+      "real_server_gate": true,
+      "intercepted_requests": false,
+      "mobile_no_overflow": true,
+      "new_application_created": false
+    },
+    {
+      "case_type": "claims",
+      "width": 390,
+      "accepted": 4,
+      "required": 4,
+      "real_server_gate": true,
+      "intercepted_requests": false,
+      "mobile_no_overflow": true,
+      "new_application_created": false
+    },
+    {
+      "case_type": "underwriting",
+      "width": 390,
+      "accepted": 6,
+      "required": 6,
+      "real_server_gate": true,
+      "intercepted_requests": false,
+      "mobile_no_overflow": true,
+      "new_application_created": false
+    }
+  ],
+  "portrait_part_accepted": true,
+  "responses": [
+    {
+      "http": 200,
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "18613276b583683f28539fb0753aa6a0c65d0fff83134fcbf82a2059cc573725",
+      "normalized_hash": "403a0281ca6829cf0d52dfbe352489f6522584fb7b48603fbd89a114b63ec51a",
+      "scores": {
+        "subject_similarity": 0.3053709119566964,
+        "competing_similarity": 0.2268032767156739,
+        "subject_margin": 0.0785676352410225,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "front_registration",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Relevant vehicle detail accepted; text is not independently verified. Keep the mounted plate sharp and include surrounding bodywork.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "580e8a5fcf5954e4d3334e912adda46cb2f69fe6c90aa58bd65b186c89864ef9",
+      "normalized_hash": "4661e82617a1b183df64f78274858b038cab7829408275aacdbcf8a896f65576",
+      "scores": {
+        "subject_similarity": 0.35528854981131985,
+        "competing_similarity": 0.2541783740978348,
+        "subject_margin": 0.10111017571348507,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "damage_overview",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Vehicle photograph accepted. Visible damage is not required for admission; damage and evidence quality are assessed after submission.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "7e7fec0717095d612bc5a14e86cd1531f3326d0f65bc7b0551fa131b126f1aec",
+      "normalized_hash": "e9833c7c0181b1a0ae5407c47b924b0e4b7ecd47e862ce9d46ff5beb38e56340",
+      "scores": {
+        "subject_similarity": 0.32462430565960826,
+        "competing_similarity": 0.24726027100116554,
+        "subject_margin": 0.07736403465844272,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "damage_verified": false,
+        "slot_label_verified": false,
+        "quality_check": "damage_assessment_deferred"
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Vehicle photograph accepted. Visible damage is not required for admission; damage and evidence quality are assessed after submission.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "4ff234c2e92d442327459faa74f65c4bf7a4f748aa0ad739b1fc67c93f8adc46",
+      "normalized_hash": "a14702eaca148696b136cb176a1ef587c82401fff1e7109b1014426bb907ec9c",
+      "scores": {
+        "subject_similarity": 0.30089724478198776,
+        "competing_similarity": 0.25021164160550385,
+        "subject_margin": 0.05068560317648391,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "damage_verified": false,
+        "slot_label_verified": false,
+        "quality_check": "damage_assessment_deferred"
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "front_left",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "7e7fec0717095d612bc5a14e86cd1531f3326d0f65bc7b0551fa131b126f1aec",
+      "normalized_hash": "e9833c7c0181b1a0ae5407c47b924b0e4b7ecd47e862ce9d46ff5beb38e56340",
+      "scores": {
+        "subject_similarity": 0.32462430565960826,
+        "competing_similarity": 0.24726027100116554,
+        "subject_margin": 0.07736403465844272,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "front_right",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "18613276b583683f28539fb0753aa6a0c65d0fff83134fcbf82a2059cc573725",
+      "normalized_hash": "403a0281ca6829cf0d52dfbe352489f6522584fb7b48603fbd89a114b63ec51a",
+      "scores": {
+        "subject_similarity": 0.3053709119566964,
+        "competing_similarity": 0.2268032767156739,
+        "subject_margin": 0.0785676352410225,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "rear_left",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "88b8c9eab05b07d6bbcaf5b9f0b262769e9afa34c3a9b1d0bba7d08d1bbb8b97",
+      "normalized_hash": "94b96019dbd1f0bc35a85eacc7f727d3376203e4604a03c7d38216ad617fd998",
+      "scores": {
+        "subject_similarity": 0.31664238561856456,
+        "competing_similarity": 0.2563031173780338,
+        "subject_margin": 0.06033926824053076,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "rear_right",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "fa4c11a8930527db517fa8d68c65535e14e31e4f04635836037d778d93926114",
+      "normalized_hash": "352db22e0e10a4b4826caf667c35f6ba1f947c849b5450c3ad38c76ec1dd201c",
+      "scores": {
+        "subject_similarity": 0.3346750698351987,
+        "competing_similarity": 0.2550534933595961,
+        "subject_margin": 0.07962157647560258,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "odometer",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Relevant vehicle detail accepted; text is not independently verified. Keep the mileage and ODO/km/miles label sharp, with dashboard context.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "6e90f23d655e1e30c0f5594488aa816c02c584f6c25380dfe764866f92ef3f8f",
+      "normalized_hash": "13f8c3fececbfefd655b00c8a147158d8e47a9710585499671db9fab11eea470",
+      "scores": {
+        "subject_similarity": 0.32659842273507994,
+        "competing_similarity": 0.2585768967978365,
+        "subject_margin": 0.06802152593724342,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "registration_plate",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Relevant vehicle detail accepted; text is not independently verified. Keep the mounted plate sharp and include surrounding bodywork.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "580e8a5fcf5954e4d3334e912adda46cb2f69fe6c90aa58bd65b186c89864ef9",
+      "normalized_hash": "4661e82617a1b183df64f78274858b038cab7829408275aacdbcf8a896f65576",
+      "scores": {
+        "subject_similarity": 0.35528854981131985,
+        "competing_similarity": 0.2541783740978348,
+        "subject_margin": 0.10111017571348507,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "cached": false
+    },
+    {
+      "http": 200,
+      "slot": "vehicle_overview",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "18613276b583683f28539fb0753aa6a0c65d0fff83134fcbf82a2059cc573725",
+      "normalized_hash": "403a0281ca6829cf0d52dfbe352489f6522584fb7b48603fbd89a114b63ec51a",
+      "scores": {
+        "subject_similarity": 0.3053709119566964,
+        "competing_similarity": 0.2268032767156739,
+        "subject_margin": 0.0785676352410225,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "front_registration",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Relevant vehicle detail accepted; text is not independently verified. Keep the mounted plate sharp and include surrounding bodywork.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "580e8a5fcf5954e4d3334e912adda46cb2f69fe6c90aa58bd65b186c89864ef9",
+      "normalized_hash": "4661e82617a1b183df64f78274858b038cab7829408275aacdbcf8a896f65576",
+      "scores": {
+        "subject_similarity": 0.35528854981131985,
+        "competing_similarity": 0.2541783740978348,
+        "subject_margin": 0.10111017571348507,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "damage_overview",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Vehicle photograph accepted. Visible damage is not required for admission; damage and evidence quality are assessed after submission.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "7e7fec0717095d612bc5a14e86cd1531f3326d0f65bc7b0551fa131b126f1aec",
+      "normalized_hash": "e9833c7c0181b1a0ae5407c47b924b0e4b7ecd47e862ce9d46ff5beb38e56340",
+      "scores": {
+        "subject_similarity": 0.32462430565960826,
+        "competing_similarity": 0.24726027100116554,
+        "subject_margin": 0.07736403465844272,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "damage_verified": false,
+        "slot_label_verified": false,
+        "quality_check": "damage_assessment_deferred"
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Vehicle photograph accepted. Visible damage is not required for admission; damage and evidence quality are assessed after submission.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "4ff234c2e92d442327459faa74f65c4bf7a4f748aa0ad739b1fc67c93f8adc46",
+      "normalized_hash": "a14702eaca148696b136cb176a1ef587c82401fff1e7109b1014426bb907ec9c",
+      "scores": {
+        "subject_similarity": 0.30089724478198776,
+        "competing_similarity": 0.25021164160550385,
+        "subject_margin": 0.05068560317648391,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "damage_verified": false,
+        "slot_label_verified": false,
+        "quality_check": "damage_assessment_deferred"
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "front_left",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "7e7fec0717095d612bc5a14e86cd1531f3326d0f65bc7b0551fa131b126f1aec",
+      "normalized_hash": "e9833c7c0181b1a0ae5407c47b924b0e4b7ecd47e862ce9d46ff5beb38e56340",
+      "scores": {
+        "subject_similarity": 0.32462430565960826,
+        "competing_similarity": 0.24726027100116554,
+        "subject_margin": 0.07736403465844272,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "front_right",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "18613276b583683f28539fb0753aa6a0c65d0fff83134fcbf82a2059cc573725",
+      "normalized_hash": "403a0281ca6829cf0d52dfbe352489f6522584fb7b48603fbd89a114b63ec51a",
+      "scores": {
+        "subject_similarity": 0.3053709119566964,
+        "competing_similarity": 0.2268032767156739,
+        "subject_margin": 0.0785676352410225,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "rear_left",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "88b8c9eab05b07d6bbcaf5b9f0b262769e9afa34c3a9b1d0bba7d08d1bbb8b97",
+      "normalized_hash": "94b96019dbd1f0bc35a85eacc7f727d3376203e4604a03c7d38216ad617fd998",
+      "scores": {
+        "subject_similarity": 0.31664238561856456,
+        "competing_similarity": 0.2563031173780338,
+        "subject_margin": 0.06033926824053076,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "rear_right",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "fa4c11a8930527db517fa8d68c65535e14e31e4f04635836037d778d93926114",
+      "normalized_hash": "352db22e0e10a4b4826caf667c35f6ba1f947c849b5450c3ad38c76ec1dd201c",
+      "scores": {
+        "subject_similarity": 0.3346750698351987,
+        "competing_similarity": 0.2550534933595961,
+        "subject_margin": 0.07962157647560258,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "odometer",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Relevant vehicle detail accepted; text is not independently verified. Keep the mileage and ODO/km/miles label sharp, with dashboard context.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "6e90f23d655e1e30c0f5594488aa816c02c584f6c25380dfe764866f92ef3f8f",
+      "normalized_hash": "13f8c3fececbfefd655b00c8a147158d8e47a9710585499671db9fab11eea470",
+      "scores": {
+        "subject_similarity": 0.32659842273507994,
+        "competing_similarity": 0.2585768967978365,
+        "subject_margin": 0.06802152593724342,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "registration_plate",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Relevant vehicle detail accepted; text is not independently verified. Keep the mounted plate sharp and include surrounding bodywork.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "580e8a5fcf5954e4d3334e912adda46cb2f69fe6c90aa58bd65b186c89864ef9",
+      "normalized_hash": "4661e82617a1b183df64f78274858b038cab7829408275aacdbcf8a896f65576",
+      "scores": {
+        "subject_similarity": 0.35528854981131985,
+        "competing_similarity": 0.2541783740978348,
+        "subject_margin": 0.10111017571348507,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "quality_check": "extraction_deferred_to_assessment",
+        "quality_readable": null,
+        "identity_verified": false,
+        "slot_label_verified": false
+      },
+      "cached": true
+    },
+    {
+      "http": 200,
+      "slot": "damage_closeup",
+      "state": "accepted",
+      "accepted": true,
+      "reason": "Vehicle photograph accepted. Visible damage is not required for admission; damage and evidence quality are assessed after submission.",
+      "validation_version": "initial-photo-admission-2026-10-23-v4",
+      "content_hash": "b359f12482b33f6fcea583047ef78d6c0f0a4b2d95602ab73114409deeb0afec",
+      "normalized_hash": "90f0038594b9cd7c7ee11af6c9d41d0cb72b3fdc57564aedb8c844d27170b138",
+      "scores": {
+        "subject_similarity": 0.30256282589505384,
+        "competing_similarity": 0.2561349733161899,
+        "subject_margin": 0.04642785257886395,
+        "threshold": 0.175,
+        "minimum_margin": 0.02,
+        "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.",
+        "damage_verified": false,
+        "slot_label_verified": false,
+        "quality_check": "damage_assessment_deferred"
+      },
+      "cached": false
+    }
+  ]
+}

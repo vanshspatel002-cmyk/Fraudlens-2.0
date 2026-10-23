@@ -3,8 +3,8 @@ export const photoSlots: Record<'claims'|'underwriting', PhotoSlot[]> = {
   claims: [
     {id:'vehicle_overview',label:'Vehicle overview',instruction:'Show the passenger vehicle clearly. Example: the whole car from one corner.'},
     {id:'front_registration',label:'Front registration view',instruction:'Show a sharp, readable plate mounted on the front of the vehicle, with surrounding bodywork.'},
-    {id:'damage_overview',label:'Damage overview',instruction:'Show the damaged area and surrounding vehicle panels. Example: the affected door and adjacent wheel.'},
-    {id:'damage_closeup',label:'Damage close-up',instruction:'Show the damage on a recognizable vehicle part. Example: a close view of a dent or bumper scratch.'},
+    {id:'damage_overview',label:'Damage overview',instruction:'Show the car or relevant area with surrounding vehicle panels. Visible damage is not required to upload; it is assessed later.'},
+    {id:'damage_closeup',label:'Damage close-up',instruction:'Show a recognizable car part or a clear car photograph. Undamaged parts are accepted; visible damage is assessed later.'},
   ],
   underwriting: [
     {id:'front_left',label:'Front left',instruction:'Show the front and left side of the passenger vehicle.'},

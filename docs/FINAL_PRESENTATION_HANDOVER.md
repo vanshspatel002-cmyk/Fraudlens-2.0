@@ -1,3 +1,5 @@
+> Upload admission updated to v4 on 23 October: [current repair and limitations](UPLOAD_VALIDATION_REPAIR.md), [native/UI verification](upload_repair/README.md). Four/six counts and partial-review behavior are unchanged.
+
 # Emergency partial-review release — 23 October 2026
 
 This section supersedes the operating instructions and failure wording below.

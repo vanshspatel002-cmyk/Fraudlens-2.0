@@ -17,7 +17,7 @@ def main():
    for width in [1365,390]:
     context=browser.new_context(viewport={'width':width,'height':900},has_touch=width==390)
     context.add_init_script("sessionStorage.setItem('fraudlens_customer_token','controlled-no-authority');window.__revoked=[];const r=URL.revokeObjectURL;URL.revokeObjectURL=(u)=>{window.__revoked.push(u);r(u);};")
-    pending=[];submitted=[];errors=[]
+    pending=[];submitted=[];errors=[];attempts={}
     headers={'Access-Control-Allow-Origin':'http://127.0.0.1:5173','Access-Control-Allow-Headers':'Authorization, Content-Type, Idempotency-Key','Access-Control-Allow-Methods':'GET,POST,OPTIONS'}
     def route_request(route):
      request=route.request;url=urlparse(request.url)
@@ -28,12 +28,19 @@ def main():
      if url.path=='/v1/photos/validate':
       body=(request.post_data_buffer or b'').decode('latin1');filename=re.search(r'filename="([^"]+)"',body).group(1)
       slot=re.search(r'name="slot"\r?\n\r?\n([^\r\n]+)',body).group(1)
+      attempts[filename]=attempts.get(filename,0)+1
+      if filename=='outage.png' and attempts[filename]==1:
+       route.fulfill(status=503,json={'code':'VALIDATOR_UNAVAILABLE','message':'Controlled validator outage. Retry; no photo was rejected.'},headers=headers);return
+      if filename=='invalid.png':
+       route.fulfill(status=422,json={'code':'INVALID_PHOTO','message':'Controlled corrupt-file rejection'},headers=headers);return
       state='rejected' if filename=='reject.png' else 'accepted'
       data=dict(slot=slot,state=state,reason='Controlled '+state+' result',normalized_hash=filename)
       if filename=='slow.png':pending.append((route,data));return
       route.fulfill(status=200,json=data,headers=headers);return
      if url.path=='/v1/cases':
       body=(request.post_data_buffer or b'').decode('latin1');submitted.append(body)
+      if len(submitted)==1:
+       route.fulfill(status=503,json={'code':'VALIDATOR_UNAVAILABLE','message':'Controlled final validator outage','details':[{'field':SLOTS[kind][-1],'reason':'Keep this photograph and recheck shortly.'}]},headers=headers);return
       route.fulfill(status=422,json={'message':'Controlled final rejection; details retained','details':[{'field':SLOTS[kind][-1],'reason':'Retake final slot'}]},headers=headers);return
      route.fulfill(status=501,json={'message':'No live API fallback permitted'},headers=headers);errors.append(url.path)
     context.route('**/*',route_request);page=context.new_page();page.on('pageerror',lambda e:errors.append(type(e).__name__))
@@ -42,10 +49,17 @@ def main():
     inputs=page.locator('.upload-slot input[type=file]');submit=page.locator('.submit-case')
     expect(submit).to_be_disabled()
     def choose(index,name):inputs.nth(index).set_input_files({'name':name,'mimeType':'image/png','buffer':photo})
+    choose(1,'retained.png');expect(page.locator('.upload-item').nth(1)).to_contain_text('accepted:')
+    choose(0,'outage.png');expect(page.locator('.upload-item').first).to_contain_text('unavailable:')
+    expect(page.locator('.upload-item').first).to_contain_text('outage.png')
+    expect(page.locator('.upload-item').nth(1)).to_contain_text('accepted:')
+    page.get_by_role('button',name='Recheck '+('vehicle overview' if kind=='claims' else 'front left'),exact=True).click()
+    expect(page.locator('.upload-item').first).to_contain_text('accepted:')
+    choose(0,'invalid.png');expect(page.locator('.upload-item').first).to_contain_text('rejected:')
     choose(0,'reject.png');expect(page.locator('.upload-item').nth(0)).to_contain_text('rejected:')
     choose(0,'slow.png');expect(page.locator('.upload-item').nth(0)).to_contain_text('checking:')
     choose(0,'replacement.png');assert len(pending)==1
-    pending.pop()[0].fulfill(status=200,json={'state':'accepted','reason':'Stale old result','normalized_hash':'slow'},headers=headers)
+    pending.pop()[0].fulfill(status=200,json={'state':'rejected','reason':'Stale old result','normalized_hash':'slow'},headers=headers)
     expect(page.locator('.upload-item').nth(0)).to_contain_text('accepted:')
     expect(page.locator('.upload-item').nth(0)).to_contain_text('replacement.png')
     assert page.evaluate('window.__revoked.length')>0
@@ -78,15 +92,22 @@ def main():
     page.evaluate("const legend=[...document.querySelectorAll('legend')].find(e=>e.textContent.includes('Vehicle photographs'));const note=document.createElement('p');note.textContent='CONTROLLED BROWSER FIXTURE — model responses are simulated; these placeholder images do not qualify as vehicle photographs.';note.style.fontWeight='bold';legend.after(note);")
     page.screenshot(path=str(output/f'{kind}-{width}.png'),full_page=True)
     page.locator('fieldset').filter(has_text='05 / Vehicle photographs').screenshot(path=str(output/f'{kind}-photos-{width}.png'),style='header, .skip { visibility: hidden !important; }')
-    submit.click();expect(page.get_by_text('Retake final slot',exact=False).first).to_be_visible()
+    submit.click();expect(page.locator('.upload-item').last).to_contain_text('unavailable:')
+    expect(page.locator('.upload-item').first).to_contain_text('accepted:')
     expect(submit).to_be_disabled();assert len(submitted)==1
-    for slot in SLOTS[kind]:assert slot in submitted[0]
-    assert submitted[0].count('name="images"')==len(SLOTS[kind])
+    page.locator('fieldset').filter(has_text='05 / Vehicle photographs').screenshot(path=str(output/f'{kind}-outage-{width}.png'),style='header, .skip { visibility: hidden !important; }')
+    page.locator('.upload-item').last.get_by_role('button',name=re.compile('Recheck')).click()
+    expect(submit).to_be_enabled()
+    submit.click();expect(page.get_by_text('Retake final slot',exact=False).first).to_be_visible()
+    expect(submit).to_be_disabled();assert len(submitted)==2
+    for body in submitted:
+     for slot in SLOTS[kind]:assert slot in body
+     assert body.count('name="images"')==len(SLOTS[kind])
     assert page.locator('input[name=name]').input_value()=='Fictional Photo Test'
     expect(page.get_by_text(f'{len(SLOTS[kind])-1} of {len(SLOTS[kind])} photographs accepted.',exact=True)).to_be_visible()
     assert not page.evaluate('document.documentElement.scrollWidth>innerWidth+1')
     assert not errors,errors
-    results.append({'kind':kind,'width':width,'exact_slots':len(SLOTS[kind]),'stale_replacement_removal':'passed','form_and_other_images_preserved':True,'keyboard_focus':True,'mobile_no_overflow':True,'javascript_errors':0,'real_model_calls':0})
+    results.append({'kind':kind,'width':width,'exact_slots':len(SLOTS[kind]),'stale_replacement_removal':'passed','prevalidation_outage_recheck':'passed','final_outage_retains_photos':'passed','malformed_photo_distinct_from_outage':True,'form_and_other_images_preserved':True,'keyboard_focus':True,'mobile_no_overflow':True,'javascript_errors':0,'real_model_calls':0})
     context.close()
   browser.close()
  (output/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(results,indent=2))

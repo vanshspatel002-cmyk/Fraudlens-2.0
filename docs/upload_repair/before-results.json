@@ -1,0 +1,308 @@
+[
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0001.jpg",
+    "slot": "vehicle_overview",
+    "http": 200,
+    "seconds": 1.112,
+    "state": "accepted",
+    "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+    "scores": {
+      "subject_similarity": 0.2620309726787322,
+      "competing_similarity": 0.2060072963308989,
+      "subject_margin": 0.05602367634783331,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0001.jpg",
+    "slot": "damage_overview",
+    "http": 200,
+    "seconds": 1.087,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.1286758128316427,
+      "competing_similarity": 0.2060072963308989,
+      "subject_margin": -0.0773314834992562,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0001.jpg",
+    "slot": "damage_closeup",
+    "http": 200,
+    "seconds": 0.954,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.1286758128316427,
+      "competing_similarity": 0.2060072963308989,
+      "subject_margin": -0.0773314834992562,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0002.jpg",
+    "slot": "vehicle_overview",
+    "http": 200,
+    "seconds": 1.084,
+    "state": "accepted",
+    "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+    "scores": {
+      "subject_similarity": 0.2853534207635883,
+      "competing_similarity": 0.21672729986632872,
+      "subject_margin": 0.06862612089725956,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0002.jpg",
+    "slot": "damage_overview",
+    "http": 200,
+    "seconds": 1.024,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.1365840747395076,
+      "competing_similarity": 0.21672729986632872,
+      "subject_margin": -0.08014322512682112,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0002.jpg",
+    "slot": "damage_closeup",
+    "http": 200,
+    "seconds": 1.006,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.1365840747395076,
+      "competing_similarity": 0.21672729986632872,
+      "subject_margin": -0.08014322512682112,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0003.jpg",
+    "slot": "vehicle_overview",
+    "http": 200,
+    "seconds": 1.115,
+    "state": "accepted",
+    "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+    "scores": {
+      "subject_similarity": 0.27355219303660233,
+      "competing_similarity": 0.2317828017943647,
+      "subject_margin": 0.041769391242237636,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0003.jpg",
+    "slot": "damage_overview",
+    "http": 200,
+    "seconds": 1.094,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.17673247830403835,
+      "competing_similarity": 0.2317828017943647,
+      "subject_margin": -0.05505032349032635,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0003.jpg",
+    "slot": "damage_closeup",
+    "http": 200,
+    "seconds": 1.001,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.17673247830403835,
+      "competing_similarity": 0.2317828017943647,
+      "subject_margin": -0.05505032349032635,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0004.jpg",
+    "slot": "vehicle_overview",
+    "http": 200,
+    "seconds": 1.031,
+    "state": "accepted",
+    "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+    "scores": {
+      "subject_similarity": 0.2949357448707419,
+      "competing_similarity": 0.2473379438968455,
+      "subject_margin": 0.04759780097389643,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0004.jpg",
+    "slot": "damage_overview",
+    "http": 200,
+    "seconds": 0.948,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.19634481543650434,
+      "competing_similarity": 0.2473379438968455,
+      "subject_margin": -0.05099312846034115,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0004.jpg",
+    "slot": "damage_closeup",
+    "http": 200,
+    "seconds": 1.053,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.19634481543650434,
+      "competing_similarity": 0.2473379438968455,
+      "subject_margin": -0.05099312846034115,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0005.jpg",
+    "slot": "vehicle_overview",
+    "http": 200,
+    "seconds": 1.104,
+    "state": "accepted",
+    "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+    "scores": {
+      "subject_similarity": 0.24774358167010604,
+      "competing_similarity": 0.19434655801022505,
+      "subject_margin": 0.053397023659881,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0005.jpg",
+    "slot": "damage_overview",
+    "http": 200,
+    "seconds": 0.954,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.15476681844996573,
+      "competing_similarity": 0.19434655801022505,
+      "subject_margin": -0.039579739560259314,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0005.jpg",
+    "slot": "damage_closeup",
+    "http": 200,
+    "seconds": 1.15,
+    "state": "rejected",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.15476681844996573,
+      "competing_similarity": 0.19434655801022505,
+      "subject_margin": -0.039579739560259314,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0006.jpg",
+    "slot": "vehicle_overview",
+    "http": 200,
+    "seconds": 1.352,
+    "state": "accepted",
+    "reason": "Accepted for this slot. Identity, authenticity and capture date remain unverified.",
+    "scores": {
+      "subject_similarity": 0.23527425390208562,
+      "competing_similarity": 0.1896224499289469,
+      "subject_margin": 0.04565180397313873,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0006.jpg",
+    "slot": "damage_overview",
+    "http": 200,
+    "seconds": 4.553,
+    "state": "needs_replacement",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.18943470322781383,
+      "competing_similarity": 0.1896224499289469,
+      "subject_margin": -0.00018774670113305691,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  },
+  {
+    "image": "FraudLens-2.0-Backend/data/curated/whole/whole_0006.jpg",
+    "slot": "damage_closeup",
+    "http": 200,
+    "seconds": 1.941,
+    "state": "needs_replacement",
+    "reason": "Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.",
+    "scores": {
+      "subject_similarity": 0.18943470322781383,
+      "competing_similarity": 0.1896224499289469,
+      "subject_margin": -0.00018774670113305691,
+      "threshold": 0.175,
+      "minimum_margin": 0.02,
+      "rule": "Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability."
+    },
+    "validation_version": "initial-photo-admission-2026-10-22-v3"
+  }
+]

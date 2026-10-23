@@ -14,10 +14,11 @@ import numpy as np
 from PIL import Image,ImageOps
 from . import vehicle_gate
 
-VERSION='initial-photo-admission-2026-10-22-v3'
+VERSION='initial-photo-admission-2026-10-23-v4'
 # Local v1 smoke: a printed-car document won by .0036 and severe blur by
-# .0187. The .02 abstention band excludes both without lowering the existing
-# absolute floor. This is a conservative operating point, not accuracy calibration.
+# .0187. The .02 abstention band excludes those examples without lowering the
+# absolute floor. Other printed-car pages can still pass (see v4 qualification).
+# This is a conservative operating point, not accuracy calibration.
 MIN_SUBJECT_MARGIN=.020
 SLOTS={
  'claims':('vehicle_overview','front_registration','damage_overview','damage_closeup'),
@@ -43,10 +44,19 @@ PROMPTS={
           'a front view of a parked sedan with a mounted license plate'),
  'odometer':('a photograph of a car dashboard instrument cluster odometer','a close up photograph of a vehicle mileage display behind the steering wheel'),
 }
+# Damage is assessed after admission. Both damage slots accept a recognisable
+# car exterior OR car detail, regardless of whether damage is visible. Reuse the
+# same exterior prompts and cutoffs instead of weakening a global threshold.
+PROMPTS['damage']=PROMPTS['exterior']+PROMPTS['damage']+(
+ 'a close up photograph of an undamaged car body panel bumper or wheel',
+ 'a close up photograph of a car headlight door window or fender',
+)
 NEGATIVES=('a photograph of a motorcycle scooter or bicycle','a photograph of a truck bus or heavy machinery',
  'a photograph of an animal','a photograph of a person without a vehicle','a photograph of food',
  'a photograph of a landscape without a vehicle','a document invoice or printed picture of a car',
- 'a screenshot or computer screen showing a car','an unrelated object or household item')
+ 'a screenshot or computer screen showing a car','an unrelated object or household item',
+ 'a printed insurance document with a small car photograph surrounded by white paper and text',
+ 'a photograph of a printed page showing a car picture rather than a real car')
 _lock=threading.Lock();_inference=threading.BoundedSemaphore(1)
 _cache=OrderedDict();_texts={};TTL=600;MAX_CACHE=256
 
@@ -119,7 +129,10 @@ def infer(path,slot):
     threshold=vehicle_gate.VEHICLE_SCORE_THRESHOLD,minimum_margin=MIN_SUBJECT_MARGIN,
     rule='Supported slot subject must meet the existing similarity floor and exceed competing categories by the documented abstention margin; not a probability.')
  if positive<vehicle_gate.VEHICLE_SCORE_THRESHOLD or positive-negative<MIN_SUBJECT_MARGIN:
-  return ('rejected' if negative-positive>MIN_SUBJECT_MARGIN else 'needs_replacement'),'Retake this slot: a supported passenger vehicle or the required mounted detail could not be established.',vector.tolist(),scores
+  rejected=negative-positive>MIN_SUBJECT_MARGIN
+  reason=('The image appears unrelated to the required passenger vehicle or mounted detail. Choose a relevant photograph.' if rejected else
+          'Vehicle relevance is uncertain. Retake with clearer vehicle or mounted-detail context; damage and readable text are not admission requirements.')
+  return ('rejected' if rejected else 'needs_replacement'),reason,vector.tolist(),scores
  if category in {'plate','odometer'}:
   # Admission establishes relevance, not independent text/identity verification.
   # Real OCR runs once in assessment. An unreadable legitimate mounted detail
@@ -127,6 +140,9 @@ def infer(path,slot):
   scores.update(quality_check='extraction_deferred_to_assessment',quality_readable=None,
                 identity_verified=False,slot_label_verified=False)
   return 'accepted','Relevant vehicle detail accepted; text is not independently verified. Keep the '+('mounted plate sharp and include surrounding bodywork.' if category=='plate' else 'mileage and ODO/km/miles label sharp, with dashboard context.'),vector.tolist(),scores
+ if category=='damage':
+  scores.update(damage_verified=False,slot_label_verified=False,quality_check='damage_assessment_deferred')
+  return 'accepted','Vehicle photograph accepted. Visible damage is not required for admission; damage and evidence quality are assessed after submission.',vector.tolist(),scores
  return 'accepted','Accepted for this slot. Identity, authenticity and capture date remain unverified.',vector.tolist(),scores
 
 def warmup(include_ocr=True):

@@ -6,7 +6,7 @@ import { CustomerGate } from "./CustomerSession";
 import {photoSlots} from './photoSlots';
 import {customerFetch} from './customer-api';
 import {terminalProcessing} from './reviewPresentation';
-type PhotoValidation={state:'checking'|'accepted'|'rejected'|'needs_replacement';reason:string;normalized_hash?:string};
+type PhotoValidation={state:'checking'|'accepted'|'rejected'|'needs_replacement'|'unavailable';reason:string;normalized_hash?:string};
 type SubmitResult = {
   id: string;
   job_id?: string;
@@ -77,7 +77,11 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
       try{
         result=await (await customerFetch('/v1/photos/validate',{method:'POST',body})).json() as PhotoValidation;
         if(!['accepted','rejected','needs_replacement'].includes(result.state))throw new Error('Validation did not return a usable result. Retry this photograph.');
-      }catch(error){result={state:'needs_replacement',reason:(error as Error).message};}
+      }catch(error){
+        const failure=error as Error & {status?:number};
+        result={state:failure.status===422?'rejected':'unavailable',reason:failure.status===422?failure.message:
+          `Validation could not finish. Keep this photograph and recheck shortly. ${failure.message}`};
+      }
       if(revisions.current[key]!==revision)return;
       setPhotoStates(old=>{
         if(result.state==='accepted' && result.normalized_hash && Object.entries(old).some(([slot,v])=>slot!==key && v.state==='accepted' && v.normalized_hash===result.normalized_hash))
@@ -193,10 +197,13 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
     } catch (err) {
       setError((err as Error).message);
       setJobStatus("");
-      const details=(err as Error & {details?:{field?:string;reason?:string}[]}).details;
+      const failure=err as Error & {code?:string;details?:{field?:string;reason?:string}[]};
+      const details=failure.details;
       if(Array.isArray(details))setPhotoStates(old=>{
         const next={...old};
-        details.forEach(item=>{if(item.field && slots.some(s=>s.id===item.field))next[item.field]={state:'needs_replacement',reason:item.reason||'Replace this photograph.'};});
+        details.forEach(item=>{if(item.field && slots.some(s=>s.id===item.field))next[item.field]={
+          state:failure.code==='VALIDATOR_UNAVAILABLE'?'unavailable':'needs_replacement',
+          reason:item.reason||(failure.code==='VALIDATOR_UNAVAILABLE'?'Keep this photograph and recheck when validation is available.':'Replace this photograph.')};});
         return next;
       });
     } finally {
@@ -565,7 +572,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
 export default function Intake({ kind }: { kind: "claims" | "underwriting" }) {
   return (
     <CustomerGate>
-      <IntakeForm kind={kind} />
+      <IntakeForm key={kind} kind={kind} />
     </CustomerGate>
   );
 }

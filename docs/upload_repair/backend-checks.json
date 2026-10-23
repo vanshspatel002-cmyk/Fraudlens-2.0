@@ -1,0 +1,11 @@
+{
+  "tests": [
+    "test_photo_admission.py",
+    "test_customer_workflow.py",
+    "test_pilot_workflow.py"
+  ],
+  "result": "70 passed, 1 deprecation warning",
+  "seconds": 341.3,
+  "external_model_calls": 0,
+  "initial_harness_error": "The oversize-byte parameter needed a short explicit test ID to fit Windows environment limits; fixed and all tests rerun successfully."
+}

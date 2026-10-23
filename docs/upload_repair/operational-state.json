@@ -1,0 +1,83 @@
+{
+  "recorded_at": 1792741844.9075665,
+  "schema": "fraudlens_validation_panel_20261022",
+  "api_pid": 10300,
+  "worker_pid": 6912,
+  "api_worker_configuration_consistent": true,
+  "frontend_http": 200,
+  "backend_http": 200,
+  "validator": "ready",
+  "worker": "ready",
+  "provider": "paused",
+  "health": "degraded",
+  "provider_controls_byte_identical": true,
+  "new_generation_requests": 0,
+  "cumulative_provider_attempts": 17,
+  "original_evidence": {
+    "pilot-evidence": {
+      "unchanged": true,
+      "files": 79
+    },
+    "panel-evidence": {
+      "unchanged": true,
+      "files": 10
+    }
+  },
+  "database_preservation": {
+    "fraudlens_pilot": {
+      "original_business_rows_and_reports_preserved": true,
+      "active_jobs": 0,
+      "verified_tables": [
+        "claimants",
+        "cases",
+        "findings",
+        "perception_records",
+        "image_artifacts",
+        "agent_decisions",
+        "images",
+        "audit_log",
+        "cache_entries",
+        "admin_actions",
+        "api_jobs",
+        "organizations",
+        "applicant_grants",
+        "evidence_requests",
+        "evidence_batches",
+        "submission_receipts",
+        "processing_results",
+        "report_snapshots",
+        "customer_accounts",
+        "case_owners",
+        "report_artifacts"
+      ]
+    },
+    "fraudlens_validation_panel_20261022": {
+      "original_business_rows_and_reports_preserved": true,
+      "active_jobs": 0,
+      "verified_tables": [
+        "claimants",
+        "cases",
+        "findings",
+        "perception_records",
+        "image_artifacts",
+        "agent_decisions",
+        "images",
+        "audit_log",
+        "cache_entries",
+        "admin_actions",
+        "api_jobs",
+        "organizations",
+        "applicant_grants",
+        "evidence_requests",
+        "evidence_batches",
+        "submission_receipts",
+        "processing_results",
+        "report_snapshots",
+        "customer_accounts",
+        "case_owners",
+        "report_artifacts"
+      ]
+    }
+  },
+  "account_scope_note": "Existing reviewer accounts and sessions preserved; the preceding separately authorized admin provisioning is not reversed."
+}

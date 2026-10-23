@@ -1,3 +1,26 @@
+# Current upload repair — 23 October 2026
+
+Policy **initial-photo-admission-2026-10-23-v4** supersedes the v3 admission
+prompts below. Undamaged exteriors now qualify for both damage slots without
+lowering the 0.175 similarity floor or 0.020 margin. Validator outages are
+retryable UI states; accepted photos are retained. Exactly four/six photos,
+backend admission, duplicates, ownership and submission safeguards remain.
+
+Native checks: 55/55 positive image-slot cases accepted; all 70 unrelated
+negative slot cases withheld (68 rejected, 2 uncertain/retake). The authored printed-car-page control remains a
+documented false acceptance, so no perfect authenticity/classification claim is
+made. Actual Chrome accepted all ten slots at desktop/mobile widths plus a real
+portrait part crop (21 uploads). Native disposable API acceptance passed for
+both counts, final cache reuse and UUID4 receipt replay. These are admission
+checks, not successful AI analysis. Backend regressions: 70 passed; frontend
+typecheck/build passed. Gemini use: zero; controls unchanged.
+
+See [repair, exact files and commands](UPLOAD_VALIDATION_REPAIR.md) and
+[receipts/screenshots/limitations](upload_repair/README.md).
+The earlier documentation below is retained as dated history.
+
+---
+
 # Current photo-admission result — 23 October 2026
 
 Policy `initial-photo-admission-2026-10-22-v3` supersedes the v2 limitation below.

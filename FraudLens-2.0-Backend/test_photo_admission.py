@@ -92,7 +92,7 @@ def test_ocr_slot_abstains_and_optional_whole_vehicle_not_required(monkeypatch,t
  from src.checks import plate_ocr
  class Embedder:
   def embed(self,path):return [1.,0.]
-  def embed_texts(self,prompts):return [[1.,0.]]*2+[[0.,1.]]*len(gate.NEGATIVES)
+  def embed_texts(self,prompts):return [[1.,0.]]*(len(prompts)-len(gate.NEGATIVES))+[[0.,1.]]*len(gate.NEGATIVES)
  monkeypatch.setattr(vehicle_gate,'_default_embedder',Embedder());monkeypatch.setattr(gate,'_texts',{})
  monkeypatch.setattr(plate_ocr,'get_reader',lambda:type('Reader',(),{'readtext':lambda *a:[]})())
  assert gate.infer(tmp_path/'unused','front_registration')[0]=='accepted'
@@ -174,3 +174,30 @@ def test_all_prevalidated_files_reused_and_durable_acceptance_timed(client,monke
  data[kind]=dict(source='Controlled semantic model, actual isolated SQLite/API persistence',prevalidation_seconds=validation,
    durable_acceptance_seconds=elapsed,initial_files=before,final_model_calls=0)
  output.write_text(json.dumps(data,indent=2))
+
+@pytest.mark.parametrize('slot',['damage_overview','damage_closeup'])
+def test_undamaged_exterior_can_qualify_damage_slot_without_threshold_bypass(monkeypatch,tmp_path,slot):
+ """Controlled CLIP scores: car support comes solely from exterior prompts."""
+ from src import vehicle_gate
+ class Embedder:
+  def embed(self,path):return [1.,0.]
+  def embed_texts(self,prompts):
+   return [[.3 if p in gate.PROMPTS['exterior'] else .2 if p in gate.NEGATIVES else .1,0.] for p in prompts]
+ monkeypatch.setattr(vehicle_gate,'_default_embedder',Embedder());monkeypatch.setattr(gate,'_texts',{})
+ state,reason,_,scores=gate.infer(tmp_path/'not-opened',slot)
+ assert state=='accepted' and 'Visible damage is not required' in reason
+ assert scores['damage_verified'] is False and scores['slot_label_verified'] is False
+ assert scores['threshold']==.175 and scores['minimum_margin']==.02
+
+@pytest.mark.parametrize('mode',['L','RGBA','P'])
+def test_supported_color_modes_are_normalized_before_inference(tmp_path,mode):
+ image=Image.open(io.BytesIO(photo())).convert(mode);out=io.BytesIO();image.save(out,format='PNG')
+ gate.decode(out.getvalue(),'image/png',tmp_path/'normalized.png')
+ with Image.open(tmp_path/'normalized.png') as normalized:assert normalized.mode=='RGB'
+
+@pytest.mark.parametrize('mime,content',[
+ ('image/gif',b'GIF89a'),('image/png',b'x'*(5*1024*1024+1)),('image/jpeg',b''),
+],ids=['unsupported','oversize','empty'])
+def test_invalid_or_oversize_bytes_never_reach_classifier(monkeypatch,tmp_path,mime,content):
+ monkeypatch.setattr(gate,'infer',lambda *args:pytest.fail('Invalid file reached classifier'))
+ with pytest.raises(gate.InvalidPhoto):gate.validate(content,mime,'claims','damage_overview',('owner','session'),tmp_path)

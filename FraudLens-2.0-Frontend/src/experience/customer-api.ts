@@ -22,8 +22,10 @@ export async function customerFetch(path: string, options: RequestInit = {}): Pr
   }
   if (!response.ok) {
     const data = await response.json().catch(() => ({})) as {message?: string; details?: {field?: string; reason?: string}[]};
-    throw new Error([data.message, ...(data.details || []).map(d => [d.field,d.reason].filter(Boolean).join(': '))]
+    const failure=new Error([data.message, ...(data.details || []).map(d => [d.field,d.reason].filter(Boolean).join(': '))]
       .filter(Boolean).join(' ') || 'The request could not be completed. Please retry.');
+    Object.assign(failure,{status:response.status});
+    throw failure;
   }
   return response;
 }
