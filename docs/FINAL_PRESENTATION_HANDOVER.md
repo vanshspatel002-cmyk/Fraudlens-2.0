@@ -3,7 +3,9 @@
 This section supersedes the operating instructions and failure wording below.
 Baseline: `b2eff6b508d0a5d52c9e9358b3dd145577576934`, including implementation
 `9d240d0`. No later commits were present. Unrelated staged/working changes remain
-preserved. Use `git log -1 --format=%H` for the final local patch commit.
+preserved. Verified implementation commit:
+`eba8f2e1686f44d509133d1f4e8b6d7b48c170eb`.
+Use `git log -1 --format=%H` for the final handover commit.
 
 **The application remains useful with Gemini paused.** New jobs record
 `completed_partial` only after local checks, findings, explanation and the report
