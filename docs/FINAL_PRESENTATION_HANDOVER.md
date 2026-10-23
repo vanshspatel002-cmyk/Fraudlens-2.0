@@ -1,5 +1,9 @@
 # Final presentation handover — 23 October 2026
 
+Verified implementation commit: `9d240d0cc3645ccea701f5c47d786f32af54e947`. This documentation follow-up
+records that tested release; `git log -1 --format=%H` identifies the final local
+documentation commit. No push or deployment.
+
 **The local application, real photo admission, durable persistence, saved PDFs and
 reviewer/customer updates work for both case types. Fresh AI processing is blocked
 by two actual Gemini HTTP 503 `UNAVAILABLE` responses. The provider remains paused.**

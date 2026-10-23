@@ -1,5 +1,9 @@
 # Final presentation verification — 23 October 2026
 
+Verified implementation commit: `9d240d0cc3645ccea701f5c47d786f32af54e947`. This documentation follow-up
+records that tested release; `git log -1 --format=%H` identifies the final local
+documentation commit. No push or deployment.
+
 **Partial release qualification: Gemini availability blocks fresh live analysis.**
 Real photo admission, durable submission, saved local checks/PDFs and reviewer/
 customer evidence requests were exercised for both case types. Neither new run
