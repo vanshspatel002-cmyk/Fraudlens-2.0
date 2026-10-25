@@ -60,6 +60,21 @@ export default function FieldSuggestions({
   const wrapper = useRef<HTMLDivElement | null>(null),
     popup = useRef<HTMLDivElement | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Suggestions change React state without a native input/change event. Read
+  // the committed DOM so the parent validates exactly the displayed value.
+  useEffect(() => {
+    control.current?.dispatchEvent(new Event('fraudlens:field-committed', {bubbles:true}));
+  }, [value]);
+  useEffect(() => {
+    const element=control.current;
+    const synchronize=()=>{
+      if(element && element.value!==value){
+        setValue(element.value);onValueChange?.(element.value);
+      }
+    };
+    element?.addEventListener('fraudlens:sync-autofill',synchronize);
+    return ()=>element?.removeEventListener('fraudlens:sync-autofill',synchronize);
+  },[value,onValueChange]);
   const canSuggest = enabled && !options && suggestions.length > 0;
   const filtered = suggestions.filter((suggestion) =>
     `${suggestion.value} ${suggestion.label || ""}`

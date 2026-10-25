@@ -15,5 +15,8 @@
 .is-neutral .risk-segment { background:var(--surface-raised,#edf0f2);color:var(--muted,#66727a);border-color:var(--line,#d8dfe2); }
 .risk-indicator small { display:block;font-size:10px;line-height:1.55;margin-top:7px;color:var(--muted,#66727a);overflow-wrap:anywhere; }
 .risk-policy { display:inline; }
+.risk-indicator p { font-size:11px;line-height:1.5;overflow-wrap:anywhere;margin:8px 0 0; }
+.admin .risk-unassessed { background:#edf0f2;color:#53616a; }
+.admin .risk small { display:block;font-size:10px;white-space:normal; }
 @media(max-width:640px) { .admin .admin-case-heading { gap:14px;align-items:flex-start; } .risk-indicator { width:100%;box-sizing:border-box; } }
 @media print { .risk-segment.is-selected { outline:2px solid currentColor;outline-offset:1px; } }

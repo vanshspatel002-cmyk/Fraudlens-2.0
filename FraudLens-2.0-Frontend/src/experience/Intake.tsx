@@ -6,7 +6,7 @@ import { CustomerGate } from "./CustomerSession";
 import {photoSlots} from './photoSlots';
 import {customerFetch} from './customer-api';
 import {terminalProcessing} from './reviewPresentation';
-type PhotoValidation={state:'checking'|'accepted'|'rejected'|'needs_replacement'|'unavailable';reason:string;normalized_hash?:string};
+import {readControls, submissionBlockers, type ControlSnapshot, type PhotoValidation, type Blocker} from './intakeValidation';
 type SubmitResult = {
   id: string;
   job_id?: string;
@@ -21,7 +21,6 @@ type JobResult = {
   provider_unavailable?: boolean;
   review_summary?: {customer_label?: string};
 };
-const registrationPattern = /^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}$/;
 const maxUploadBytes = 5 * 1024 * 1024;
 function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
   const [hydrated, setHydrated] = useState(false);
@@ -32,14 +31,20 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
   const submissionInFlight = useRef(false);
   const slots=photoSlots[kind];
   const formRef=useRef<HTMLFormElement>(null);
-  const [formReady,setFormReady]=useState(false);
+  const [controls,setControls]=useState<ControlSnapshot[]>([]);
   const [photoStates,setPhotoStates]=useState<Record<string,PhotoValidation>>({});
   const revisions=useRef<Record<string,number>>({});
   const validationQueue=useRef<Promise<void>>(Promise.resolve());
   useEffect(()=>()=>{Object.keys(revisions.current).forEach(key=>{revisions.current[key]++;});},[]);
-  const accepted=slots.filter(slot=>photoStates[slot.id]?.state==='accepted').length;
-  const photosReady=accepted===slots.length;
-  function updateFormReady(){const form=formRef.current;if(form)setFormReady(form.checkValidity() && !validate(form));}
+  function updateControls(){
+    // Keep controlled fields aligned with password managers/browser autofill
+    // that update the native value without dispatching input or change.
+    if(formRef.current)for(const element of formRef.current.elements){
+      element.dispatchEvent(new Event('fraudlens:sync-autofill'));
+    }
+    const next=readControls(formRef.current);
+    setControls(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
+  }
   function removePhoto(key:string){
     revisions.current[key]=(revisions.current[key]||0)+1;
     setFiles(old=>{const next={...old};delete next[key];return next;});
@@ -54,7 +59,24 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
     [jobStatus, setJobStatus] = useState(""),
     [result, setResult] = useState<SubmitResult | null>(null),
     [submissionKey] = useState(() => (typeof crypto !== "undefined" ? crypto.randomUUID() : ""));
-  useEffect(()=>updateFormReady(),[files]);
+  const accepted=slots.filter(slot=>files[slot.id] && photoStates[slot.id]?.state==='accepted').length;
+  useEffect(()=>{
+    const form=formRef.current;
+    if(!form)return;
+    // Observe committed suggestions and browser autofill; never cache readiness.
+    form.addEventListener('fraudlens:field-committed',updateControls);
+    window.addEventListener('pageshow',updateControls);
+    const timer=setInterval(updateControls,500);
+    updateControls();
+    return ()=>{form.removeEventListener('fraudlens:field-committed',updateControls);window.removeEventListener('pageshow',updateControls);clearInterval(timer);};
+  },[result]);
+  const readinessOptions={hydrated,busy,intake:config?.intake===true};
+  const blockers=submissionBlockers(kind,controls,files,photoStates,readinessOptions);
+  function focusBlocker(blocker:Blocker){
+    const form=formRef.current;
+    const field=blocker.field ? form?.elements.namedItem(blocker.field) : form?.querySelector(`[data-photo-slot="${blocker.slot}"] input`);
+    if(field instanceof HTMLElement){field.focus();field.scrollIntoView({block:'center',behavior:'smooth'});}
+  }
   useEffect(() => {
     const urls = Object.fromEntries(
       Object.entries(files).map(([k, f]) => [k, URL.createObjectURL(f)]),
@@ -89,36 +111,6 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
         return {...old,[key]:result};
       });
     });
-  }
-  function validate(form: HTMLFormElement) {
-    const data = new FormData(form);
-    const registration = String(data.get("registration") || "")
-      .replace(/\s+/g, "")
-      .toUpperCase();
-    if (!registrationPattern.test(registration)) {
-      return "Enter a valid Indian registration number, for example MH12AB1234.";
-    }
-    const phone = String(data.get("phone") || "").replace(/\D/g, "");
-    if (phone.length < 10) return "Enter a valid mobile number.";
-    const bankLast4 = String(data.get("bankLast4") || "");
-    const latitude=String(data.get('latitude')||'').trim(),longitude=String(data.get('longitude')||'').trim();
-    if(Boolean(latitude)!==Boolean(longitude))return 'Enter both incident coordinates, or leave both blank.';
-    if(latitude && (!Number.isFinite(Number(latitude)) || Math.abs(Number(latitude))>90 || !Number.isFinite(Number(longitude)) || Math.abs(Number(longitude))>180))return 'Latitude must be -90 to 90; longitude -180 to 180.';
-    if (bankLast4 && !/^[0-9]{4}$/.test(bankLast4)) {
-      return "Bank account last four digits must be exactly four numbers.";
-    }
-    if (claims && Number(data.get("amount") || 0) <= 0) {
-      return "Enter a claimed amount greater than zero.";
-    }
-    for (const file of Object.values(files)) {
-      if (
-        !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
-        file.size > maxUploadBytes
-      ) {
-        return "Every upload must be a JPG, PNG or WebP photograph under 5 MB.";
-      }
-    }
-    return "";
   }
   useEffect(() => {
     if (!result?.job_id) return;
@@ -163,16 +155,9 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
     if (submissionInFlight.current || result) return;
     setError("");
     setJobStatus("");
-    if (!config?.intake) {
-      setError(
-        "Applications are not open yet. Vehicle-photo verification must be connected before a case can be accepted. Nothing has been submitted.",
-      );
-      return;
-    }
-    if(!photosReady){setError(`${claims?'Claims':'Underwriting'} require ${slots.length} accepted photographs.`);return;}
-    const validation = validate(e.currentTarget);
-    if (validation) {
-      setError(validation);
+    const remaining = submissionBlockers(kind,readControls(e.currentTarget),files,photoStates,readinessOptions);
+    if (remaining.length) {
+      updateControls();setError(remaining[0].reason);focusBlocker(remaining[0]);
       return;
     }
     const data = new FormData(e.currentTarget);
@@ -279,7 +264,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
               </a>
             </section>
           ) : (
-            <form ref={formRef} onInput={updateFormReady} onChange={updateFormReady} className="intake-form" method="post" onSubmit={submit}>
+            <form ref={formRef} onInput={updateControls} onChange={updateControls} onFocus={updateControls} noValidate className="intake-form" method="post" onSubmit={submit}>
               {config && !config.intake && (
                 <div className="notice">
                   Applications are not open yet. You can review the form; no case will be accepted
@@ -501,7 +486,7 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
                 <p role="status">{accepted} of {slots.length} photographs accepted.</p>
                 <div className="upload-grid">
                   {slots.map(({id:label,label:title,instruction}) => (
-                    <div className="upload-item" key={label}>
+                    <div className="upload-item" key={label} data-photo-slot={label}>
                       <label className="upload-slot">
                         {previews[label] ? (
                           <img src={previews[label]} alt={label + " preview"} />
@@ -554,7 +539,11 @@ function IntakeForm({ kind }: { kind: "claims" | "underwriting" }) {
                   {jobStatus}
                 </p>
               )}
-              <button className="submit-case" type="submit" disabled={!hydrated || busy || !photosReady || !formReady}>
+              {!!blockers.length && <div id="submission-blockers" className="notice" role="status" aria-live="polite">
+                <strong>Before you submit:</strong>
+                <ul>{blockers.map((blocker,index)=><li key={index}>{blocker.field || blocker.slot ? <button type="button" onClick={()=>focusBlocker(blocker)}>{blocker.reason}</button> : blocker.reason}</li>)}</ul>
+              </div>}
+              <button className="submit-case" type="submit" aria-describedby={blockers.length?'submission-blockers':undefined} disabled={blockers.length>0}>
                 {busy
                   ? "Validating and submitting…"
                   : "Submit " + (claims ? "claim" : "application")}

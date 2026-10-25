@@ -1,0 +1,150 @@
+{
+  "verified_local_date": "2026-10-26",
+  "source": "Actual Chrome customer/reviewer tabs, API, PostgreSQL Panel schema, native CLIP and durable worker; no route interception.",
+  "workflows": [
+    {
+      "workflow": "claims",
+      "case_id": "case-167fc4c5e190",
+      "run_id": "8a4154bbbd6179ed3d219eb1a1faee08",
+      "processing_status": "completed_partial",
+      "display_band": "MEDIUM",
+      "provisional": true,
+      "score": null,
+      "coverage": {
+        "required_applicable": 7,
+        "sufficient": 1,
+        "material_complete": false,
+        "state_counts": {
+          "inconclusive": 8,
+          "completed": 1,
+          "not_run": 3,
+          "not_applicable": 1
+        },
+        "material_gap_ids": [
+          "internal_duplicate",
+          "scene_consistency",
+          "plate_ocr",
+          "damage_plausibility",
+          "entity_graph",
+          "baseline_linkage"
+        ]
+      },
+      "assessment_policy": "agent-production-claims-2026-10-22-v4",
+      "display_policy": "partial-evidence-display-2026-10-25-v1",
+      "supporting_checks": [
+        "internal_duplicate"
+      ],
+      "supporting_attribution": [
+        "image"
+      ],
+      "sample_pdf": "Claims-partial-review.pdf",
+      "snapshot_id": "aeadb6e5a0bac1a8cb228ca30cefe5f624d29743dfb00cc1c4fc6032fbf0238f",
+      "pdf_sha256": "206ff505001f71643ac0642da35215eda53a1b832369d5ceea0b27f9da14847e",
+      "pdf_pages": 13,
+      "preview_download_equal": true,
+      "reviewer_customer_update": true,
+      "mobile_no_overflow": true,
+      "saved_results_and_pdf_survived_service_restart": true,
+      "live_ai_completion": false
+    },
+    {
+      "workflow": "underwriting",
+      "case_id": "case-296ab7f9670a",
+      "run_id": "4590ed78deca4326befdffce3ecae7f7",
+      "processing_status": "completed_partial",
+      "display_band": "MEDIUM",
+      "provisional": true,
+      "score": null,
+      "coverage": {
+        "required_applicable": 5,
+        "sufficient": 2,
+        "material_complete": false,
+        "state_counts": {
+          "completed": 2,
+          "inconclusive": 5,
+          "not_applicable": 1,
+          "not_run": 2
+        },
+        "material_gap_ids": [
+          "plate_ocr",
+          "entity_graph",
+          "odometer_readability"
+        ]
+      },
+      "assessment_policy": "agent-production-underwriting-2026-10-22-v4",
+      "display_policy": "partial-evidence-display-2026-10-25-v1",
+      "supporting_checks": [
+        "internal_duplicate"
+      ],
+      "supporting_attribution": [
+        "image"
+      ],
+      "sample_pdf": "Underwriting-partial-review.pdf",
+      "snapshot_id": "c1379cdf82f6d467401f8231d0b75c43574f21c608f0acde5d87ad58e2e6f2a9",
+      "pdf_sha256": "2da673d7938ab115a09eb25c126ad4c3138be999d3cfdf012fdad89abe0ea78e",
+      "pdf_pages": 12,
+      "preview_download_equal": true,
+      "reviewer_customer_update": true,
+      "mobile_no_overflow": true,
+      "saved_results_and_pdf_survived_service_restart": true,
+      "live_ai_completion": false
+    }
+  ],
+  "native_admission": {
+    "ten_final_submission_photos_accepted": true,
+    "indexed_bytes_match_prevalidation": true,
+    "additional_real_damaged_car_photos_accepted": 4,
+    "real_animal_negative_requests_withheld": 10,
+    "independent_animal_images": 1,
+    "admission_policy_unchanged": true,
+    "new_gemini_calls": 0,
+    "classifier_accuracy_calibrated": false
+  },
+  "pdf_rendering": [
+    {
+      "kind": "claims",
+      "pages": 13,
+      "renderer": "fraudlens-pdf-2026-10-26-v13",
+      "sha256": "206ff505001f71643ac0642da35215eda53a1b832369d5ceea0b27f9da14847e",
+      "all_pages_rendered": true,
+      "text_within_page_bounds": true
+    },
+    {
+      "kind": "underwriting",
+      "pages": 12,
+      "renderer": "fraudlens-pdf-2026-10-26-v13",
+      "sha256": "2da673d7938ab115a09eb25c126ad4c3138be999d3cfdf012fdad89abe0ea78e",
+      "all_pages_rendered": true,
+      "text_within_page_bounds": true
+    }
+  ],
+  "preservation": {
+    "original_cases_unchanged": 5,
+    "provider_ledgers_byte_identical": true,
+    "new_fictional_cases": 2
+  },
+  "runtime": {
+    "database": "ready",
+    "validator": "ready",
+    "worker": "ready",
+    "provider": "paused",
+    "schema": "fraudlens_validation_panel_20261022"
+  },
+  "regressions": {
+    "broad_backend_passed": 223,
+    "focused_including_disposable_postgres_passed": 58,
+    "final_risk_pdf_passed": 76,
+    "counts_overlap": true,
+    "frontend_typecheck_and_production_build": "passed",
+    "production_intake_browser": "passed",
+    "risk_component_controlled_browser": "passed",
+    "admission_controlled_browser": "passed"
+  },
+  "limitations": [
+    "Gemini manually paused; no live AI completion verified.",
+    "Cold model loading and cloud database/PDF latency; bounded preview retry was needed.",
+    "Small native photograph sample is not an accuracy calibration.",
+    "Archived photographs do not establish current ownership, Indian registration, capture date or readable odometer mileage.",
+    "Partial bands are concern categories for manual review, not fraud findings or probabilities."
+  ]
+}

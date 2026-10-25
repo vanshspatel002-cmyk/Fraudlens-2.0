@@ -54,6 +54,9 @@ type Row = {
   status: string;
   recommendation: string;
   risk: string;
+  riskProvisional?: boolean;
+  riskCoverage?: {sufficient:number;required_applicable:number};
+  riskExplanation?: string;
   created_at: string;
   thumbnail: string;
   processingStatus?: string;
@@ -215,17 +218,7 @@ export default function Admin() {
       if (filters.to) params.set("date_to", new Date(filters.to + 'T23:59:59.999+05:30').toISOString());
       if (filters.min) params.set("amount_min", filters.min);
       if (filters.max) params.set("amount_max", filters.max);
-      if (filters.risk)
-        params.set(
-          "risk_band",
-          filters.risk === "Low"
-            ? "clear"
-            : filters.risk === "Medium"
-              ? "desk_review,request_evidence"
-              : filters.risk === "High"
-                ? "escalate_siu"
-                : "unrated",
-        );
+      if (filters.risk) params.set('display_band', filters.risk.toUpperCase());
       const recommendationBand = filters.recommendation === 'Desk Review' ? 'desk_review'
         : filters.recommendation === 'Escalate to SIU' ? 'escalate_siu' : '';
       if (recommendationBand) {
@@ -321,7 +314,7 @@ export default function Admin() {
           ) + "%"
         : "Not measured",
     ],
-    ['High risk on this page', rows.filter(r => r.risk === 'High').length],
+    ['High risk on this page', rows.filter(r => r.risk === 'HIGH').length],
   ];
   async function action(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -581,7 +574,7 @@ export default function Admin() {
                 <div className="filters">
                   {[
                     ["kind", "Agent", ["claims", "underwriting"]],
-                    ["risk", "Risk band", ["Low", "Medium", "High", "Unrated"]],
+                    ["risk", "Risk band", ["Low", "Medium", "High", "UNASSESSED"]],
                     [
                       "status",
                       "Status",
@@ -689,7 +682,7 @@ export default function Admin() {
                           <td>{r.kind === "claims" ? money(r.amount) : "Not applicable"}</td>
                           <td>{r.recommendation || "Pending"}</td>
                           <td>
-                            <span className={"risk risk-" + r.risk.toLowerCase()}>{r.risk}</span>
+                            <span title={r.riskExplanation} className={"risk risk-" + r.risk.toLowerCase()}>{r.risk}{r.riskProvisional && <small>Provisional — partial assessment{r.riskCoverage && <> · Material evidence {r.riskCoverage.sufficient}/{r.riskCoverage.required_applicable}</>}</small>}</span>
                           </td>
                           <td>
                             {processingLabel({status:r.processingStatus})}

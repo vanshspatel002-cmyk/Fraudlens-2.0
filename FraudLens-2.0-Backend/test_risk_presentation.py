@@ -44,7 +44,7 @@ def test_unfinished_assessments_never_reassure_or_manufacture_a_score(state):
     report=saved(0,'clear','rules_baseline');report['processing']['status']=state
     result=assessment_presentation(report)
     assert not result['complete'] and result['category'] is None and result['score'] is None
-    assert result['label']=='Assessment incomplete'
+    assert result['display_band']=='UNASSESSED'
 
 
 @pytest.mark.parametrize('reason',['coverage','fallback','run','unknown_band','missing_run','band_mismatch','unknown_source'])
@@ -98,7 +98,7 @@ def test_incomplete_pdf_is_neutral_and_excludes_sensitive_text():
     report['findings_by_category']['identity'][0]['evidence']['api_key']='DO_NOT_PRINT'
     content=report_pdf.render_pdf(report,'fixture-snapshot',1792569600)
     reader=PdfReader(BytesIO(content));front=reader.pages[0].extract_text();all_text=' '.join(page.extract_text() for page in reader.pages)
-    assert 'Assessment incomplete' in front and 'Assessed risk: Low' not in front and 'Assessed risk: High' not in front
+    assert 'UNASSESSED' in front and 'Assessed risk: Low' not in front and 'Assessed risk: High' not in front
     assert 'DO_NOT_PRINT' not in all_text and 'C:\\private' not in all_text
 
 

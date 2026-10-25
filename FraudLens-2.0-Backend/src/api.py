@@ -588,6 +588,7 @@ class DecisionOut(BaseModel):
 
 
 class CaseSummary(BaseModel):
+    assessment_presentation: Optional[dict[str, Any]] = None
     processing_status: Optional[str] = None
     final_admin_action: Optional[str] = None
     declaration_notes: Optional[str] = None
@@ -1097,7 +1098,7 @@ def _current_decision(conn,case_id):
 
 
 def _summaries_for(conn, cases):
-    """Four batched reads instead of per-case network round trips.
+    """Batched reads, including frozen summaries, avoid per-case network waits.
 
     Selection matches _current_decision/_current_findings, including legacy
     cases and newly queued runs without results. GET holds one read snapshot.
@@ -1122,12 +1123,19 @@ def _summaries_for(conn, cases):
     images=defaultdict(list)
     for row in conn.execute('SELECT case_id,image_id FROM images WHERE case_id IN ('+marks+') ORDER BY image_id',identifiers):
         images[row[0]].append((row[1],))
+    saved_presentations = {}
+    presentation_column=db.json_text(conn,'s.payload','assessment_presentation')
+    for row in conn.execute('SELECT s.case_id,s.run_id,'+presentation_column+' AS presentation FROM report_snapshots s WHERE s.case_id IN ('+marks+') AND s.rowid=(SELECT MAX(x.rowid) FROM report_snapshots x WHERE x.case_id=s.case_id AND x.run_id=s.run_id)',identifiers):
+        if row['presentation']:
+            saved_presentations[(row['case_id'],row['run_id'])]=json.loads(row['presentation'])
     output=[]
     for case in cases:
         history=decisions[case.case_id]
         job=latest.get(case.case_id)
         best=next((d for d in history if d.decision_id==job['decision_id']),None) if job is not None else _best_decision(history)
-        output.append(_summary_for(conn,case,{'best':best,'concerns':concerns.get(case.case_id,0),'images':images[case.case_id], 'job': job}))
+        payload=json.loads(job['payload']) if job else {}
+        output.append(_summary_for(conn,case,{'best':best,'concerns':concerns.get(case.case_id,0),'images':images[case.case_id], 'job': job,
+            'presentation':saved_presentations.get((case.case_id,payload.get('job_id')))}))
     return output
 
 
@@ -1136,7 +1144,13 @@ def _summary_for(conn: sqlite3.Connection, case: Case, facts=None) -> CaseSummar
     concerns = facts['concerns'] if facts is not None else sum(f.verdict.value == 'concern' for f in _current_findings(conn,case.case_id))
     images = facts['images'] if facts is not None else conn.execute(
         'SELECT image_id FROM images WHERE case_id=? ORDER BY image_id',(case.case_id,)).fetchall()
+    job = facts.get('job') if facts is not None else runtime_store.latest_job(conn,case.case_id)
+    payload = json.loads(job['payload']) if job and isinstance(job.get('payload'), str) else job or {}
+    saved_presentation = payload.get('assessment_presentation') or (facts.get('presentation') if facts is not None else _snapshot_presentation(conn,case.case_id,payload.get('job_id')))
+    if saved_presentation and (saved_presentation.get('run_id') != payload.get('job_id') or saved_presentation.get('processing_state') != payload.get('status')):
+        saved_presentation = None
     return CaseSummary(
+        assessment_presentation=saved_presentation,
         case_id=case.case_id, agent_type=case.agent_type, claim_type=case.claim_type,
         processing_status=(facts['job']['status'] if facts.get('job') is not None else None) if facts is not None else ((runtime_store.job_view(runtime_store.latest_job(conn,case.case_id),conn) or {}).get('review_summary') or {}).get('display_status'),
         final_admin_action='approve' if case.status == 'closed_approved' else 'reject' if case.status == 'closed_rejected' else None,
@@ -1180,6 +1194,7 @@ BAND_ORDER = {"clear": 0, "request_evidence": 1, "desk_review": 2, "escalate_siu
 @app.get("/v1/cases", response_model=CaseListOut, tags=["cases"],
          responses={422: {"model": ErrorResponse}})
 def list_cases(
+    display_band: Optional[Literal['LOW','MEDIUM','HIGH','UNASSESSED']] = Query(None),
     risk_band: Optional[str] = Query(None, description="clear | request_evidence | desk_review | escalate_siu"),
     agent_type: Optional[str] = Query(None, description="claims | underwriting"),
     status: Optional[str] = None,
@@ -1233,7 +1248,7 @@ def list_cases(
             str(x or "").lower() for x in
             (c.case_id,c.vehicle_registration,c.claimant_id,c.garage_id,c.person_name,c.policy_number))]
 
-    if not risk_band and not recommendation and has_concerns is None and sort_by in {'created_at','claim_amount'}:
+    if not display_band and not risk_band and not recommendation and has_concerns is None and sort_by in {'created_at','claim_amount'}:
         reverse=sort_dir=='desc'
         if sort_by=='claim_amount':cases.sort(key=lambda c:(c.claim_amount is None,c.claim_amount or 0),reverse=reverse)
         else:cases.sort(key=lambda c:(c.created_at is None,c.created_at or datetime.min.replace(tzinfo=timezone.utc)),reverse=reverse)
@@ -1244,6 +1259,9 @@ def list_cases(
     if risk_band:
         bands = set(risk_band.split(','))
         summaries = [s for s in summaries if (s.risk_band or 'unrated') in bands]
+    if display_band:
+        from .risk_presentation import saved_display_band
+        summaries = [s for s in summaries if saved_display_band(s.assessment_presentation) == display_band]
     if recommendation:
         summaries = [s for s in summaries if s.recommendation == recommendation]
     if has_concerns is not None:
@@ -1378,7 +1396,14 @@ def get_case_report(case_id: str, snapshot_id: Optional[str] = Query(default=Non
     return _build_report(conn,case_id)
 
 
-def _build_report(conn,case_id):
+def _snapshot_presentation(conn,case_id,run_id):
+    if not run_id:return None
+    column=db.json_text(conn,'payload','assessment_presentation')
+    row=conn.execute('SELECT '+column+' AS presentation FROM report_snapshots WHERE case_id=? AND run_id=? ORDER BY rowid DESC LIMIT 1',(case_id,run_id)).fetchone()
+    return json.loads(row['presentation']) if row and row['presentation'] else None
+
+
+def _build_report(conn,case_id,*,finalizing=False):
     case=db.get_case(conn,case_id)
     if not case: raise ApiError(404,'CASE_NOT_FOUND','Case not found.')
     # Reuse one current-run selection within this report's read snapshot.
@@ -1453,7 +1478,11 @@ def _build_report(conn,case_id):
         run_id=job['job_id'] if job else None,policy_version=decision.policy_version if decision else None,
         processing=runtime_store.job_view(job,conn),evidence_ids=evidence_ids,limitations=list(dict.fromkeys(limitations)))
     from .risk_presentation import assessment_presentation
-    report.assessment_presentation = assessment_presentation(report.model_dump(mode='json'))
+    saved_presentation = None if finalizing else (job or {}).get('assessment_presentation') or _snapshot_presentation(conn,case_id,report.run_id)
+    if saved_presentation and saved_presentation.get('processing_state') != (job or {}).get('status'):
+        saved_presentation=None
+    report.assessment_presentation = (saved_presentation if saved_presentation and saved_presentation.get('run_id') == report.run_id
+                                      else assessment_presentation(report.model_dump(mode='json'),allow_partial=finalizing))
     return report
 
 
@@ -2176,6 +2205,15 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                 root_failure_detail=failures[0] if failures else None,
                 detail=('Local checks complete — AI analysis unavailable; human review required.' if provider_partial else 'Available checks complete; assessment incomplete; human review required.') if unavailable or perception_errors else None,
                 failed_images=perception_errors)
+            # Freeze the one display assessment with the terminal job/result in
+            # the same transaction. API, list and PDF consume these saved values.
+            presentation = _build_report(conn, case_id, finalizing=True).assessment_presentation
+            # This transaction already fenced and locked the running job before
+            # its terminal transition. A second fence would reject our own now
+            # terminal status on PostgreSQL. Keep the lock through both writes.
+            terminal_job = runtime_store.get_job(conn, job_id)
+            terminal_job['assessment_presentation'] = presentation
+            runtime_store.save_job(conn, terminal_job)
             _snapshot_report(conn, case_id)
             conn.commit()
         finally:

@@ -620,7 +620,11 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
           processingStatus: stringValue(r.processing_status) || 'not_recorded',
           outcome: stringValue(r.final_admin_action),
           recommendation: recommendation(stringValue(r.recommendation), stringValue(r.risk_band)),
-          risk: band(stringValue(r.risk_band)),
+          risk: stringValue((r.assessment_presentation as ApiRecord | undefined)?.display_band)
+            || ((r.assessment_presentation as ApiRecord | undefined)?.complete ? stringValue((r.assessment_presentation as ApiRecord)?.category).toUpperCase() : 'UNASSESSED') || 'UNASSESSED',
+          riskProvisional: !!(r.assessment_presentation as ApiRecord | undefined)?.provisional,
+          riskCoverage: (r.assessment_presentation as ApiRecord | undefined)?.coverage as {sufficient:number;required_applicable:number} | undefined,
+          riskExplanation: stringValue((r.assessment_presentation as ApiRecord | undefined)?.explanation) || 'A run-bound assessment was not saved.',
           created_at: stringValue(r.created_at) || new Date().toISOString(),
           thumbnail: thumbId ? await apiImageUrl(thumbId) : "",
         };
