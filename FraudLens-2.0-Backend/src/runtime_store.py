@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 import hashlib
 import json
+import os
 import secrets
 import time
 import threading
@@ -159,8 +160,11 @@ def save_job(conn, job):
 
 
 def enqueue(conn, case_id, job_id=None):
+    mode = os.getenv('FRAUDLENS_ASSESSMENT_MODE','ai_assisted')
+    if mode not in {'local_rules','ai_assisted'}:
+        raise ValueError('Unsupported FRAUDLENS_ASSESSMENT_MODE; use local_rules or ai_assisted.')
     job = {'job_id':job_id or secrets.token_hex(16),'case_id':case_id,'status':'queued','stage':'queued',
-           'progress':0.0,'attempts':0,'max_attempts':3,'created_at':time.time()}
+           'progress':0.0,'attempts':0,'max_attempts':3,'created_at':time.time(),'assessment_mode':mode}
     save_job(conn,job)
     return job
 
@@ -201,6 +205,10 @@ def worker_leader_present(conn):
 
 
 def reconciled_result_status(conn,job,converged):
+    if job.get('assessment_mode')=='local_rules' and converged:
+        # A persisted check result alone is not a published completed assessment.
+        published=job.get('assessment_presentation') and conn.execute('SELECT 1 FROM report_snapshots WHERE run_id=? LIMIT 1',(job['job_id'],)).fetchone()
+        return 'completed' if published else 'interrupted'
     if converged:return 'completed'
     from .processing_outcome import summary
     candidate={**job,'status':'completed_partial'}

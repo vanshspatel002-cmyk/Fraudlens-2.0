@@ -141,7 +141,7 @@ function Workspace() {
         <section className={'ud-panel ud-case-heading '+current.kind}><div><span className={'ud-tag '+current.kind}>{current.kind}</span>
           <h2>{current.id}</h2><p>Submitted {date(current.submittedAt)}</p></div><strong>{outcomeLabel(current.outcome)}</strong></section>
         <div className="ud-detail-grid"><section className="ud-panel"><span className="ud-kicker">ANALYSIS STATUS</span>
-          <h2>{humanize(current.processingStatus)}</h2><p>{current.processingStage}</p><p>{current.processingDetail}</p>
+          <h2>{current.processingDetail?.startsWith('Assessment complete') ? current.processingDetail : humanize(current.processingStatus)}</h2><p>{current.processingStage}</p>{!current.processingDetail?.startsWith('Assessment complete') && <p>{current.processingDetail}</p>}
           <p>Processing produces an assessment. A human reviewer records the final outcome.</p></section>
           <section className="ud-panel"><span className="ud-kicker">REVIEWER UPDATE</span><h2>{outcomeLabel(current.outcome)}</h2>
             <p className="ud-narrative">{current.publicNarrative}</p></section></div>

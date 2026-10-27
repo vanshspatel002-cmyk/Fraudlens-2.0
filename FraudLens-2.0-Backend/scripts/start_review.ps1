@@ -1,5 +1,6 @@
 param(
     [ValidateSet('Panel','Pilot')][string]$Dataset='Panel',
+    [ValidateSet('local_rules','ai_assisted')][string]$AssessmentMode='local_rules',
     [ValidateSet('Api','Worker','Info')][string]$Service='Info'
 )
 $ErrorActionPreference='Stop'
@@ -12,6 +13,7 @@ Write-Host "Review dataset: $Dataset | PostgreSQL schema: $schema"
 Write-Host 'Customer http://127.0.0.1:5173/dashboard | Admin http://127.0.0.1:5173/admin'
 Write-Host 'Existing private filesystem evidence and database PDF persistence; no Supabase Storage migration.'
 if($Service -eq 'Info') {return}
+if($Service -eq 'Api') {$env:FRAUDLENS_ASSESSMENT_MODE=$AssessmentMode}
 if($Service -eq 'Worker') {
     $listener=Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction Stop
     $ErrorActionPreference='Continue'

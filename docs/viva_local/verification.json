@@ -1,0 +1,121 @@
+{
+  "verified_local_date": "2026-10-28",
+  "source": "Actual Chrome/API/PostgreSQL/native CLIP/OCR/durable-worker workflows; controlled policy tests are separate.",
+  "cases": [
+    {
+      "kind": "claims",
+      "case_id": "case-f400641b2afe",
+      "run_id": "64a1ede108bc46209e7858d9a569ee99",
+      "status": "completed",
+      "attempts": 1,
+      "band": "MEDIUM",
+      "method": "Local rules assessment",
+      "policy": "local-rules-review-priority-2026-10-27-v1",
+      "coverage": {
+        "required_applicable": 7,
+        "sufficient": 2,
+        "material_complete": false,
+        "material_gap_ids": [
+          "scene_consistency",
+          "plate_ocr",
+          "damage_plausibility",
+          "entity_graph",
+          "baseline_linkage"
+        ],
+        "state_counts": {
+          "completed": 2,
+          "inconclusive": 7,
+          "not_run": 3,
+          "not_applicable": 1
+        }
+      },
+      "explanation": "Completed local checks require independent review: internal photograph reuse, capture metadata. Review required because evidence is insufficient; this is not a finding of fraud.",
+      "review_recommendation": "request_evidence",
+      "snapshot_id": "b3c4c819dc09ec254dfe19101c2a6f6d4a058aaa0f6e7d4cd97e275e16657872",
+      "pdf": "Claims-local-rules.pdf",
+      "pdf_sha256": "46beab7cebde2ef66a217e3ba737e23701e847fff0c5aa197157fcaa10787897",
+      "pdf_pages": 10,
+      "preview_download_equal": true,
+      "mobile_verified": true,
+      "customer_outcome": "request_more_evidence",
+      "restart_persistence": true,
+      "customer_job_reasons_private": true
+    },
+    {
+      "kind": "underwriting",
+      "case_id": "case-4cd077553172",
+      "run_id": "191faba4591941bd989b5f93354912c4",
+      "status": "completed",
+      "attempts": 1,
+      "band": "MEDIUM",
+      "method": "Local rules assessment",
+      "policy": "local-rules-review-priority-2026-10-27-v1",
+      "coverage": {
+        "required_applicable": 5,
+        "sufficient": 2,
+        "material_complete": false,
+        "material_gap_ids": [
+          "plate_ocr",
+          "entity_graph",
+          "odometer_readability"
+        ],
+        "state_counts": {
+          "completed": 2,
+          "inconclusive": 5,
+          "not_applicable": 1,
+          "not_run": 2
+        }
+      },
+      "explanation": "Completed local checks require independent review: internal photograph reuse, capture metadata. Review required because evidence is insufficient; this is not a finding of fraud.",
+      "review_recommendation": "request_evidence",
+      "snapshot_id": "2021b6c101cf90bf3765d2f00d161f9125fc4e4e15c5df66361fbf76528028af",
+      "pdf": "Underwriting-local-rules.pdf",
+      "pdf_sha256": "e488b44ac127adc1d6db43681c2cc1dff44583e921d6b3c40803b9e3a770f78d",
+      "pdf_pages": 10,
+      "preview_download_equal": true,
+      "mobile_verified": true,
+      "customer_outcome": "request_more_evidence",
+      "restart_persistence": true,
+      "customer_job_reasons_private": true
+    }
+  ],
+  "original_records_preserved": {
+    "cases": 7,
+    "agent_decisions": 8,
+    "report_snapshots": 22,
+    "report_artifacts": 17,
+    "admin_actions": 4
+  },
+  "provider_ledgers_byte_identical": true,
+  "new_gemini_calls": 0,
+  "capabilities": {
+    "database": "ready",
+    "storage": "ready",
+    "validator": "ready",
+    "worker": "ready",
+    "assessment_mode": "local_rules",
+    "provider": "paused"
+  },
+  "schema": "fraudlens_validation_panel_20261022",
+  "native_admission": {
+    "final_photos": 10,
+    "exact_prevalidated_bytes_indexed": true,
+    "additional_damaged_positives": 4,
+    "animal_negative_requests_withheld": 10,
+    "independent_animal_images": 1
+  },
+  "pdf_pages_rendered": 20,
+  "all_pdf_text_inside_page_bounds": true,
+  "validation": {
+    "backend_regressions": 119,
+    "real_postgres_and_readiness": 3,
+    "final_policy_pdf": 14,
+    "human_actions_and_idempotency": 3,
+    "owner_disclosure": 8,
+    "startup_checks": 2,
+    "counts_overlap": true,
+    "production_build_typecheck": "passed",
+    "intake_browser": "passed",
+    "report_deadline_simulation": "passed"
+  }
+}

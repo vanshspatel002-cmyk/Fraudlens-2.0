@@ -20,6 +20,7 @@ const text = (value: unknown) => typeof value === 'string' || typeof value === '
 export const reviewMoney = (value: unknown) => new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',maximumFractionDigits:2}).format(Number(value));
 export function recordedModelRecommendation(input: ReviewSummaryInput) {
   const routing = input.assessmentExplanation?.routing;
+  if(routing?.source==='local_rules')return 'Not performed in local rules mode';
   if (input.analysisFallback || routing?.source === 'fallback' || routing?.converged === false) return 'No converged model decision; saved system fallback';
   if (routing?.source !== 'model') return 'Model decision source not recorded';
   return readable(routing.model_recommendation || routing.recommendation || 'Not recorded');

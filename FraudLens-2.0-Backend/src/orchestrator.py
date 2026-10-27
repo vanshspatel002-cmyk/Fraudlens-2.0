@@ -95,6 +95,7 @@ def process_case(
     run_id: Optional[str] = None,
     on_stage=None,
     check_config: Optional[dict[str, Any]] = None,
+    local_rules: bool = False,
 ) -> AgentDecision:
     """
     Run one case end to end and return its decision.
@@ -110,9 +111,13 @@ def process_case(
     if policy is None:
         policy = policy_for(case.agent_type)
 
+    if local_rules:
+        use_agent = False
+        check_config = {**(check_config or {}),'assessment_mode':'local_rules',
+                        'allowed_perception_hashes':[],'skip_experimental_models':True}
     started = time.monotonic()
     check_options = {'config': {'cache_ocr': True, 'plate_ocr_observed_prefix': True, 'execution_states': True,
-                              'skip_experimental_models':True}} if run_id and policy.policy_version.startswith('agent-production-') else {}
+                              'skip_experimental_models':True}} if run_id and policy.policy_version.startswith(('agent-production-','local-rules-')) else {}
     if check_options:
         # New intake records this in a server-written audit, never applicant
         # narrative text. Legacy generated UTC tags are local wall-clock values.
@@ -139,7 +144,7 @@ def process_case(
         check_options['on_check'] = check_started
     with span('pipeline.checks'):
         findings = run_checks(conn, case, check_ids=list(policy.check_ids), **check_options)
-    if run_id and policy.policy_version.startswith('agent-production-'):
+    if run_id and policy.policy_version.startswith(('agent-production-','local-rules-')):
         from src.checks import REGISTRY
         from src.models import Verdict
         for finding in findings:
@@ -190,6 +195,12 @@ def process_case(
         decision = result.decision
         trace = result.trace_dicts()
         converged = result.converged
+    elif local_rules:
+        from src.models import RiskBand, Recommendation
+        decision = AgentDecision(case_id=case_id,recommendation=Recommendation.ESCALATE,
+            risk_band=RiskBand.DESK_REVIEW,confidence=0.0,summary='Local rules assessment',policy_version=policy.policy_version)
+        decision.latency_ms = int((time.monotonic()-started)*1000)
+        converged = True
     else:
         decision = baseline.decide(findings, case)
         # The baseline's own latency, recorded for the same reason the
@@ -202,6 +213,11 @@ def process_case(
     from .assessment_explanation import explain_assessment
     explanation = explain_assessment(case, findings, decision, policy, converged=converged,
         trace=trace, run_id=run_id, use_agent=use_agent, check_config=check_options.get('config', {}))
+    if local_rules:
+        from .local_rules import apply
+        apply(explanation,decision)
+        converged = not any(row['execution_state']=='failed' for row in explanation['findings'])
+        explanation['routing']['converged'] = converged
 
     if persist:
         if run_id and db.is_postgres(conn):
@@ -212,7 +228,7 @@ def process_case(
         for finding in findings:
             db.insert_finding(conn, finding)
         db.insert_agent_decision(conn, decision)
-        event = adjudication_event(case.case_id, 'agent' if use_agent else 'baseline',
+        event = adjudication_event(case.case_id, 'local_rules' if local_rules else 'agent' if use_agent else 'baseline',
                                    policy.policy_version, decision, converged, trace)
         event.details['assessment_explanation'] = explanation
         if run_id:

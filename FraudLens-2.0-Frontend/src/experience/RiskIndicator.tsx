@@ -8,6 +8,7 @@ export type RiskPresentation = {
   basis: string; explanation: string; historical?: boolean; scope?: string;
   display_band?: 'LOW'|'MEDIUM'|'HIGH'|'UNASSESSED'; provisional?: boolean;
   display_policy_version?:string; next_action?:string;
+  method?:string;method_note?:string;status_label?:string;review_recommendation?:string;
   coverage?:{sufficient:number;required_applicable:number;material_gap_ids:string[]};
   supporting_findings?:{finding_id?:string;check_id?:string;attributed_to?:string;explanation?:string}[];
 };
@@ -32,12 +33,13 @@ export default function RiskIndicator({ assessment }: { assessment?: RiskPresent
       </span>)}
     </div>
     <small title={[assessment?.explanation, assessment?.scope, assessment?.run_id, assessment?.policy_version].filter(Boolean).join(' · ')}>
-      {valid ? `${assessment!.basis} · ${assessment!.score == null ? 'category only' : 'heuristic score'}`
+      {valid ? `${assessment!.basis} · ${assessment!.method === 'Local rules assessment' ? 'review priority under the local rules policy' : assessment!.score == null ? 'category only' : 'heuristic score'}`
         : assessment?.state === 'stale' ? 'Earlier assessment does not cover this run.'
         : `Current state: ${(assessment?.processing_state || 'unavailable').replaceAll('_', ' ')}.`}
       {assessment?.run_id && ` · Run ${assessment.run_id.slice(0, 10)}`}
       {assessment?.policy_version && <span className="risk-policy"> · Policy {assessment.policy_version.match(/v\d+$/)?.[0] || assessment.policy_version.slice(0, 14)}</span>}
     </small>
+    {assessment?.method_note && <p>{assessment.method_note}</p>}
     {assessment?.coverage && <p className="risk-coverage">Material evidence: {assessment.coverage.sufficient} / {assessment.coverage.required_applicable} applicable requirements sufficient.</p>}
     <p className="risk-explanation">{assessment?.explanation || 'A run-bound assessment was not saved. Review the evidence and processing status.'}</p>
     {!!assessment?.supporting_findings?.length && <p className="risk-support">Band supported by: {[...new Set(assessment.supporting_findings.map(finding=>`${(finding.check_id || 'recorded finding').replaceAll('_',' ')} (${finding.attributed_to || 'attribution unrecorded'})`))].join('; ')}. See the recorded findings below.</p>}

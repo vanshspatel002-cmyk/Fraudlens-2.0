@@ -16,6 +16,15 @@ PROVIDER_ERRORS = {'provider_http_error','provider_network_failure','provider_ci
 
 def summary(job, *, durable_result=False, saved_snapshot=False):
     job=job or {};status=job.get('status','not_recorded')
+    if (job.get('assessment_mode')=='local_rules' and status in {'completed','done'}
+        and job.get('results_persisted') and job.get('local_checks_complete')
+        and (job.get('assessment_presentation') or {}).get('run_id')==job.get('job_id')):
+        assessment=job['assessment_presentation']
+        return dict(version=VERSION,kind='local_rules',stored_execution_status=status,display_status=status,
+            local_checks_complete=True,results_persisted=True,historical_derived=False,
+            assessment_complete=True,provider_available=None,
+            admin_label=assessment['status_label'],message=assessment['explanation'],
+            customer_label=assessment['status_label'],timeline_label='Assessment complete — local rules')
     errors=[x for x in [*(job.get('failures') or []),job.get('root_failure_detail')] if isinstance(x,dict)]
     provider=any(x.get('error_category') in PROVIDER_ERRORS and (x.get('stage') in
         {'perception','perception_inputs','adjudication','provider'} or str(x.get('stage','')).startswith('agent')) for x in errors)

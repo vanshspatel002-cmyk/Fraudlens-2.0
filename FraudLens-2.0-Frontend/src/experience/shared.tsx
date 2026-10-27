@@ -618,6 +618,7 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
           amount: Number(r.claim_amount || 0),
           status: stringValue(r.status) || "open",
           processingStatus: stringValue(r.processing_status) || 'not_recorded',
+          processingLabel: stringValue(r.processing_label),
           outcome: stringValue(r.final_admin_action),
           recommendation: recommendation(stringValue(r.recommendation), stringValue(r.risk_band)),
           risk: stringValue((r.assessment_presentation as ApiRecord | undefined)?.display_band)

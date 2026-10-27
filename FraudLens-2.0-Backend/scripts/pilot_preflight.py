@@ -13,18 +13,22 @@ def main():
     parser.add_argument('--live', action='store_true', help='Make one real Gemini/provider chat probe; retries may consume additional quota')
     parser.add_argument('--warm-models', action='store_true', help='Load/download the CLIP model before presenting')
     args = parser.parse_args()
+    local = os.getenv('FRAUDLENS_ASSESSMENT_MODE')=='local_rules'
+    if local and args.live:
+        parser.error('--live is unavailable in local_rules mode; no provider request was made.')
     errors = []
-    for name in ['fastapi', 'multipart', 'PIL', 'imagehash', 'torch', 'open_clip', 'google.genai']:
+    for name in ['fastapi', 'multipart', 'PIL', 'imagehash', 'torch', 'open_clip'] + ([] if local else ['google.genai']):
         try:
             found = importlib.util.find_spec(name) is not None
         except ModuleNotFoundError:
             found = False
         print(f'{name}: {"installed" if found else "MISSING"}')
         if not found: errors.append(name)
-    for name in ['ADMIN_EMAIL', 'ADMIN_PASSWORD_SHA256', 'GEMINI_API_KEY']:
+    for name in ['ADMIN_EMAIL', 'ADMIN_PASSWORD_SHA256'] + ([] if local else ['GEMINI_API_KEY']):
         configured = bool(os.environ.get(name))
         print(f'{name}: {"configured" if configured else "MISSING"}')
         if not configured: errors.append(name)
+    if local:print('Assessment mode: Local rules assessment; Gemini is not required or probed.')
     if api.DB_PATH != 'postgresql':
         Path(api.DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = db.connect(api.DB_PATH)

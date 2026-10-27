@@ -145,8 +145,8 @@ class PatternBar(Flowable):
 def render_visual_report(report, snapshot_id, generated_at, revised=False):
     from .report_pdf import _font_names, _timestamp, CHECK_LABELS, CHECK_PURPOSES, RENDERER_VERSION
     regular, bold = _font_names()
-    latest=report.get('report_template_version','').endswith(('-v8','-v9','-v10','-v11','-v12','-v13'))
-    polished=report.get('report_template_version','').endswith(('-v9','-v10','-v11','-v12','-v13'))
+    latest=report.get('report_template_version','').endswith(('-v8','-v9','-v10','-v11','-v12','-v13','-v14'))
+    polished=report.get('report_template_version','').endswith(('-v9','-v10','-v11','-v12','-v13','-v14'))
     width = A4[0]-32*mm
     styles = {
         'body': ParagraphStyle('v4-body',fontName=regular,fontSize=9,leading=13,textColor=INK,spaceAfter=6,splitLongWords=True),
@@ -220,7 +220,10 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         saved_coverage = assessment.get('coverage') or {}
         story.append(p(f"Material evidence: {saved_coverage.get('sufficient',0)} / {saved_coverage.get('required_applicable',0)} applicable requirements sufficient. "
                        + assessment.get('next_action',''), 'small'))
-    if (processing.get('review_summary') or {}).get('kind')=='provider_partial':
+    if assessment.get('method')=='Local rules assessment':
+        story.append(p(assessment['status_label'],'h2'))
+        story.append(p(assessment['method_note'],'small'))
+    elif (processing.get('review_summary') or {}).get('kind')=='provider_partial':
         story.append(p('Partial analysis — local checks complete; AI analysis unavailable. Human review required.','h2'))
         story.append(p('Provider availability is an operational limitation, not evidence of customer fraud. Replace photographs only for an identified evidence gap.','small'))
     else:
@@ -238,12 +241,12 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         summary_card.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0)]));story.append(summary_card)
     else:story.append(p(summary))
     candidate=(report.get('assessment_explanation') or {}).get('shadow_assessment')
-    if candidate and report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11','-v12','-v13')):
+    if candidate and report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11','-v12','-v13','-v14')):
         concern_display=f"{candidate['concern_index']:.2f} / 1" if latest and finite(candidate.get('concern_index')) else str(candidate.get('concern_index'))
         coverage_display=f"{candidate['coverage']:.1%}" if latest and finite(candidate.get('coverage')) else str(candidate.get('coverage'))
         story.append(p('SHADOW ONLY · candidate concern R: '+concern_display+'; material evidence coverage C: '+coverage_display+'. Unvalidated; production risk and human review unchanged.','small'))
     saved_support = assessment.get('supporting_findings') or []
-    use_saved_support = report.get('report_template_version','').endswith('-v13') and assessment.get('display_policy_version')
+    use_saved_support = report.get('report_template_version','').endswith(('-v13','-v14')) and assessment.get('display_policy_version')
     story.append(p('Findings supporting the display band' if use_saved_support else 'Main supported findings','h2'))
     concerns = list(dict.fromkeys(short((CHECK_LABELS.get(f.get('check_id'),f.get('check_id','Finding')) + ' [' + str(f.get('attributed_to') or 'attribution unrecorded') + ']: ' if use_saved_support else '') + str(f.get('explanation') or ''),220 if use_saved_support else 175)
                                  for f in (saved_support if use_saved_support else findings) if use_saved_support or finding_state(f)=='concern'))
@@ -265,8 +268,11 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         effective_action = str(routing.get('effective_recommendation') or 'Human review required').replace('_',' ')
         next_action = ('System routing: '+effective_action+'. '+next_action if not assessment.get('complete')
                        else 'System routing: '+effective_action+'. A reviewer must independently decide the application.')
-    story += [p('Recommended reviewer action','h2'),p(next_action)]
-    if human:
+    if assessment.get('method')=='Local rules assessment':
+        next_action=assessment['next_action']+' Human approval/rejection is separate.'
+    if assessment.get('method')!='Local rules assessment':
+        story += [p('Recommended reviewer action','h2'),p(next_action)]
+    if human and assessment.get('method')!='Local rules assessment':
         label = 'Human decision for this analysis: ' if human_current else 'Historical human decision: '
         story.append(p(label+str(human.get('action','unrecorded')).replace('_',' '),'small'))
         if not human_current: story.append(p('The current assessment requires a separate review. The new assessment has not received that decision; an unrecorded review basis cannot be treated as approval or rejection of this assessment.','caption'))
@@ -274,7 +280,7 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     facts = [('Registration',registration),('Case type',kind),('Submitted',_timestamp(report.get('submitted_at')))]
     labels = {'person_name':'Applicant','vehicle_make':'Make','vehicle_model':'Model','vehicle_variant':'Variant','vehicle_year':'Year','policy_number':'Policy reference',
               'claim_amount':'Claimed amount (INR)','idv':'Insured declared value (INR)','declared_location':'Declared incident location','incident_date':'Declared incident time','declaration_notes':'Applicant declaration'}
-    if report.get('report_template_version','').endswith(('-v7','-v8','-v9','-v10','-v11','-v12','-v13')):
+    if report.get('report_template_version','').endswith(('-v7','-v8','-v9','-v10','-v11','-v12','-v13','-v14')):
         labels.update(latitude='Declared incident latitude (unverified)',longitude='Declared incident longitude (unverified)')
     facts += [(label,declaration[key]) for key,label in labels.items() if declaration.get(key) is not None and declaration[key]!='']
     story.append(grid(['Field','Declared / recorded value'],facts,[.3,.7]))
@@ -299,6 +305,9 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
             values = [row.get('contribution') for row in rows]
             if all(finite(value) for value in values): return f"Saved contribution: {sum(values):.4f} · registered weight {rows[0].get('registered_weight')}."
             return 'Numeric contribution was not recorded; no value is reconstructed.'
+        if aggregation.get('method')=='local_review_priority':
+            cited=sum(bool(row.get('cited_by_local_policy')) for row in rows)
+            return f'No numeric contribution. {cited} finding(s) cited by the saved local rules policy.'
         cited = sum(bool(row.get('cited_by_agent')) for row in rows)
         return f'No numeric contribution. {cited} finding(s) cited by the agent.'
 
@@ -427,9 +436,9 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
     if excluded_ids:
         story += [p('Checks outside this run’s applicable policy','h2'),grid(['Registered check','Result / use'],[(CHECK_LABELS.get(key,key),'Not applicable to this policy / no contribution') for key in sorted(excluded_ids)],[.5,.5])]
 
-    shadow=explanation.get('shadow_assessment') if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11','-v12','-v13')) else None
+    shadow=explanation.get('shadow_assessment') if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11','-v12','-v13','-v14')) else None
     shadow_start=len(story)
-    if report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11','-v12','-v13')):
+    if assessment.get('method')!='Local rules assessment' and report.get('report_template_version','').endswith(('-v6','-v7','-v8','-v9','-v10','-v11','-v12','-v13','-v14')):
         story.append(p('Candidate assessment — SHADOW ONLY','h1'))
         if not shadow:
             story.append(p('This saved snapshot has no candidate calculation. No missing values are reconstructed.'))
@@ -454,7 +463,9 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
         if revised:
             model_recorded=routing.get('source')=='model' and routing.get('converged') is True
             saved_output=str(routing.get('recorded_band'))+' / '+str(routing.get('model_recommendation',routing.get('recommendation')))
-            if not model_recorded and latest:
+            if routing.get('source')=='local_rules':
+                saved_output='Local rules assessment; AI-dependent interpretation not performed.'
+            elif not model_recorded and latest:
                 saved_output='Saved rules baseline; no model decision.' if routing.get('source')=='rules_baseline' else 'No converged model decision. Saved system fallback only.'
             story.append(grid([('Recorded model output' if model_recorded else 'Automated decision availability') if latest else 'Model output (unchanged)','Effective system routing','Guard / human boundary'],[(
                 saved_output,
@@ -466,7 +477,7 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
                 story.append(p('Recorded arithmetic is retained for audit only. Incomplete processing prevents a current risk classification.','small'))
             if aggregation.get('unrounded_value') is not None:
                 story.append(p('Threshold comparison uses the unrounded concern sum: '+str(aggregation['unrounded_value'])+'. Rounded display values do not move a threshold.','small'))
-        else: story.append(p('Numeric score: not computed. Production model routing does not assign numerical contributions.'))
+        else: story.append(p('Numeric score: not computed. The saved local policy assigns review priority categories.' if assessment.get('method')=='Local rules assessment' else 'Numeric score: not computed. Production model routing does not assign numerical contributions.'))
         rows=[]
         for key, entries in calculations.items():
             eligibility=('Non-completed concern retained by the saved baseline; review the recorded inconsistency' if any((row.get('eligibility') or {}).get('eligible') and row.get('execution_state')!='completed' for row in entries) else

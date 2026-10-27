@@ -60,6 +60,7 @@ type Row = {
   created_at: string;
   thumbnail: string;
   processingStatus?: string;
+  processingLabel?: string;
   outcome?: string;
 };
 type CaseImage = { id: string; src: string; label: string };
@@ -321,7 +322,7 @@ export default function Admin() {
     if (!detail || loading) return;
     setError("");
     const f = new FormData(e.currentTarget);
-    const manualReview = detail.analysisFallback || ['failed', 'interrupted','completed_partial'].includes(detail.processing?.status || '');
+    const manualReview = detail.analysisFallback || detail.assessmentExplanation?.routing?.source==='local_rules' || ['failed', 'interrupted','completed_partial'].includes(detail.processing?.status || '');
     if ((f.get("action") !== "Approve" || manualReview) && !String(f.get("reason") || "").trim()) {
       setError("A written reason is required for this decision.");
       return;
@@ -685,7 +686,7 @@ export default function Admin() {
                             <span title={r.riskExplanation} className={"risk risk-" + r.risk.toLowerCase()}>{r.risk}{r.riskProvisional && <small>Provisional — partial assessment{r.riskCoverage && <> · Material evidence {r.riskCoverage.sufficient}/{r.riskCoverage.required_applicable}</>}</small>}</span>
                           </td>
                           <td>
-                            {processingLabel({status:r.processingStatus})}
+                            {r.processingLabel || processingLabel({status:r.processingStatus})}
                           </td>
                           <td>
                             {r.outcome || (r.status === 'awaiting_evidence' ? 'More evidence requested' : 'Awaiting review')}

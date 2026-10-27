@@ -226,6 +226,10 @@ def _run_one(check: Check, ctx: CheckContext) -> list[Finding]:
     if check.scope == "image" and not ctx.images:
         return [_inconclusive(check, ctx.case.case_id, "No images available for this case.",
             {'execution_state':'not_run','missing_requirements':['images']} if ctx.config.get('execution_states') else None)]
+    if check.requires_perception and ctx.config.get('assessment_mode')=='local_rules':
+        return [_inconclusive(check,ctx.case.case_id,
+            'AI-dependent interpretation was not performed in Local rules assessment mode. This is an evidence gap, not a passed check.',
+            {'execution_state':'not_run','reason':'ai_dependency_not_performed','missing_requirements':['ai_perception']})]
     if check.check_id=='ai_generation' and ctx.config.get('skip_experimental_models'):
         return [_inconclusive(check,ctx.case.case_id,
             'Experimental zero-weight model not run in normal operation; it cannot contribute to routing.',
@@ -320,6 +324,11 @@ def run_checks(conn: sqlite3.Connection, case: Case, check_ids: Optional[list[st
                     'No comparison result was produced because the required case inputs or context were unavailable.',
                     {'execution_state': 'not_run', 'reason': 'required_inputs_unavailable'})]
             for result in results:
+                if ctx.config.get('assessment_mode')=='local_rules' and (result.evidence.get('error') or result.evidence.get('error_type') or result.evidence.get('ocr_status')=='execution_failed'):
+                    result.evidence['execution_state']='failed'
+                    if not result.evidence.get('diagnostic'):
+                        from ..analysis_diagnostics import failure_detail
+                        result.evidence['diagnostic']=failure_detail(RuntimeError('Local check execution failed; original details retained in the finding.'),'check:'+check_id)
                 result.evidence.setdefault('execution_state', 'inconclusive' if result.verdict is Verdict.INCONCLUSIVE else 'completed')
                 result.evidence.setdefault('execution_ms', elapsed_ms)
             findings.extend(results)

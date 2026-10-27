@@ -19,7 +19,8 @@ export default function CaseReview({detail,userRole,busy,humanAction,onHumanActi
 }) {
   const active = ['queued','running'].includes(detail.processing?.status || '');
   const final = ['closed_approved','closed_rejected'].includes(detail.status);
-  const manual = !!detail.analysisFallback || ['failed','interrupted','completed_partial'].includes(detail.processing?.status || '');
+  const local = detail.assessmentExplanation?.routing?.source==='local_rules';
+  const manual = local || !!detail.analysisFallback || ['failed','interrupted','completed_partial'].includes(detail.processing?.status || '');
   const outcome = detail.status === 'closed_approved' ? 'Approved' : detail.status === 'closed_rejected' ? 'Rejected' : detail.status === 'awaiting_evidence' ? 'Additional photographs requested' : 'Awaiting reviewer';
   const recordedOutcome = ({approve:'Approved',reject:'Rejected',request_more_evidence:'Additional photographs requested'} as Record<string,string>)[detail.outcome || ''] || outcome;
   const earlierReview = !!detail.outcome && !!detail.humanReviewedRun && !!detail.runId && detail.humanReviewedRun !== detail.runId;
@@ -47,7 +48,7 @@ export default function CaseReview({detail,userRole,busy,humanAction,onHumanActi
       <h2 id="review-desk-title">Desk Review</h2>
       <p className="desk-review-summary" data-sentence-count={sentences.length}>{sentences.join(' ')}</p>
       {detail.assessmentExplanation?.routing?.effective_recommendation && <dl className="review-application" aria-label="Automated routing basis">
-        <div><dt>Model recommendation (recorded)</dt><dd>{recordedModelRecommendation(detail)}</dd></div>
+        <div><dt>{detail.assessmentExplanation.routing.source==='local_rules' ? 'AI-dependent checks' : 'Model recommendation (recorded)'}</dt><dd>{recordedModelRecommendation(detail)}</dd></div>
         <div><dt>Effective system routing</dt><dd>{detail.assessmentExplanation.routing.effective_recommendation.replaceAll('_',' ')}{detail.assessmentExplanation.routing.guard_applied ? ' · material evidence guard applied' : ''}</dd></div>
         {!!detail.assessmentExplanation.coverage?.material_gap_ids?.length && <div><dt>Material missing evidence</dt><dd>{detail.assessmentExplanation.coverage.material_gap_ids.map(key=>key.replaceAll('_',' ')).join(', ')}</dd></div>}
       </dl>}
@@ -69,7 +70,7 @@ export default function CaseReview({detail,userRole,busy,humanAction,onHumanActi
         {final && <p role="status">A final decision has been recorded. Its history is preserved.</p>}
         <label className="field"><span>Action</span><select name="action" required value={humanAction} onChange={event=>onHumanAction(event.target.value)}><option>Approve</option><option>Reject</option><option>Request More Evidence</option></select></label>
         <label className="field"><span>Internal reviewer note / decision reason</span><textarea name="reason" required={humanAction !== 'Approve' || manual} maxLength={3000} rows={3}/><small>Private to reviewers. Required for rejection, evidence requests and manual review overrides.</small></label>
-        {manual && humanAction !== 'Request More Evidence' && <label className="manual-review-consent"><input type="checkbox" name="manualReviewOverride" required/><span>Proceed with manual review because automated analysis is unavailable. Explain the evidence reviewed and the reason for this override in the internal note.</span></label>}
+        {manual && humanAction !== 'Request More Evidence' && <label className="manual-review-consent"><input type="checkbox" name="manualReviewOverride" required/><span>{local ? 'Record an independent decision on the local rules assessment. Explain the evidence reviewed and your decision in the internal note.' : 'Proceed with manual review because automated analysis is unavailable. Explain the evidence reviewed and the reason for this override in the internal note.'}</span></label>}
         {humanAction === 'Request More Evidence' && <label className="field"><span>Specific photographs required (one per line)</span><textarea name="requestedArtifacts" required maxLength={3000} rows={3}/></label>}
         <label className="field"><span>Customer-visible explanation *</span><textarea name="publicNarrative" required maxLength={1500} rows={3}/><small>Share the outcome clearly without private investigation details.</small></label>
         <button className="record-action" disabled={busy || userRole === 'viewer' || active || final}>{busy ? 'Recording…' : humanAction === 'Approve' ? 'Approve case' : humanAction === 'Reject' ? 'Reject case' : 'Request more evidence'}</button>

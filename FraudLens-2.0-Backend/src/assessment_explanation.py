@@ -76,7 +76,7 @@ def explain_assessment(case, findings, decision, policy, *, converged, trace=(),
         weight = float(check.weight) if check is not None else 0.0
         state = execution_state(finding)
         verdict = _value(finding.verdict)
-        eligible = check is not None and weight>0 and verdict=='concern' and (not use_agent or state=='completed')
+        eligible = check is not None and weight>0 and verdict=='concern' and ((not use_agent and config.get('assessment_mode')!='local_rules') or state=='completed')
         reason = ('Unknown or retired check' if check is None else 'Zero-weight experimental check' if weight==0 else
                   'The existing baseline includes this concern despite its non-completed execution label; inspect the recorded inconsistency' if eligible and state!='completed' else
                   'Check did not complete with an applicable result' if state!='completed' else

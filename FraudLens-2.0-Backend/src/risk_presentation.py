@@ -29,6 +29,13 @@ def saved_display_band(summary):
 
 def assessment_presentation(report, *, allow_partial=True):
     explanation = report.get('assessment_explanation') or {}
+    if (explanation.get('assessment_type')=='local_rules' and explanation.get('local_rules')
+        and report.get('run_id') and explanation.get('run_id')==report['run_id']
+        and (report.get('processing') or {}).get('job_id')==report['run_id']
+        and (report.get('processing') or {}).get('status') in {'completed','done'}
+        and explanation.get('routing',{}).get('converged') is True):
+        from .local_rules import presentation
+        return presentation(report)
     routing = explanation.get('routing') or {}
     aggregation = explanation.get('aggregation') or {}
     coverage = explanation.get('coverage') or {}

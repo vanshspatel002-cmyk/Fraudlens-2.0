@@ -588,6 +588,7 @@ class DecisionOut(BaseModel):
 
 
 class CaseSummary(BaseModel):
+    processing_label: Optional[str] = None
     assessment_presentation: Optional[dict[str, Any]] = None
     processing_status: Optional[str] = None
     final_admin_action: Optional[str] = None
@@ -1150,6 +1151,7 @@ def _summary_for(conn: sqlite3.Connection, case: Case, facts=None) -> CaseSummar
     if saved_presentation and (saved_presentation.get('run_id') != payload.get('job_id') or saved_presentation.get('processing_state') != payload.get('status')):
         saved_presentation = None
     return CaseSummary(
+        processing_label=saved_presentation.get('status_label') if saved_presentation else None,
         assessment_presentation=saved_presentation,
         case_id=case.case_id, agent_type=case.agent_type, claim_type=case.claim_type,
         processing_status=(facts['job']['status'] if facts.get('job') is not None else None) if facts is not None else ((runtime_store.job_view(runtime_store.latest_job(conn,case.case_id),conn) or {}).get('review_summary') or {}).get('display_status'),
@@ -1968,6 +1970,7 @@ def ready() -> ReadyOut:
         raise ApiError(503, "DATABASE_UNAVAILABLE", "Database is unavailable.") from exc
     from src.runtime_readiness import worker_status,provider_status
     capabilities={**getattr(app.state,'capabilities',{}),'database':'ready','storage':'ready','worker':worker_status(),'provider':provider_status()}
+    capabilities['assessment_mode']=os.getenv('FRAUDLENS_ASSESSMENT_MODE','ai_assisted')
     validator=capabilities.get('validator','lazy')
     if validator!='ready':
         return JSONResponse(status_code=503,content={'status':'warming' if validator in {'warming','lazy'} else 'degraded',
@@ -1975,7 +1978,7 @@ def ready() -> ReadyOut:
     if DB_PATH=='postgresql' and capabilities['worker'].get('state')!='ready':
         return JSONResponse(status_code=503,content={'status':'degraded','code':'WORKER_NOT_READY',
             'message':'API and validator are ready; durable worker is not ready. Accepted evidence remains queued.','capabilities':capabilities})
-    if not capabilities['provider']['ready']:
+    if capabilities['assessment_mode']!='local_rules' and not capabilities['provider']['ready']:
         return JSONResponse(status_code=503,content={'status':'degraded','code':'PROVIDER_NOT_READY',
             'message':'Local API/storage are available; provider generation is '+capabilities['provider']['state']+'. Saved reports and human review remain available.','capabilities':capabilities})
     return ReadyOut(status='ok',capabilities=capabilities)
@@ -2009,13 +2012,14 @@ def health() -> HealthOut:
         jobs={}
     from src.runtime_readiness import worker_status,provider_status as provider_control_status
     capabilities={**getattr(app.state,'capabilities',{}),'worker':worker_status(),'provider':provider_control_status(provider_configured)}
+    capabilities['assessment_mode']=os.getenv('FRAUDLENS_ASSESSMENT_MODE','ai_assisted')
     provider_status=capabilities['provider']['state']
     degraded = (
         not reachable
-        or (provider_configured and provider_reachable is False)
+        or (capabilities['assessment_mode']!='local_rules' and provider_configured and provider_reachable is False)
         or capabilities.get('validator') in {'warming','unavailable','lazy'}
         or (DB_PATH=='postgresql' and capabilities['worker'].get('state')!='ready')
-        or not capabilities['provider']['ready']
+        or (capabilities['assessment_mode']!='local_rules' and not capabilities['provider']['ready'])
     )
 
     return HealthOut(
@@ -2095,7 +2099,8 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                 return
         conn = db.connect(DB_PATH)
         try:
-            provider = get_provider()
+            local_mode = job.get('assessment_mode')=='local_rules'
+            provider = None if local_mode else get_provider()
             current_stage='evidence_loading'
             images = db.get_images_for_case(conn, case_id)
             if not images: raise ValueError('No indexed evidence available')
@@ -2110,7 +2115,7 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             compatible_hashes=[]
             perception_sources = {'perception_cache': 0, 'request_cache': 0, 'fresh_provider': 0, 'unavailable': 0}
             network_stopped = False
-            for index, image in enumerate(images):
+            for index, image in enumerate([] if local_mode else images):
                 current_stage='perception'
                 _set_job(job_id, stage='perception', progress=0.1+0.4*index/len(images))
                 if network_stopped:
@@ -2154,7 +2159,7 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             current_stage='evidence_checks'
             _set_job(job_id, stage='evidence checks', progress=0.6, perception_sources=perception_sources, failures=failures,
                      root_failure_detail=failures[0] if failures else None,
-                     provider_request_profile=getattr(provider,'request_profile','unrecorded'),
+                     provider_request_profile='not_performed_local_mode' if local_mode else getattr(provider,'request_profile','unrecorded'),
                      checks_revision='production-checks-2026-10-23-v5')
             adjudicator = provider
             if perception_errors:
@@ -2174,10 +2179,16 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                 if phase != last_phase:
                     _set_job(job_id, stage=phase, progress=progress)
                     last_phase = phase
+            selected_policy=production_policy(case.agent_type)
+            if local_mode:
+                from dataclasses import replace
+                selected_policy=replace(selected_policy,policy_version='local-rules-'+case.agent_type+'-2026-10-27-v1')
             decision = process_case(conn, case_id, provider=adjudicator,
-                                    policy=production_policy(case.agent_type), run_id=job_id,
+                                    use_agent=not local_mode,local_rules=local_mode,
+                                    policy=selected_policy, run_id=job_id,
                                     on_stage=stage_progress,
                                     check_config={'allowed_perception_hashes':compatible_hashes,
+                                        **({'assessment_mode':'local_rules'} if local_mode else {}),
                                         **({'evaluation_cutoff':case.created_at.isoformat()} if job.get('retrospective') else {})})
             unavailable = _decision_out(decision, conn).provider_unavailable
             for event in reversed(db.get_audit_events_for_case(conn,case_id)):
@@ -2190,6 +2201,8 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
                         diagnostic=finding.get('observed_values',{}).get('diagnostic')
                         if diagnostic and diagnostic not in failures:failures.append(diagnostic)
                     break
+            if local_mode and any(row.get('execution_state')=='failed' for row in decision._assessment_explanation['findings']):
+                raise RuntimeError('A local check failed; inspect saved run diagnostics before retrying.')
             current_stage='snapshot_persistence'
             from .processing_outcome import PROVIDER_ERRORS
             provider_partial=any(item.get('error_category') in PROVIDER_ERRORS for item in failures)
@@ -2198,7 +2211,8 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             _set_job(job_id, _conn=conn, status='completed_partial' if unavailable or perception_errors else 'completed',
                 stage='manual_review' if unavailable or perception_errors else 'complete', progress=1.0,
                 local_checks_complete=True,results_persisted=True,
-                partial_reason='ai_unavailable' if provider_partial else 'assessment_incomplete',
+                assessment_method='Local rules assessment' if local_mode else None,
+                partial_reason=('ai_unavailable' if provider_partial else 'assessment_incomplete') if unavailable or perception_errors else None,
                 provider_unavailable=unavailable,
                 adjudication_sources=getattr(decision,'_model_response_sources',None),
                 failures=failures,
@@ -2213,6 +2227,9 @@ def _run_pipeline(job_id: str, case_id: str) -> None:
             # terminal status on PostgreSQL. Keep the lock through both writes.
             terminal_job = runtime_store.get_job(conn, job_id)
             terminal_job['assessment_presentation'] = presentation
+            if local_mode:
+                terminal_job['detail'] = presentation['status_label']
+                terminal_job['stage'] = 'complete'
             runtime_store.save_job(conn, terminal_job)
             _snapshot_report(conn, case_id)
             conn.commit()
@@ -2553,8 +2570,12 @@ def get_job(job_id: str, request: Request, x_applicant_token: Optional[str] = He
                 customer_auth.require_case(conn, account, job['case_id'])
         job=runtime_store.job_view(job,conn)
         if not reviewer:
+            public_summary={key:value for key,value in job['review_summary'].items() if key in {
+                'version','kind','stored_execution_status','display_status','local_checks_complete',
+                'results_persisted','historical_derived','assessment_complete','customer_label'}}
             job={**job,'failures':[],'root_failure_detail':None,
-                 'detail':job['review_summary'].get('customer_label') or 'Your application is saved. Contact the review team if processing remains unavailable.'}
+                 'review_summary':public_summary,
+                 'detail':public_summary.get('customer_label') or 'Your application is saved. Contact the review team if processing remains unavailable.'}
     return JobOut(**{k:v for k,v in job.items() if k in JobOut.model_fields})
 
 
@@ -2629,9 +2650,9 @@ def record_action(case_id: str, payload: ActionIn,
         raise ApiError(409, 'REVIEW_BASIS_CHANGED', 'The analysis run changed. Refresh and review the current report.')
     if payload.expected_evidence_ids is not None and sorted(payload.expected_evidence_ids) != reviewed_images:
         raise ApiError(409, 'REVIEW_BASIS_CHANGED', 'The evidence changed. Refresh and review all current photographs.')
-    if reviewed_job and (reviewed_job['status'] in {'failed', 'interrupted','completed_partial'} or reviewed_job.get('provider_unavailable')) and payload.action != AdminAction.REQUEST_MORE_EVIDENCE:
+    if reviewed_job and (reviewed_job['status'] in {'failed', 'interrupted','completed_partial'} or reviewed_job.get('provider_unavailable') or reviewed_job.get('assessment_mode')=='local_rules') and payload.action != AdminAction.REQUEST_MORE_EVIDENCE:
         if not payload.manual_review_override or not (payload.reason or '').strip():
-            raise ApiError(422, 'MANUAL_REVIEW_REQUIRED', 'Explicitly acknowledge incomplete analysis and record your manual-review rationale.')
+            raise ApiError(422, 'MANUAL_REVIEW_REQUIRED', 'Explicitly acknowledge independent manual review and record your evidence-based rationale.')
     if payload.action == AdminAction.REJECT and not (payload.public_message or '').strip():
         raise ApiError(422, 'PUBLIC_REASON_REQUIRED', 'Provide a customer-visible explanation for rejection separately from internal notes.')
     revision=conn.execute('SELECT COUNT(*) FROM admin_actions WHERE case_id=?',(case_id,)).fetchone()[0]

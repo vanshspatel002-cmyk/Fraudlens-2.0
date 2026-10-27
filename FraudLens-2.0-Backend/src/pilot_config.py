@@ -33,7 +33,7 @@ def load_pilot_environment(source, root=ROOT):
     try:cap=int(env['FRAUDLENS_LIVE_LIMIT'])
     except ValueError:raise PilotConfigurationError('FRAUDLENS_LIVE_LIMIT must be an integer.') from None
     if not 0<=cap<=15:raise PilotConfigurationError('FRAUDLENS_LIVE_LIMIT must retain the original cap or a lower limit.')
-    if not any(env.get(name,'').strip() for name in KEY_NAMES):raise PilotConfigurationError('The pilot Gemini key configuration is missing.')
+    if env.get('FRAUDLENS_ASSESSMENT_MODE')!='local_rules' and not any(env.get(name,'').strip() for name in KEY_NAMES):raise PilotConfigurationError('The pilot Gemini key configuration is missing.')
     if not env['DATABASE_URL'].startswith(('postgresql://','postgres://')):raise PilotConfigurationError('DATABASE_URL must select PostgreSQL.')
     for name,filename in [('FRAUDLENS_LIVE_LEDGER','live_calls.json'),('GEMINI_QUOTA_BUDGET','quota_budget.json')]:
         actual=Path(env[name]);actual=actual if actual.is_absolute() else root/actual
