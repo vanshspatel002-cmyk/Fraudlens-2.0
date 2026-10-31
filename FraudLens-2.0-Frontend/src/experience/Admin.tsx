@@ -278,11 +278,13 @@ export default function Admin() {
     e.preventDefault();
     setError("");
     const f = new FormData(e.currentTarget);
+    const email = String(f.get("email") || "").trim();
+    const password = String(f.get("password") || "").trim();
     setLoading(true);
     try {
       const j = (await post("login", {
-        email: f.get("email"),
-        password: f.get("password"),
+        email,
+        password,
       })) as { user: string; role:string };
       setUser(j.user);setUserRole(j.role);
     } catch (e) {
