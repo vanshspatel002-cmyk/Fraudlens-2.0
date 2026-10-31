@@ -1,7 +1,9 @@
+import { API_BASE } from './api-transport';
+
 // Allow the configured local API without disabling the browser policy.
 const configuredApiOrigin = (() => {
   try {
-    const url = new URL(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000');
+    const url = new URL(API_BASE);
     const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
     return url.protocol === 'https:' || (url.protocol === 'http:' && loopback) ? url.origin : '';
   } catch { return ''; }

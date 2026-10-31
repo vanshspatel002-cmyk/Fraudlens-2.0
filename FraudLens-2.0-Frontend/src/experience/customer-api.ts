@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+import { apiFetch } from '../lib/api-transport';
 const TOKEN_KEY = 'fraudlens_customer_token';
 export const customerToken = () => typeof window === 'undefined' ? '' : sessionStorage.getItem(TOKEN_KEY) || '';
 export function clearCustomerSession() {
@@ -9,10 +9,7 @@ export async function customerFetch(path: string, options: RequestInit = {}): Pr
   const headers = new Headers(options.headers);
   const token = customerToken();
   if (token) headers.set('Authorization', 'Bearer ' + token);
-  let response: Response;
-  try { response = await fetch(API_BASE + path, {...options, headers,
-    signal: options.signal ? AbortSignal.any([options.signal,AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000)}); }
-  catch { throw new Error('The FraudLens API is unreachable. Your entered information is preserved; please retry.'); }
+  const response = await apiFetch(path, {...options, headers});
   if (token !== customerToken()) throw new Error('Your customer session changed. Open this view again.');
   if (response.status === 401 && !path.endsWith('/login') && !path.endsWith('/register')) {
     if (token === customerToken()) {

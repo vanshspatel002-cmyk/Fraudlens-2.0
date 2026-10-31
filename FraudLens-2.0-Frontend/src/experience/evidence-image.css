@@ -1,0 +1,2 @@
+.evidence-image { display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;min-width:32px;min-height:32px; }
+.admin.admin .image-gallery .evidence-image { display:block;width:100%;padding:0; }

@@ -56,3 +56,6 @@ audit_reports/~$*.docx
 **/.coverage
 **/htmlcov/
 **/coverage/
+
+# Local project archives
+*.rar

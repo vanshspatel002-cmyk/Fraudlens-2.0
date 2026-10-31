@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react';
 import ReportPanel from './ReportPanel';
+import EvidenceImage from './EvidenceImage';
 import {applicationDetails,deskReviewSentences,formatShadowMetric,processingLabel,readableTimeline,recordedModelRecommendation,reviewDate,type ReviewSummaryInput} from './reviewPresentation';
 import './case-review.css';
 
@@ -41,7 +42,7 @@ export default function CaseReview({detail,userRole,busy,humanAction,onHumanActi
 
     <section className="case-panel review-section" aria-labelledby="review-photos-title" data-review-section="photos">
       <h2 id="review-photos-title">Vehicle photographs</h2>
-      {detail.images.length ? <div className="image-gallery review-photos">{detail.images.map(image=><button key={image.id} type="button" onClick={()=>onPhoto(image)}><img src={image.src} alt={image.label}/><span>{image.label}</span></button>)}</div> : <p>No vehicle photographs were recorded.</p>}
+      {detail.images.length ? <div className="image-gallery review-photos">{detail.images.map(image=><button key={image.id} type="button" onClick={()=>onPhoto(image)}><EvidenceImage imageId={image.id} label={image.label}/><span>{image.label}</span></button>)}</div> : <p>No vehicle photographs were recorded.</p>}
     </section>
 
     <section className="case-panel review-section review-desk" aria-labelledby="review-desk-title" data-review-section="desk">

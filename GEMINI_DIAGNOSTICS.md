@@ -1,3 +1,41 @@
+# Latest submission diagnosis — 23 October 2026
+
+Latest inspected case `case-15668eb3ffc0`, run
+`774e399be23247cc83732d4f00654882`, completed local checks and persisted its
+processing result and report snapshot as `completed_partial`. Its perception
+diagnostic is `provider_circuit_open`, `attempted_network=false`, attempt count
+zero; agent execution lacked the required perception. Worker logs corroborate
+`ProviderCircuitOpen`. The worker is ready and its configuration matches the API.
+
+The immediate cause is the original manual provider pause. It followed actual
+HTTP 503 responses at attempts 16 and 17 on 22 October, not a fresh provider
+response from this submission. There is an independent configuration boundary:
+API/worker select `fraudlens_validation_panel_20261022`, normal operation selects
+`fraudlens_pilot`, and the earlier presentation grant is closed. A pure offline
+check shows that resuming the pause alone still fails the existing schema guard.
+Opening a new 30-call task to overcome that guard is outside this task's one-call,
+no-budget-expansion authorization. No such grant or scope bypass was performed.
+
+No application correction or restart was applied. Existing controls do not permit
+a generation probe in the current workspace. A deliberate return to the pilot
+configuration, or explicit authorization to align normal operation with the
+presentation workspace, must precede controlled recovery. Neither workspace nor
+its accounts/ownership was silently changed. Google availability and actual account
+quota remain unverified; historical 503s are not evidence of a current outage.
+
+Authenticated report/detail/queue responses agree on this run's partial status and
+neutral incomplete assessment. The existing manual-review fallback is retained.
+Focused offline tests of manual pause/limits, transient cooldown/recovery/reopen,
+and one concurrent probe: **3 passed (13.15 s)**. Frontend saved-routing/fallback
+assertions passed with no network. Original provider-control files remain
+byte-identical; cumulative attempts remain **17**, new generation requests **0**.
+The only tracked-file edit is this diagnostic note; no cases, findings, reports,
+human decisions, risk rules or operating settings were rewritten.
+
+Earlier diagnostic history follows unchanged.
+
+---
+
 # Final presentation status — 23 October 2026
 
 **Fresh AI completion is currently blocked externally.** The new claims run

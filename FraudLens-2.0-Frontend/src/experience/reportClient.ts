@@ -1,4 +1,4 @@
-const base = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+import { API_BASE as base } from '../lib/api-transport';
 
 export type ReportVersion = {
   snapshot_id: string;
