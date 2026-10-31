@@ -8,7 +8,81 @@ archetype evaluation below is preserved; no new detector-accuracy claim is made.
 Controlled model/embedding fixtures are distinguished from real database, PDF,
 local image processing and browser tests. Gemini stop controls remain intact.
 
-# Check and archetype verification — 14 October 2026
+# Check and archetype verification — 15 October 2026
+
+## Targeted continuation (no repeated corpus sweep)
+
+The preserved 367-case execution inventory below was not rerun. Research policies,
+weights, thresholds, retired checks, scenario databases and evaluation artifacts
+remain unchanged. New production runs retain agent policy v3 and separately
+record `checks_revision=production-checks-2026-10-15-v2`. Historical reports are not
+rewritten. No verdict is inferred from a filename, archetype or desired outcome.
+
+`case-0698`, the selected CONTEXT_MISMATCH representative, was traced on an
+isolated consistent SQLite copy using recorded perception/weather only. It has
+overcast weather, dry asphalt, daylight, no visible shadow, sun elevation 7.08°,
+100% mean cloud and cached 1.2 mm precipitation for the declared UTC hour. The
+existing weather contradiction requires clear/dry observations; overcast did not
+satisfy it. Daylight agreed with solar geometry. Thus PASS meant no contradiction
+in available comparisons, not demonstrated detection of its label. No rule was
+changed to force CONCERN. Missing solar/weather/vision cues produce INCONCLUSIVE
+in new focused tests; missing time/coordinates are disclosed as untestable in
+reports. Partial scene comparisons now have explicit report limitations.
+
+A separate production integration defect was found: intake sends an actual UTC
+instant, whereas the generated research corpus tags local wall clocks as UTC.
+New intake records the timestamp basis in a server-written audit. Production
+uses aware instants directly, leaves an unverified basis inconclusive, and
+records that basis in findings. It never derives the basis from applicant notes,
+filenames or case IDs. The default research conversion remains unchanged.
+Focused tests cover direct UTC use, abstention without lookups and the trusted
+API-audit-to-check configuration path for aware/naive inputs.
+
+The duplicate search now reads and prepares one complete comparison snapshot per
+check invocation, rather than downloading every embedding again for every image.
+It is discarded after the invocation; new submissions/reprocessing reload it.
+No candidate sampling, weights, thresholds or attribution rules changed.
+Exact ordered matches/scores agreed with the original float64 calculation for
+seven existing PostgreSQL images against 1,446 comparison records. Focused
+regressions include tied scores, null/zero embeddings, exclusion of the current
+case and fresh evidence between invocations. An isolated real PostgreSQL test
+also passed. This verifies execution equivalence and freshness, not independent
+duplicate detection accuracy. See LATENCY_MEASUREMENTS.md for the remaining
+cost of one complete cloud read and cold OCR.
+
+Actual EasyOCR ran on one existing visually inspected project photo (original
+rear registration manually transcribed before inference). One fresh local OCR
+execution took **15.438 s** after **44.516 s** Reader initialization. Comparing the
+rear registration yielded PASS; reusing the raw observation for a different
+declaration yielded CONCERN (cache time rounded below 1 ms). This is real local
+OCR/comparison execution with **zero provider requests**, not a model stub.
+The photo contains two vehicles, so it does not validate vehicle attribution,
+ownership, general OCR accuracy or consistent six-view underwriting evidence.
+Private evidence: `readiness_20261015/readable-plate.json` and its isolated DB.
+
+One historical false candidate was independently traced to advertising text:
+`880-855-9217` was converted positionally into `BB08SS9217`. New production
+comparison requires the first two registration letters to have been observed
+as letters. It rejects this digit-only phone prefix as a plate candidate and
+returns INCONCLUSIVE when no other candidate exists. Raw OCR caches remain
+reusable; the current case comparison is always recalculated. The default
+research coercion remains unchanged, with a regression preserving its old
+output. This correction does not validate foreign/BH plate formats, candidate
+jurisdiction, low-confidence reads or multi-vehicle attribution. Weight remains
+0.3; no retired or zero-weight check was enabled.
+
+New OCR evidence distinguishes engine unavailable, execution failed, no text,
+text without a plate candidate, missing declaration, match, mismatch and low
+confidence mismatch. Earlier aggregate INCONCLUSIVE counts cannot retrospectively
+be assigned these new statuses. The frozen demo contains 1,499 historical plate
+findings: 63 with empty raw-text arrays, 41 with nonempty arrays, and 1,395 in an
+older evidence shape. These are stored findings, not 1,499 independent fresh
+readings, and are separate from the 611 inventory outputs below.
+
+Signed C2PA validation remains uncovered: no legitimate local signed fixture or
+installed bindings. The attempted licensed Wikimedia plate download returned 403;
+the actual comparison above instead used an existing local project photograph.
+A genuinely consistent, authorized six-view vehicle set remains a missing input.
 
 PostgreSQL continuation (15 October): the original inventory/accuracy limits
 below remain historical and unchanged. The selected demo's cached perception,
@@ -44,7 +118,7 @@ This records execution and coverage, not a deployment accuracy certificate. The 
 
 Detailed observed output is private and ignored by Git: `FraudLens-2.0-Backend/outputs/pilot_validation/check_verification.json`; four `checks-*.db` copies and `check_inventory.log` accompany it. Uncached external HTTP was deliberately disabled; existing perception/cache/index data was reused. No new Gemini result was supplied to this evaluation.
 
-The verdict totals below are raw registry/research outputs across all four copies, often multiple findings per case. Production v2 separately converts every zero-weight finding to INCONCLUSIVE and preserves its original observations/verdict/confidence as experimental evidence. Historical policies and original evaluation files are unchanged. C = claims, U = underwriting. “Both” in the policy column means selected in both production policies; a selected zero-weight check still contributes no production detection signal.
+The verdict totals below are raw registry/research outputs across all four copies, often multiple findings per case. Production v2 onward separately converts every zero-weight finding to INCONCLUSIVE and preserves its original observations/verdict/confidence as experimental evidence. Historical policies and original evaluation files are unchanged. C = claims, U = underwriting. “Both” in the policy column means selected in both production policies; a selected zero-weight check still contributes no production detection signal.
 
 ## Inventory and observed execution
 
@@ -100,8 +174,8 @@ The answer keys belong to isolated scenario datasets, not detector inputs. These
 
 The latest preserved ablation report is incomplete: baseline 99/99 eligible, agent 58/99 eligible, following 22 exclusions from 121 selected records. The existing integrity verifier returned 58 verified decisions out of 58 with no problems on an isolated copy. Seven clean underwriting cases in the historical evaluated subset were all flagged, with zero underwriting fraud examples there; that subset cannot establish underwriting sensitivity. Historical `check_performance_v2.md` and threshold investigation results remain frozen. Threshold candidate experiments did not justify adopting a replacement rule.
 
-Production interpretation corrections are versioned separately in `src/agent/production_policy.py`: v1 integrates already registered nonzero scenario checks; v2 clarifies zero-weight limitations and actual applicant declarations; current v3 states that the billing threshold is a preserved research benchmark with unverified current legal applicability. The browser reports were produced under v2. Research policies in `src/agent/policy.py`, weights, thresholds, historical databases and output files are preserved.
+Production interpretation corrections are versioned separately in `src/agent/production_policy.py`: v1 integrates already registered nonzero scenario checks; v2 clarifies zero-weight limitations and actual applicant declarations; current v3 states that the billing threshold is a preserved research benchmark with unverified current legal applicability. Initial 14 October browser reports used v2; the latest 15 October rehearsals verify v3. Research policies in `src/agent/policy.py`, weights, thresholds, historical databases and output files are preserved.
 
-Later performance corrections preserve verdict rules: duplicate-pool metrics count rows with usable stored embeddings in SQL; production-only plate OCR caches raw text/confidence observations by image hash and engine version/configuration, recomputes each case's registration comparison, and releases cache writer locks before subsequent inference. Focused regressions verify reuse without identity mixing and writer blocking. One actual local reading took 1.641 seconds, reused its cache in 0.015 seconds, returned identical INCONCLUSIVE findings with zero plate observations, and released its writer lock. No provider was called. This establishes an execution/cache example, not OCR accuracy. The 367 raw registry executions predate these performance corrections; no new detection accuracy is inferred from them.
+Later performance corrections preserve verdict rules: duplicate-pool metrics first moved to a SQL count, then to the same complete comparison snapshot used for matching (see the current continuation above). Production-only plate OCR caches raw text/confidence observations by image hash and engine version/configuration, recomputes each case's registration comparison, and releases cache writer locks before subsequent inference. Focused regressions verify reuse without identity mixing and writer blocking. One earlier actual local reading took 1.641 seconds, reused its cache in 0.015 seconds, returned identical INCONCLUSIVE findings with zero plate observations, and released its writer lock. No provider was called. This establishes an execution/cache example, not OCR accuracy. The 367 raw registry executions predate these performance corrections; no new detection accuracy is inferred from them.
 
-Actual configured Gemini attempts in this session: **2/15**, both vision HTTP 503 failures. The persistent ledger stopped further live attempts after repeated failures. No new successful Gemini vision or agent adjudication is claimed. Offline tests use disclosed stubs where noted; cached legitimate perception and actual deterministic checks are different sources of evidence. Live vision, live agent adjudication, AI/edited-image accuracy, signed C2PA validation, usable plate OCR coverage, complete external lookup coverage, same-vehicle multi-view inspection accuracy and independent real-world adjudication remain uncovered.
+Original 14 October Gemini attempts: **2/15**, both vision HTTP 503 failures. This 15 October readiness continuation made **zero additional requests** and preserved the persistent stop. No new successful Gemini vision or agent adjudication is claimed. Offline tests use disclosed stubs where noted; cached legitimate perception and actual deterministic checks are different sources of evidence. Live vision, live agent adjudication, AI/edited-image accuracy, signed C2PA validation, general plate OCR coverage, complete external lookup coverage, same-vehicle multi-view inspection accuracy and independent real-world adjudication remain uncovered.

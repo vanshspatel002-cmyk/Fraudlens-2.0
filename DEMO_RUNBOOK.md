@@ -12,6 +12,76 @@ Older anonymous-applicant instructions below are historical.
 
 # Two-tab local demonstration
 
+## Current Node 22 / production frontend recipe
+
+Use [PILOT_HANDOVER.md](PILOT_HANDOVER.md)'s current commands: PostgreSQL API on
+**8001**, separate durable worker, Node **22.23.3**, and the built frontend on
+**5173**. Preserve the original service on 8000. Build and serve sequentially;
+the old port-8002/npm-24 examples below record the earlier migration rehearsal.
+DATABASE_URL stays in the backend. No browser Supabase client/Auth is involved.
+
+Wait for API startup/admission warmup, worker OCR readiness and worker startup.
+Open `http://127.0.0.1:5173/apply/claims` and `/admin` in separate Chrome tabs.
+Follow the full claims and underwriting steps below. Reviewer credentials remain
+in the ignored local fixture; never paste them into commands, reports or Git.
+
+Production agent policy is v3; the production plate correction is separately
+identified as `plate-ocr-observed-prefix-v2`. View labels are applicant declarations.
+The run's overall check revision is `production-checks-2026-10-15-v2`, which also
+distinguishes actual intake UTC instants from legacy research wall clocks.
+There is still no authorized, genuinely consistent six-view vehicle fixture.
+The six stock photographs exercise plumbing and cannot validate same-car views.
+The existing Gemini ledger remains stopped at two original HTTP 503 attempts;
+zero fresh vision/adjudication success is established. All human demo decisions
+are explicitly fictional, and failed analysis stays failed after human approval.
+
+New recorded rehearsal, in a backend terminal (writes fictional new submissions):
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+$env:PILOT_UI = 'http://127.0.0.1:5173'
+$env:PILOT_API = 'http://127.0.0.1:8001'
+$env:PILOT_DB = 'postgresql'
+$env:FRAUDLENS_PG_SCHEMA = 'fraudlens_pilot'
+$env:PILOT_EXPIRE_SESSION = '1'
+$env:PILOT_OUTPUT_DIR = Join-Path (Get-Location).Path ('outputs\pilot_validation\browser-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+.\venv\Scripts\python.exe -u -X utf8 scripts/verify_browser_pilot.py --workflow both
+```
+
+The harness preserves prior output directories/failed attempts, uses actual Chrome,
+uploads, HTTP, local checks and database persistence, and collects JavaScript and
+console errors from page creation through both workflows and mobile checks.
+It verifies v3 declarations/benchmark disclosure, run/evidence-specific human
+actions, secure supplementation, immutable earlier reports, repeated selection of
+the same saved report, Escape, logout and expiry of its own exact session only.
+Mobile checks cover authenticated review, tracking, claims and underwriting at
+390 px. A console 401 during intentional expiry is expected and still recorded.
+
+The uninterrupted SQLite-copy rehearsal (`readiness_20261015/browser_acceptance2`)
+passed every workflow step with **0 JavaScript exceptions** and that one expected
+401. It found 13/50 first-run findings, preserved originals after supplementation,
+and generated 9/24-page PDFs. Visual rendering then found a dark paper background
+below the cards; a print-only correction passed a new build. The uninterrupted
+PostgreSQL rehearsal at `c917da5` then passed both complete workflows, with
+0 JavaScript exceptions and two expected session-check 401 console errors.
+Its PDFs contain 9/24 pages and 12,319/34,954 text characters; selected first/last
+pages were rendered and visually checked with readable text and white paper.
+Earlier failed rehearsal data remains preserved. A final-source run follows the
+run-local duplicate-read optimization; its outcome is recorded below when complete.
+
+Observed SQLite admission: claims 5.969 s, underwriting six images 3.687 s.
+First/supplement poll-to-terminal observations: claims 92.562/9.172 s;
+underwriting 300.234/33.157 s. These are individual observations, not latency
+percentiles. Uncached OCR remains slow; cached observations improve repeat
+processing while each case's identity comparison/findings are recalculated.
+See LATENCY_MEASUREMENTS.md for backend timings and actual memory pressure.
+
+Headless PDF generation/text extraction and selected rendered pages verify report
+content/layout. They do not verify the manual OS print/Save-as dialog. Screen
+readers, all browsers/viewports and complete security/load coverage are unverified.
+
+## Previous migration rehearsal (port 8002)
+
 ## PostgreSQL pilot — 15 October 2026
 
 Use the migrated private `fraudlens_pilot` schema and unchanged local evidence.

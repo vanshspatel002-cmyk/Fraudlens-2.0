@@ -1,5 +1,6 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { customerToken, clearCustomerSession } from './customer-api';
+import { apiFetch } from '../lib/api-transport';
 export const categories = ["Identity", "History", "Provenance", "Context", "Economic"];
 export const recommendations = [
   "Clear",
@@ -349,7 +350,6 @@ export function Safety() {
     </div>
   );
 }
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 const adminEmail = () => sessionStorage.getItem("fraudlens_admin_email") || "";
 const adminToken = () => sessionStorage.getItem("fraudlens_admin_token") || "";
 const authHeaders = (): Record<string, string> =>
@@ -361,13 +361,7 @@ async function request(path: string, options: RequestInit = {}, scope: 'reviewer
   if (scope === 'reviewer') for (const [k, v] of Object.entries(authHeaders())) headers.set(k, v);
   if (scope === 'customer' && customerToken()) headers.set('Authorization', 'Bearer ' + customerToken());
   const sentAuthorization = headers.get('Authorization') || '';
-  let r: Response;
-  try {
-    r = await fetch(API_BASE + path, { ...options, headers,
-      signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000) });
-  } catch {
-    throw new Error("The FraudLens API is unreachable. Check the backend service and try again.");
-  }
+  const r = await apiFetch(path, { ...options, headers });
   const text = await r.text();
   let j: unknown = null;
   try {
@@ -479,33 +473,22 @@ function mapFormData(input: FormData) {
     if (k.startsWith("photo:") && v instanceof File) {out.append("images", v, v.name); out.append("photo_slots", k.slice(6));}
   return out;
 }
-async function caseDetail(id: string) {
-  const d = await request("/v1/cases/" + encodeURIComponent(id));
-  let trace: { steps?: ApiRecord[] } = { steps: [] };
-  try {
-    trace = (await request("/v1/cases/" + encodeURIComponent(id) + "/trace")) as {
-      steps?: ApiRecord[];
-    };
-  } catch {
-    trace = { steps: [] };
-  }
-  let report: ApiRecord = {};
-  try {
-    report = await request("/v1/cases/" + encodeURIComponent(id) + "/report");
-  } catch {
-    report = {};
-  }
+async function caseDetail(id: string, options: RequestInit = {}) {
+  const path = '/v1/cases/' + encodeURIComponent(id);
+  // These independent reads should take one network wait, not three.
+  const [d, report] = await Promise.all([
+    request(path, options),
+    request(path + '/report', options),
+  ]);
   const findings = Object.values(
     (d.findings_by_category as Record<string, ApiRecord[]> | undefined) || {},
   ).flat();
-  const images = await Promise.all(
-    ((d.images as ApiRecord[] | undefined) || []).map(async (im) => ({
+  const images = ((d.images as ApiRecord[] | undefined) || []).map(im => ({
       ...im,
       id: stringValue(im.image_id),
       label: stringValue(im.damage_description) || "Vehicle evidence",
-      src: await apiImageUrl(stringValue(im.image_id)),
-    })),
-  );
+      src: '',
+    }));
   const decision = (d.decision as ApiRecord | undefined) || {};
   const adminAction = (report.admin_action as ApiRecord | undefined) || {};
   return {
@@ -549,14 +532,8 @@ async function caseDetail(id: string) {
       check_weight: f.check_weight,
       check_limitation: f.check_limitation,
     })),
-    trace: (trace.steps || []).map((s) => ({
-      type: stringValue(s.type),
-      title: stringValue(s.kind),
-      summary: stringValue(s.content),
-      tool: stringValue(s.tool_name),
-      input: s.tool_input,
-      result: s.tool_output,
-    })),
+    // The review workspace uses the saved report; it does not render a trace.
+    trace: [],
     processing: d.processing,
     assessmentExplanation: report.assessment_explanation,
     riskPresentation: report.assessment_presentation,
@@ -604,9 +581,8 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
     const params = new URLSearchParams(path.split("?")[1] || "");
     if (!params.has("sort_by")) params.set("sort_by", "created_at");
     if (!params.has("sort_dir")) params.set("sort_dir", "desc");
-    const j = await request("/v1/cases?" + params);
-    const cases = await Promise.all(
-      ((j.items as ApiRecord[] | undefined) || []).map(async (r) => {
+    const j = await request("/v1/cases?" + params, options);
+    const cases = ((j.items as ApiRecord[] | undefined) || []).map(r => {
         const thumbId = String(r.thumbnail_url || "").match(/\/v1\/images\/([^?]+)/)?.[1];
         return {
           id: stringValue(r.case_id),
@@ -623,18 +599,21 @@ export async function api(path: string, options?: RequestInit): Promise<unknown>
           recommendation: recommendation(stringValue(r.recommendation), stringValue(r.risk_band)),
           risk: stringValue((r.assessment_presentation as ApiRecord | undefined)?.display_band)
             || ((r.assessment_presentation as ApiRecord | undefined)?.complete ? stringValue((r.assessment_presentation as ApiRecord)?.category).toUpperCase() : 'UNASSESSED') || 'UNASSESSED',
+          riskIndex: typeof (r.assessment_presentation as ApiRecord | undefined)?.risk_index === 'number'
+            ? ((r.assessment_presentation as ApiRecord).risk_index as number) : undefined,
+          riskIndexFormatted: stringValue((r.assessment_presentation as ApiRecord | undefined)?.risk_index_formatted) || undefined,
           riskProvisional: !!(r.assessment_presentation as ApiRecord | undefined)?.provisional,
           riskCoverage: (r.assessment_presentation as ApiRecord | undefined)?.coverage as {sufficient:number;required_applicable:number} | undefined,
           riskExplanation: stringValue((r.assessment_presentation as ApiRecord | undefined)?.explanation) || 'A run-bound assessment was not saved.',
           created_at: stringValue(r.created_at) || new Date().toISOString(),
-          thumbnail: thumbId ? await apiImageUrl(thumbId) : "",
+          thumbnail: '',
+          thumbnailId: thumbId,
         };
-      }),
-    );
+      });
     return { cases, total: j.total, has_more: j.has_more, page: j.page, page_size: j.page_size };
   }
   if (path.startsWith("case?id="))
-    return caseDetail(new URLSearchParams(path.slice(path.indexOf("?"))).get("id") || "");
+    return caseDetail(new URLSearchParams(path.slice(path.indexOf("?"))).get("id") || "", options);
   if (path === "submit" && options?.body instanceof FormData) {
     const j = await request('/v1/cases', { method: 'POST', body: mapFormData(options.body),
       headers: {'Idempotency-Key': String(options.body.get('submissionKey') || crypto.randomUUID())} }, 'customer');
@@ -709,14 +688,16 @@ export async function apiImageUrl(id: string, full = false) {
   const token = adminToken();
   if (!token) return '';
   const pending = (async () => {
-    const r = await fetch(API_BASE + '/v1/images/' + encodeURIComponent(id) + (full ? '' : '?thumb=1'), {headers: authHeaders()});
+    const r = await apiFetch('/v1/images/' + encodeURIComponent(id) + (full ? '' : '?thumb=1'), {headers: authHeaders()});
     if (!r.ok) return '';
     const blob = await r.blob();
     if (adminToken() !== token) return '';
     const url = URL.createObjectURL(blob); imageUrls.set(key,url); return url;
   })();
   imageRequests.set(key,pending);
+  // A missing thumbnail must not hide an otherwise available case queue.
   try { return await pending; }
+  catch { return ''; }
   finally { if (imageRequests.get(key) === pending) imageRequests.delete(key); }
 }
 export const post = (path: string, body: unknown) =>

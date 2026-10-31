@@ -1,5 +1,11 @@
 # PostgreSQL migration and SQLite rollback
 
+Current readiness continuation: see PILOT_HANDOVER.md and DEMO_RUNBOOK.md for
+the API on **8001**, production frontend on **5173**, pinned Node **22.23.3**,
+and the latest uninterrupted PostgreSQL acceptance. The port-8002/older Node
+commands and counts below preserve the original migration qualification.
+The original service on 8000 and frozen SQLite rollback remain untouched.
+
 Migration branch: `migration/supabase-postgresql-20261015`, from `38ca5ac`.
 No applicable `AGENTS.md` was found in the repository or parent directories.
 The audit dossier and all four pilot documents were read before editing.

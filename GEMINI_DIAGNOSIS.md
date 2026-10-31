@@ -14,6 +14,9 @@ record establishes successful vision, parsing, persistence or adjudication.
 The sanitized records do not retain Google's complete error body/request ID.
 They cannot distinguish temporary overload from a model/project-specific
 availability problem. There is no recorded 429 in these two attempts.
+The local persistent stop raises the existing `QuotaBudgetExhausted` exception
+class before network access. Seeing that class in a later job log means the
+local stop prevented an attempt; it is not evidence of a new Google quota error.
 
 Google describes 503 as temporary service overload/unavailability and 429 as
 resource exhaustion. Calling these 503s “quota exhaustion” is unsupported.

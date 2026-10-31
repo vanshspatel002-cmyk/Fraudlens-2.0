@@ -9,6 +9,166 @@ their account/storage/receipt limitations and test counts may be superseded.
 
 # FraudLens 2.0 pilot handover — 15 October 2026
 
+## Current readiness continuation
+
+Continue on `autonomous/demo-readiness-20261015`; this preserves the completed
+PostgreSQL migration and earlier hardening. See [AUTONOMOUS_PROGRESS.md](AUTONOMOUS_PROGRESS.md)
+for final verification, [GEMINI_DIAGNOSIS.md](GEMINI_DIAGNOSIS.md) for the stopped
+provider, [LATENCY_MEASUREMENTS.md](LATENCY_MEASUREMENTS.md) for actual laptop
+timings, and [DEMO_READINESS_CHECKLIST.md](DEMO_READINESS_CHECKLIST.md).
+
+The supported runtime is now **Node 22.23.3 / npm 10.9.9**, installed separately
+from the unrelated global Node 24. The lockfile is unchanged. Actual type-check,
+production builds, built-server HTTP and Node-22 development-server HTTP passed.
+Nitro 3.0.260903-beta's compiled Vite builder still warns that it requires ^8,
+although its package metadata/current documentation include Vite 7 compatibility.
+Vite 7.3.6 is retained: builds/SSR were exercised; broader compatibility is not
+established. No dependency upgrade or fresh installation was necessary/rehearsed.
+
+Gemini remains at **two original real HTTP 503 vision failures, zero new calls**.
+The preserved ledger stays stopped. Fresh live vision/adjudication remains
+unverified. `gemini3_defaults_v2` is an explicit pilot request profile; the default
+research profile remains `legacy`. Production agent policy remains v3, with
+`production-checks-2026-10-15-v2` recorded separately. This includes the plate
+prefix correction and trusted intake time-basis handling. Genuine UTC instants
+are not shifted again as synthetic research wall clocks; unverified production
+time bases abstain. Cached raw OCR is reused, never a previous case verdict.
+Reports record vision and agent response provenance, incomplete checks, fallback,
+run/policy/check revision and the human's actual reviewed run/evidence.
+
+The latest SQLite acceptance completed both workflows uninterrupted, including
+supplements/history, exact human-review basis, logout/expiry, repeated selection,
+Escape and mobile reviewer/tracker/both forms. It retained 817 cases/1,445 images,
+25 failed runs and 42 snapshots in an isolated copy. The frozen rollback remains
+812 cases/17 failed jobs. These copy submissions are not merged into PostgreSQL.
+The bounded release passed **272**, failed **0**, skipped **11**. Ten skips disable
+live integrations; one excludes the preserved whole REUSE/CLEAN research sweep.
+The 241/10 baseline below is historical, not the current count. PostgreSQL
+qualification results are recorded in the progress/runbook sections. Historical
+snapshots remain immutable. All rows/schemas in the five original SQLite DBs,
+all 82 original root output files, both policy files, configuration and the
+stopped ledger matched preservation. Consistent new backups are outside Git.
+
+The release manifest retains unchanged runners and reruns the affected suites;
+its counts are not a sum of overlapping attempts. Models 82, baseline 14,
+agent 16, LLM 7, perception 2, real local ingestion 6, checks 33, API 25,
+integration runner 1, focused pytest 86 = **272 passes**. LLM/perception skip
+7/3 live tests; checks skips one historical corpus sweep. The failed focused
+attempt (85 passes/1 missing-helper failure) is retained; restoring the count
+helper passed five targeted regressions and the complete 86-test rerun.
+`pip check` reports no broken requirements. Nitro, Starlette and local torch
+warnings remain recorded; they are not test failures or proof of future compatibility.
+
+## Exact current Windows commands (API 8001, frontend 5173)
+
+Preserve the original port-8000 service. Stop only the pilot API/worker/frontend
+with Ctrl+C before switching a database or rebuilding. Backend `.env` retains its
+server-only DATABASE_URL; no Supabase browser client or Supabase Auth is used.
+Local evidence stays on disk. Existing cached model weights and the stopped
+ledger are required; neither readiness nor startup sends a Gemini probe.
+
+Install the pinned portable Node only if absent (official archive/checksum):
+
+```powershell
+$nodeTools = 'D:\tools\FraudLens-node22'
+$nodeArchive = Join-Path $nodeTools 'node-v22.23.3-win-x64.zip'
+$nodeRuntime = Join-Path $nodeTools 'node-v22.23.3-win-x64'
+if (-not (Test-Path $nodeTools)) { New-Item -ItemType Directory -Path $nodeTools | Out-Null }
+if (-not (Test-Path $nodeArchive)) {
+  Invoke-WebRequest 'https://nodejs.org/dist/v22.23.3/node-v22.23.3-win-x64.zip' -OutFile $nodeArchive -UseBasicParsing
+}
+if ((Get-FileHash $nodeArchive -Algorithm SHA256).Hash.ToLower() -ne '2b0ff57b049cda1bbcea2240eec20467018713c1efe1f7360c2681859b90ed71') { throw 'Node checksum mismatch' }
+if (-not (Test-Path $nodeRuntime)) { Expand-Archive -LiteralPath $nodeArchive -DestinationPath $nodeTools }
+$env:FRAUDLENS_NODE22_HOME = $nodeRuntime
+& (Join-Path $nodeRuntime 'node.exe') --version
+```
+
+Backend dependencies, using the existing venv (a clean install was not rehearsed):
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\scripts\start_pilot.ps1 -Database postgresql -Port 8001 -NoWorker
+```
+
+Wait for **Application startup complete**. In a second backend terminal:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+.\scripts\start_pilot.ps1 -Database postgresql -WorkerOnly
+```
+
+Wait for **Worker OCR warmup: ready** and **Durable worker started**. `/ready`
+must return 200. Authenticated `/v1/operations` should report database leadership
+present and no API-local worker. Initial model loading can take over a minute;
+`-NoWarmup` is a diagnostic option, not the presentation startup.
+
+In the frontend terminal, build before starting any frontend server:
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Frontend
+$env:FRAUDLENS_NODE22_HOME = 'D:\tools\FraudLens-node22\node-v22.23.3-win-x64'
+$env:VITE_API_BASE_URL = 'http://127.0.0.1:8001'
+.\scripts\node22.ps1 -Task typecheck
+.\scripts\node22.ps1 -Task build
+$env:PORT = '5173'
+$env:HOST = '127.0.0.1'
+& (Join-Path $env:FRAUDLENS_NODE22_HOME 'node.exe') .output/server/index.mjs
+```
+
+For development, stop the production frontend, then use
+`.\scripts\node22.ps1 -Task dev` instead. Build and development servers must run
+sequentially; changing VITE_API_BASE_URL requires another build. The browser
+acceptance uses the actual production build on 5173, avoiding cold Vite SSR
+compilation. Native warning stderr is retained and actual exit codes checked.
+
+Bounded offline release (new output directory preserves prior logs):
+
+```powershell
+Set-Location D:\projects\FraudLens-2.0\FraudLens-2.0-Backend
+$env:FRAUDLENS_OFFLINE_OUTPUT_DIR = Join-Path (Get-Location).Path ('outputs\pilot_validation\release-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+.\venv\Scripts\python.exe -u -X utf8 scripts/verify_offline_suite.py
+```
+
+This uses each suite's correct runner, disables live integrations, and explicitly
+skips the unchanged whole REUSE/CLEAN research sweep while retaining individual
+reuse/clean regressions. Ten live tests are separately skipped. `--resume` retains
+completed runners and gives interrupted attempts new logs. Do not use the older
+unbounded check-sweep commands below merely to repeat research accuracy figures.
+
+Latest PostgreSQL changes can be verified without touching pilot data:
+
+```powershell
+$env:FRAUDLENS_TEST_POSTGRES = '1'
+$env:FRAUDLENS_TEST_LIVE = '0'
+$env:FRAUDLENS_WORKER_ENABLED = '0'
+$env:FRAUDLENS_WARM_MODELS = '0'
+.\venv\Scripts\python.exe -u -X utf8 -m pytest -q test_postgres.py -k 'pipeline or processing_runs_never_mix or report_history or adjudication_response_source or time_basis or duplicate_snapshot'
+```
+
+That selection passed **11**, deselected 68, failed/skipped 0 in a new disposable
+schema. A separate `-k duplicate_pool_count` run passed 1, deselected 78. The prior
+full PostgreSQL qualification remains 73 passes; it is not added to these results.
+Mock model replies in tests do not establish live AI success.
+
+SQLite rollback: stop the PostgreSQL pilot API/worker, then use the same two
+backend commands with `-Database sqlite` (retain `-NoWorker` for the API). This
+explicit file selection overrides DATABASE_URL without editing credentials.
+For the retained acceptance copy, also pass
+`-SqlitePath outputs/pilot_validation/readiness_20261015/acceptance.db` to both
+commands. Never merge this copy/research databases into the migrated pilot.
+Original main rollback/backup procedures remain in POSTGRES_MIGRATION.md.
+
+Current SaaS limits remain: one organization, no complete tenant isolation,
+unverified applicant identity/MFA/recovery, owner-level DB credentials needing a
+least-privilege service login, host-local evidence/budgets, unsupervised services,
+and incomplete independent security/load/privacy/model validation. Cold uncached
+multi-photo OCR can still take minutes on this 8 GB host. Consistent six-view
+photos and signed C2PA fixtures are missing. Manual OS print dialogs and screen
+readers remain unverified; headless PDFs and selected 390 px layouts were tested.
+
+## Preserved migration handover (previous port-8002 examples)
+
 The local pilot now uses **Supabase PostgreSQL**, qualified through actual claims
 and underwriting browser workflows. React still calls FastAPI; authentication,
 applicant receipts and local image storage are unchanged. The frozen 812-case

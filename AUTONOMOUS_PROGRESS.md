@@ -21,6 +21,103 @@ Earlier dated observations below remain historical and are not new test results.
 
 # Autonomous continuation — 15 October 2026
 
+## Readiness continuation in progress
+
+Final bounded backend manifest: **268 passed, 0 failed, 11 skipped**. The 11 are
+seven LLM live tests, three perception live tests and the preserved corpus sweep.
+The completed unchanged runners were retained; focused regressions were rerun
+after the production time-basis correction and passed 82. Latest real PostgreSQL
+selection: **10 passed, 68 deselected, 0 failed/skipped** in an isolated schema.
+No mocked response is treated as proof of live reliability.
+
+Preservation now matches every row and schema in all five original SQLite DBs,
+all **82** original root output files, both policy files, backend/frontend private
+configuration and the original stopped ledger. New private
+`20261015-readiness-sqlite` contains three consistent SQLite backups (frozen demo,
+acceptance copy and plate fixture), new uploads and configuration. Integrity and
+FK checks passed. The first preservation script used a nonexistent source-code
+path in a data-only backup; the corrected check compares policy bytes with Git.
+
+`0257b6a` records trusted intake UTC instants and production abstention for an
+unverified time basis, retaining legacy research conversion. Overall check
+revision is `production-checks-2026-10-15-v2`; agent prompts remain v3. The first
+PostgreSQL rehearsal preserved `case-a3c692b4dab5`, its failed run, PDF and human
+evidence request. A five-second harness assertion raced the cloud detail refresh.
+`c917da5` synchronizes on completed review UI, removes an unnecessary hidden queue
+fetch after human actions, and qualifies a stale unique-registration limitation
+as historical research. The new Node 22 build passed; final full PostgreSQL
+rehearsal is running with both API/worker reloaded at that source.
+
+Latest verification: SQLite Chrome acceptance 2 completed claims and underwriting
+in one uninterrupted run on `7d98e8c`, including both supplements, repeated saved
+report selection, human run/evidence attribution, logout/expiry and mobile admin,
+tracker and both forms. JavaScript exceptions: 0 for the whole run; one console
+401 corresponds to the intentional expired-session `/v1/cases` request. PDFs
+contained 9/24 pages and 12,069/34,892 text characters. Visual PDF rendering then
+found a dark page canvas below cards; print-only background/label corrections
+were committed as `5a1edd0` and passed another Node 22 build. A final PostgreSQL
+rehearsal will verify the corrected artifacts. New consistent private backup
+`20261015-before-readiness-pg` preserves all 20 PostgreSQL application tables.
+
+The latest eight PostgreSQL regressions passed (68 deselected, no failures/skips)
+in a disposable schema. The release runner entered an old whole REUSE/CLEAN
+duplicate accuracy sweep. It was interrupted when inspected; its partial log
+and completed runners are retained. `eb55577` adds an explicit bounded-release
+skip for that unchanged research sweep and keeps the individual reuse/clean
+regressions. The 367-case inventory is not repeated. Final counts will include
+that skip separately from the ten disabled live-integration tests.
+
+Continued from clean migrated `3906217` on a new branch,
+`autonomous/demo-readiness-20261015`; the older hardening branch was not reset.
+The original port-8000 service, PostgreSQL data, frozen SQLite/research databases,
+evidence, private configuration and backups remain preserved. New measurements
+and submissions use consistent isolated `readiness_20261015/acceptance.db`.
+
+Local commits so far: `5f9573f`, `4a946b9`, `c01e1c8`, `7d98e8c`. These add
+auditable model/check revision and response-source metadata, stage timings,
+Reader initialization locking, production-only telephone-prefix rejection,
+Node 22.23.3 helpers and a repair for same-case refresh resetting the Report tab.
+Production agent prompts remain v3; legacy research sampling/check behavior,
+weights, thresholds, retired status and historical snapshots are preserved.
+
+No additional Gemini provider request was made. The same two original vision
+HTTP 503 records and persistent stop remain. Official Google documentation and
+actual SDK offline serialization/retry tests were inspected; 503 is not proof of
+quota exhaustion. See GEMINI_DIAGNOSIS.md for the separate authorization needed
+for any new bounded live verification.
+
+Measured cold/warm admission: 296.641/1.203 seconds; separate server admission
+warmup: 72.454 seconds before readiness. First/warm profile-case processing:
+149.290/8.234 seconds, both failed model analysis with preserved findings/reports.
+The first cold sample briefly overlapped the beginning of a release attempt;
+it is not a controlled speed benchmark. See LATENCY_MEASUREMENTS.md for stages,
+memory, OCR and limitations. No timeout increase or weaker check produced these
+measurements. UI progress coalesces fast checks to avoid excess cloud writes.
+
+An actual existing readable plate photo returned PASS for the manually inspected
+rear plate and CONCERN for a mismatching declaration, with one local OCR execution
+and cached comparison reuse. It contains two vehicles and establishes neither
+identity attribution nor general accuracy. An unrelated Wikimedia image download
+returned HTTP 403. A genuinely consistent six-view vehicle set remains missing;
+signed C2PA fixtures/bindings are unavailable. The selected context-mismatch case
+remained PASS for its available overcast/daylight evidence; no verdict was forced
+from its label. New tests check wholly missing context stays inconclusive.
+
+Focused verification has passed in several overlapping runs (71 contracts,
+one progress regression, 22 prefix/SDK/progress checks, and three response-source
+checks); these must not be added into a release total. Four isolated PostgreSQL
+regressions passed before the latest response-source additions. Node 22 type-check,
+production builds and built-server HTTP passed. A first build wrapper failed on
+PowerShell native warning handling and was fixed. Nitro's Vite-range warning
+remains documented; no lockfile/dependency upgrade was performed.
+
+First Chrome acceptance attempt preserved `case-3c02282ede7c` and its supplementary
+run. It exposed the Report-tab reset race after refresh; its complete JavaScript
+and console error collections were both empty. The UI repair passed a new Node 22
+build. A second uninterrupted claims/underwriting attempt is now running on the
+latest committed source, API 8001 and production frontend 5173. Final release,
+browser, preservation and handover results will be recorded when complete.
+
 ## Final PostgreSQL qualification
 
 The local pilot is qualified on Supabase PostgreSQL at API port 8002, with the

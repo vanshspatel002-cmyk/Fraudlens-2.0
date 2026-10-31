@@ -77,8 +77,12 @@ class RiskBar(Flowable):
     def draw(self):
         c = self.canv; a = self.assessment; active = a.get('category') if a.get('complete') or a.get('provisional') else None
         c.setFillColor(INK); c.setFont('FraudLens-Bold', 13); c.drawString(0, 72, safe_text(a['label']))
-        if a.get('score') is not None:
+        if a.get('risk_index') is not None:
+            c.setFont('FraudLens-Bold', 9); c.drawRightString(self.width, 73, f"Risk index: {a['risk_index']}%")
+        elif a.get('score') is not None:
             c.setFont('FraudLens', 9); c.drawRightString(self.width, 73, f"Heuristic score {a['score']}")
+        elif a.get('historical'):
+            c.setFont('FraudLens', 8); c.setFillColor(MUTED); c.drawRightString(self.width, 73, "Not calculated for this historical assessment")
         segment = (self.width - 8) / 3
         for index, (label, bg, fg) in enumerate(RISK):
             x = index * (segment + 4)
@@ -91,8 +95,9 @@ class RiskBar(Flowable):
             if active == label:
                 c.setFillColor(INK); path = c.beginPath(); path.moveTo(x + segment/2 - 4, 65); path.lineTo(x + segment/2 + 4, 65); path.lineTo(x + segment/2, 58); path.close(); c.drawPath(path, fill=1, stroke=0)
                 c.setStrokeColor(INK); c.line(x + 12, 33, x + segment - 12, 33)
-        c.setFont('FraudLens', 8); c.setFillColor(MUTED)
-        c.drawString(0, 12, 'Category markers do not imply numerical ranges. Scores are not fraud probabilities.')
+        c.setFont('FraudLens', 7.5); c.setFillColor(MUTED)
+        c.drawString(0, 14, 'Risk index expresses the strength of findings under this assessment policy; it is not a statistical probability of fraud.')
+        c.drawString(0, 4, 'Band boundaries: LOW [0–29%], MEDIUM [30–69%], HIGH [70–100%].')
 
 
 class RelationshipGraph(Flowable):
@@ -475,8 +480,13 @@ def render_visual_report(report, snapshot_id, generated_at, revised=False):
             story.append(p('Saved heuristic score: '+str(aggregation['computed_value'])+'. Not a fraud probability.'))
             if not assessment.get('complete'):
                 story.append(p('Recorded arithmetic is retained for audit only. Incomplete processing prevents a current risk classification.','small'))
-            if aggregation.get('unrounded_value') is not None:
-                story.append(p('Threshold comparison uses the unrounded concern sum: '+str(aggregation['unrounded_value'])+'. Rounded display values do not move a threshold.','small'))
+        elif assessment.get('risk_index') is not None:
+            story.append(p(f"Saved risk index: {assessment['risk_index']}%. Risk index expresses the strength of findings under this assessment policy; it is not a statistical probability of fraud."))
+            story.append(p('Formula: Risk index I = min(100, S_concerns + U_gaps). Band boundaries: LOW [0–29%], MEDIUM [30–69%], HIGH [70–100%].','small'))
+            if assessment.get('concern_score') is not None or assessment.get('uncertainty_adjustment') is not None:
+                story.append(p(f"Concern contribution: {assessment.get('concern_score', 0)} points across domains {', '.join(assessment.get('concern_domains') or []) or 'none'}. Evidence uncertainty adjustment: {assessment.get('uncertainty_adjustment', 0)} points.", 'small'))
+        elif assessment.get('historical'):
+            story.append(p("Not calculated for this historical assessment."))
         else: story.append(p('Numeric score: not computed. The saved local policy assigns review priority categories.' if assessment.get('method')=='Local rules assessment' else 'Numeric score: not computed. Production model routing does not assign numerical contributions.'))
         rows=[]
         for key, entries in calculations.items():

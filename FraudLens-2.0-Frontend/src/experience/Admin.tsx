@@ -2,6 +2,7 @@ import WorkspaceSelector from './WorkspaceSelector';
 import HistoricalReport from './HistoricalReport';
 import RiskIndicator, { type RiskPresentation } from './RiskIndicator';
 import CaseReview from './CaseReview';
+import EvidenceImage from './EvidenceImage';
 import { processingLabel, type AssessmentExplanation } from './reviewPresentation';
 import EvidenceViewer from "./EvidenceViewer";
 import AdminOverview from "./AdminOverview";
@@ -54,11 +55,14 @@ type Row = {
   status: string;
   recommendation: string;
   risk: string;
+  riskIndex?: number;
+  riskIndexFormatted?: string;
   riskProvisional?: boolean;
   riskCoverage?: {sufficient:number;required_applicable:number};
   riskExplanation?: string;
   created_at: string;
   thumbnail: string;
+  thumbnailId?: string;
   processingStatus?: string;
   processingLabel?: string;
   outcome?: string;
@@ -127,6 +131,9 @@ export default function Admin() {
   const detailRequest = useRef(0);
   const queueInFlight = useRef(0);
   const detailLoading = useRef(false);
+  const queueAbort = useRef<AbortController | null>(null);
+  const detailAbort = useRef<AbortController | null>(null);
+  const [opening, setOpening] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
   const [historicalReportText, setHistoricalReport] = useState('');
@@ -138,6 +145,7 @@ export default function Admin() {
     [rows, setRows] = useState<Row[]>([]),
     [detail, setDetail] = useState<CaseDetail | null>(null),
     [error, setError] = useState(""),
+    [readError, setReadError] = useState(""),
     [loading, setLoading] = useState(false),
     [search, setSearch] = useState(""),
     [page, setPage] = useState(1),
@@ -156,8 +164,10 @@ export default function Admin() {
     const expired = () => {
       queueRequest.current++; detailRequest.current++;
       detailLoading.current = false;
+      queueAbort.current?.abort(); detailAbort.current?.abort(); setOpening(false);
       setUser(null); setUserRole('viewer'); setRows([]); setDetail(null);
       setLightbox(null); setHistoricalReport(''); setLoading(false);
+      setReadError('');
       setError('Your reviewer session expired or was revoked. Sign in again.');
     };
     window.addEventListener('fraudlens-session-expired', expired);
@@ -174,7 +184,7 @@ export default function Admin() {
     // Wait for the preceding refresh to finish. Cloud latency must not make
     // every response stale by starting a newer request every ten seconds.
     timer = window.setTimeout(() => { void refresh(true); }, search ? 250 : 0);
-    return () => { cancelled = true; window.clearTimeout(timer); queueRequest.current++; };
+    return () => { cancelled = true; window.clearTimeout(timer); queueRequest.current++; queueAbort.current?.abort(); };
   }, [user, page, search, filters, sort, detail?.id]);
   useEffect(() => {
     setPage(1);
@@ -182,26 +192,35 @@ export default function Admin() {
   useEffect(() => {
     if (!detail?.id || !user) return;
     const id = detail.id;
+    let refreshController: AbortController | null = null;
     let cancelled = false;
     let timer: number;
     const refresh = async () => {
       if (!document.hidden && !detailLoading.current) {
         const request = ++detailRequest.current;
+        const controller = new AbortController();
+        refreshController = controller;
+        detailAbort.current?.abort(); detailAbort.current = controller;
         try {
-          const value = await api('case?id=' + encodeURIComponent(id));
-          if (request === detailRequest.current)
+          const value = await api('case?id=' + encodeURIComponent(id), {signal: controller.signal});
+          if (request === detailRequest.current) {
             setDetail(previous => previous?.id === id ? value as CaseDetail : previous);
+            setReadError('');
+          }
         } catch (err) {
-          if (request === detailRequest.current) setError((err as Error).message);
+          if (!controller.signal.aborted && request === detailRequest.current) setReadError((err as Error).message);
         }
       }
       if (!cancelled) timer = window.setTimeout(() => { void refresh(); }, 10000);
     };
     timer = window.setTimeout(() => { void refresh(); }, 10000);
-    return () => { cancelled = true; window.clearTimeout(timer); };
+    return () => { cancelled = true; window.clearTimeout(timer); refreshController?.abort(); };
   }, [detail?.id, user]);
   async function load(showLoading = true) {
-    if (!showLoading && queueInFlight.current > 0) return;
+    if (!showLoading && (queueInFlight.current > 0 || detailLoading.current)) return;
+    queueAbort.current?.abort();
+    const controller = new AbortController();
+    queueAbort.current = controller;
     queueInFlight.current++;
     const request = ++queueRequest.current;
     if (showLoading) setLoading(true);
@@ -238,7 +257,7 @@ export default function Admin() {
         );
       params.set("sort_by", sort === "Amount high to low" ? "claim_amount" : "created_at");
       params.set("sort_dir", sort === "Oldest first" ? "asc" : "desc");
-      const j = (await api("queue?" + params.toString())) as {
+      const j = (await api("queue?" + params.toString(), {signal: controller.signal})) as {
         cases: Row[];
         total?: number;
         has_more?: boolean;
@@ -247,8 +266,9 @@ export default function Admin() {
       setRows(j.cases);
       setTotal(j.total || j.cases.length);
       setHasMore(!!j.has_more);
+      setReadError('');
     } catch (e) {
-      if (request === queueRequest.current) setError((e as Error).message);
+      if (!controller.signal.aborted && request === queueRequest.current) setReadError((e as Error).message);
     } finally {
       queueInFlight.current--;
       if (request === queueRequest.current) setLoading(false);
@@ -272,26 +292,42 @@ export default function Admin() {
     }
   }
   async function open(id: string) {
+    queueAbort.current?.abort(); queueRequest.current++;
+    detailAbort.current?.abort();
+    const controller = new AbortController();
+    detailAbort.current = controller;
     const request = ++detailRequest.current;
     if (detail?.id !== id) {
       setDetail(null);
       setHumanAction("Approve");
     }
     detailLoading.current = true;
+    setOpening(true);
     setError("");
+    setReadError("");
     setLoading(true);
     try {
-      const value = (await api("case?id=" + encodeURIComponent(id))) as CaseDetail;
+      const value = (await api("case?id=" + encodeURIComponent(id), {signal: controller.signal})) as CaseDetail;
       if (request !== detailRequest.current) return;
       setDetail(value);
     } catch (e) {
-      if (request === detailRequest.current) setError((e as Error).message);
+      if (!controller.signal.aborted && request === detailRequest.current) setReadError((e as Error).message);
     } finally {
       if (request === detailRequest.current) {
         detailLoading.current = false;
+        setOpening(false);
         setLoading(false);
       }
     }
+  }
+  function navigate(nextTab: string) {
+    queueAbort.current?.abort(); detailAbort.current?.abort();
+    queueRequest.current++; detailRequest.current++;
+    detailLoading.current = false;
+    setOpening(false); setLoading(false); setError(''); setReadError('');
+    setTab(nextTab); setDetail(null); setSearch(''); setPage(1);
+    setRows([]); setTotal(0); setHasMore(false);
+    setFilters(nextTab === 'Claims' ? {kind: 'claims'} : nextTab === 'Underwriting' ? {kind: 'underwriting'} : {});
   }
   async function retryAnalysis() {
     if (!detail) return;
@@ -364,6 +400,8 @@ export default function Admin() {
                 try {
                   await post("logout", {});
                   queueRequest.current++; detailRequest.current++;
+                  queueAbort.current?.abort(); detailAbort.current?.abort();
+                  detailLoading.current = false; setOpening(false);
                   setUser(null);
                   setUserRole('viewer'); setLoading(false);
                   setLightbox(null); setHistoricalReport('');
@@ -394,19 +432,7 @@ export default function Admin() {
             <button
               key={t}
               className={tab === t && !detail ? "selected" : ""}
-              onClick={() => {
-                detailRequest.current++;
-                setTab(t);
-                setDetail(null);
-                setSearch("");
-                setFilters(
-                  t === "Claims"
-                    ? { kind: "claims" }
-                    : t === "Underwriting"
-                      ? { kind: "underwriting" }
-                      : {},
-                );
-              }}
+              onClick={() => navigate(t)}
             >
               <Icon
                 name={["layers", "file", "scan", "shield", "file", "eye", "car"][i]}
@@ -449,11 +475,12 @@ export default function Admin() {
               </button>
             )}
           </div>
-          {error && (
+          {(error || readError) && (
             <p className="form-error" role="alert">
-              {error}
+              {error || readError}
             </p>
           )}
+          {loading && user && <p role="status">{opening ? 'Opening claim or application…' : 'Loading cases…'}</p>}
           {!user ? (
             <>
               <div className="admin-login">
@@ -527,7 +554,7 @@ export default function Admin() {
             </>
           ) : detail ? (
             <>
-              <button className="back-link" onClick={() => setDetail(null)}>
+              <button className="back-link" onClick={() => navigate(tab)}>
                 ← Back to case queue
               </button>
               <CaseReview detail={detail} userRole={userRole} busy={loading} humanAction={humanAction}
@@ -655,11 +682,7 @@ export default function Admin() {
                       {filtered.map((r) => (
                         <tr key={r.id}>
                           <td>
-                            {r.thumbnail ? (
-                              <img className="thumb" src={r.thumbnail} alt="Vehicle evidence" />
-                            ) : (
-                              <Icon name="car" />
-                            )}
+                            <EvidenceImage imageId={r.thumbnailId} label="Vehicle evidence" className="thumb" />
                           </td>
                           <td>
                             <button className="case-open" aria-label={r.id} title={r.id} onClick={() => open(r.id)}>
@@ -683,7 +706,7 @@ export default function Admin() {
                           <td>{r.kind === "claims" ? money(r.amount) : "Not applicable"}</td>
                           <td>{r.recommendation || "Pending"}</td>
                           <td>
-                            <span title={r.riskExplanation} className={"risk risk-" + r.risk.toLowerCase()}>{r.risk}{r.riskProvisional && <small>Provisional — partial assessment{r.riskCoverage && <> · Material evidence {r.riskCoverage.sufficient}/{r.riskCoverage.required_applicable}</>}</small>}</span>
+                            <span title={r.riskExplanation} className={"risk risk-" + r.risk.toLowerCase()}>{r.riskIndex != null ? `${r.risk} — Risk index: ${r.riskIndex}%` : r.risk}{r.riskProvisional && <small>Provisional — partial assessment{r.riskCoverage && <> · Material evidence {r.riskCoverage.sufficient}/{r.riskCoverage.required_applicable}</>}</small>}</span>
                           </td>
                           <td>
                             {r.processingLabel || processingLabel({status:r.processingStatus})}
@@ -730,15 +753,13 @@ export default function Admin() {
               rows={rows}
               open={open}
               queue={(kind) => {
-                setTab(
+                navigate(
                   kind === "claims"
                     ? "Claims"
                     : kind === "underwriting"
                       ? "Underwriting"
                       : "Case queue",
                 );
-                setFilters(kind ? { kind } : {});
-                setSearch("");
               }}
             />
           ) : tab === "Checks reference" ? (
